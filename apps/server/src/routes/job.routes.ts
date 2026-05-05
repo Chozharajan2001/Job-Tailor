@@ -1,13 +1,49 @@
 import { Router } from 'express';
+import { z } from 'zod';
+import { authenticate } from '../middleware/auth.middleware.js';
+import {
+  createJob,
+  listJobs,
+  getJob,
+  updateJob,
+  deleteJob,
+  parseJobJD,
+} from '../controllers/job.controller.js';
+import { validateBody, validateQuery, validateParams } from '../middleware/validation.js';
+
 const router = Router();
+router.use(authenticate);
 
-// Placeholder routes — to be implemented in Phase 3
-router.post('/', (_req, res) => {
-  res.status(501).json({ success: false, error: { code: 'NOT_IMPLEMENTED', message: 'Coming in Phase 3' } });
+// ─── Validation Schemas ────────────────────────────────────────
+const jobCreateSchema = z.object({
+  companyName: z.string().min(1, 'Company name is required'),
+  jobTitle: z.string().min(1, 'Job title is required'),
+  jobLink: z.string().url().optional(),
+  location: z.string().min(1),
+  workType: z.enum(['remote', 'hybrid', 'onsite']).default('remote'),
+  employmentType: z.enum(['full-time', 'part-time', 'contract', 'internship']).default('full-time'),
+  salaryRange: z.object({ min: z.number(), max: z.number(), currency: z.string() }).optional(),
+  postedDate: z.string().datetime().optional(),
+  jdRawText: z.string().min(10, 'JD text must be at least 10 characters'),
 });
 
-router.get('/', (_req, res) => {
-  res.status(501).json({ success: false, error: { code: 'NOT_IMPLEMENTED', message: 'Coming in Phase 3' } });
+const idParamSchema = z.object({ id: z.string() });
+
+const jobListQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: z.enum(['saved', 'applied', 'screening', 'interview', 'offer', 'rejected', 'withdrawn']).optional(),
+  search: z.string().trim().optional(),
+  sortBy: z.enum(['date', 'company']).default('date'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
+
+// ─── Routes ────────────────────────────────────────────────────
+router.post('/', validateBody(jobCreateSchema), createJob);
+router.get('/', validateQuery(jobListQuery), listJobs);
+router.get('/:id', validateParams(idParamSchema), getJob);
+router.put('/:id', validateParams(idParamSchema), updateJob);
+router.delete('/:id', validateParams(idParamSchema), deleteJob);
+router.post('/:id/parse', validateParams(idParamSchema), parseJobJD);
 
 export default router;

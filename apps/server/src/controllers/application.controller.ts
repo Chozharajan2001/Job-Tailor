@@ -1,0 +1,194 @@
+import { Request, Response } from 'express';
+import { Application, IApplication } from '../models/Application.model.js';
+
+/**
+ * GET /api/v1/applications — List all applications (for Kanban board data).
+ */
+export async function listApplications(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const status = req.query.status as string;
+
+  const query: Record<string, unknown> = { userId };
+  if (status) query.status = status;
+
+  // Populate job and resume references for rich card display
+  const applications = await Application.find(query)
+    .populate('jobId', 'companyName jobTitle location workType')
+    .populate('resumeId', 'versionLabel atsScore')
+    .sort({ updatedAt: -1 })
+    .lean<IApplication[]>()
+    .exec();
+
+  res.json({ success: true, data: { applications } });
+}
+
+/**
+ * GET /api/v1/applications/:id — Get application detail with full timeline.
+ */
+export async function getApplication(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+
+  const application = await Application.findOne({ _id: req.params.id, userId })
+    .populate('jobId')
+    .populate('resumeId')
+    .lean<IApplication>()
+    .exec();
+
+  if (!application) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
+    });
+    return;
+  }
+
+  res.json({ success: true, data: { application } });
+}
+
+/**
+ * PATCH /api/v1/applications/:id/status — Move through pipeline stages.
+ */
+export async function updateStatus(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { status, note } = req.body;
+
+  if (!status) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_STATUS', message: 'Status is required.' },
+    });
+    return;
+  }
+
+  const validStatuses = ['saved', 'applied', 'screening', 'interview', 'offer', 'rejected', 'withdrawn'];
+  if (!validStatuses.includes(status)) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_STATUS', message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` },
+    });
+    return;
+  }
+
+  const updateData: Record<string, unknown> = { $set: { status }, $push: {} };
+
+  // Add timeline event
+  const timelineEvent = {
+    event: `Status changed to ${status}`,
+    description: note || `Application moved to ${status}`,
+    eventDate: new Date(),
+    type: 'status_change',
+  };
+  (updateData.$push as Record<string, unknown>).timelineEvents = timelineEvent;
+
+  // Track previous status
+  (updateData.$push as Record<string, unknown>).previousStatus = { $each: [] }; // Will be handled differently
+
+  const application = await Application.findOneAndUpdate(
+    { _id: req.params.id, userId },
+    {
+      status,
+      $push: {
+        timelineEvents: timelineEvent,
+        previousStatus: '$status',
+      },
+    },
+    { new: true }
+  ).lean().exec();
+
+  if (!application) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
+    });
+    return;
+  }
+
+  res.json({ success: true, data: { application } });
+}
+
+/**
+ * POST /api/v1/applications/:id/notes — Add a note.
+ */
+export async function addNote(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { content } = req.body;
+
+  if (!content?.trim()) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_CONTENT', message: 'Note content is required.' },
+    });
+    return;
+  }
+
+  const application = await Application.findOneAndUpdate(
+    { _id: req.params.id, userId },
+    {
+      $push: {
+        timelineEvents: {
+          event: 'Note added',
+          description: content.trim(),
+          eventDate: new Date(),
+          type: 'note',
+        },
+      },
+    },
+    { new: true }
+  ).lean().exec();
+
+  if (!application) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
+    });
+    return;
+  }
+
+  res.json({ success: true, data: { application } });
+}
+
+/**
+ * POST /api/v1/applications/:id/reminders — Set a follow-up reminder.
+ */
+export async function addReminder(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { message, dueDate } = req.body;
+
+  if (!message?.trim() || !dueDate) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_FIELDS', message: 'Message and dueDate are required for reminders.' },
+    });
+    return;
+  }
+
+  const application = await Application.findOneAndUpdate(
+    { _id: req.params.id, userId },
+    {
+      $push: {
+        reminders: {
+          message: message.trim(),
+          dueDate: new Date(dueDate),
+          isCompleted: false,
+        },
+        timelineEvents: {
+          event: 'Reminder set',
+          description: `${message.trim()} — Due: ${new Date(dueDate).toLocaleDateString()}`,
+          eventDate: new Date(),
+          type: 'reminder' as const,
+        },
+      },
+    },
+    { new: true }
+  ).lean().exec();
+
+  if (!application) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
+    });
+    return;
+  }
+
+  res.status(201).json({ success: true, data: { reminder: application.reminders[application.reminders.length - 1] } });
+}

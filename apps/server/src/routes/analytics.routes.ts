@@ -1,9 +1,15 @@
 import { Router } from 'express';
-const router = Router();
+import { z } from 'zod';
+import { authenticate } from '../middleware/auth.middleware.js';
+import * as analyticsController from '../controllers/analytics.controller.js';
 
-// Placeholder routes — to be implemented in Phase 7
-router.get('/overview', (_req, res) => {
-  res.status(501).json({ success: false, error: { code: 'NOT_IMPLEMENTED', message: 'Coming in Phase 7' } });
-});
+const router = Router();
+router.use(authenticate);
+
+// ─── Routes ────────────────────────────────────────────────────
+router.get('/overview', analyticsController.getOverview);
+router.get('/resume-performance', analyticsController.getResumePerformance);
+router.get('/status-breakdown', analyticsController.getStatusBreakdown);
+router.get('/skill-gap-report', analyticsController.getSkillGapReport);
 
 export default router;
