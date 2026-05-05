@@ -7,22 +7,10 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
+import JobsPage from './pages/JobsPage';
+import ResumeTailorPage from './pages/ResumeTailorPage';
 
 // Placeholder pages (coming in later phases)
-const JobsPage = () => (
-  <div className="p-8 text-center">
-    <h2 className="text-xl font-semibold mb-2">Job Ingestion</h2>
-    <p className="text-muted-foreground mb-4">Paste JDs, get AI-powered parsing, and manage your job pipeline.</p>
-    <span className="inline-block px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-sm border border-yellow-200">Coming in Phase 6</span>
-  </div>
-);
-const ResumeTailorPage = () => (
-  <div className="p-8 text-center">
-    <h2 className="text-xl font-semibold mb-2">Resume Tailor</h2>
-    <p className="text-muted-foreground mb-4">Auto-generate tailored resumes with ATS scoring and gap analysis.</p>
-    <span className="inline-block px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-sm border border-yellow-200">Coming in Phase 6</span>
-  </div>
-);
 const TrackerPage = () => (
   <div className="p-8 text-center">
     <h2 className="text-xl font-semibold mb-2">Application Tracker (Kanban)</h2>
