@@ -1,25 +1,82 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/layout/Layout';
+import { useAuthStore } from './stores/authStore';
 
-// Pages (to be implemented per phase)
-const Dashboard = () => <div className="p-6">Dashboard — Coming Phase 4</div>;
-const LoginPage = () => <div className="p-6">Login — Coming Phase 2</div>;
-const RegisterPage = () => <div className="p-6">Register — Coming Phase 2</div>;
-const ProfilePage = () => <div className="p-6">Master Profile — Coming Phase 5</div>;
-const JobsPage = () => <div className="p-6">Jobs — Coming Phase 6</div>;
-const ResumeTailorPage = () => <div className="p-6">Resume Tailor — Coming Phase 6</div>;
-const TrackerPage = () => <div className="p-6">Application Tracker — Coming Phase 7</div>;
-const InterviewModePage = () => <div className="p-6">Interview Mode — Coming Phase 8</div>;
-const AnalyticsPage = () => <div className="p-6">Analytics — Coming Phase 7</div>;
+// Real pages
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import DashboardPage from './pages/DashboardPage';
+import ProfilePage from './pages/ProfilePage';
+
+// Placeholder pages (coming in later phases)
+const JobsPage = () => (
+  <div className="p-8 text-center">
+    <h2 className="text-xl font-semibold mb-2">Job Ingestion</h2>
+    <p className="text-muted-foreground mb-4">Paste JDs, get AI-powered parsing, and manage your job pipeline.</p>
+    <span className="inline-block px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-sm border border-yellow-200">Coming in Phase 6</span>
+  </div>
+);
+const ResumeTailorPage = () => (
+  <div className="p-8 text-center">
+    <h2 className="text-xl font-semibold mb-2">Resume Tailor</h2>
+    <p className="text-muted-foreground mb-4">Auto-generate tailored resumes with ATS scoring and gap analysis.</p>
+    <span className="inline-block px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-sm border border-yellow-200">Coming in Phase 6</span>
+  </div>
+);
+const TrackerPage = () => (
+  <div className="p-8 text-center">
+    <h2 className="text-xl font-semibold mb-2">Application Tracker (Kanban)</h2>
+    <p className="text-muted-foreground mb-4">Track all applications across the hiring pipeline.</p>
+    <span className="inline-block px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-sm border border-yellow-200">Coming in Phase 7</span>
+  </div>
+);
+const InterviewModePage = () => (
+  <div className="p-8 text-center">
+    <h2 className="text-xl font-semibold mb-2">Interview Mode</h2>
+    <p className="text-muted-foreground mb-4">Split-screen view: JD + your tailored resume side by side.</p>
+    <span className="inline-block px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-sm border border-yellow-200">Coming in Phase 8</span>
+  </div>
+);
+const AnalyticsPage = () => (
+  <div className="p-8 text-center">
+    <h2 className="text-xl font-semibold mb-2">Analytics & Insights</h2>
+    <p className="text-muted-foreground mb-4">Learn which resumes get callbacks vs. rejections.</p>
+    <span className="inline-block px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-sm border border-yellow-200">Coming in Phase 7</span>
+  </div>
+);
+
+/**
+ * Auth Guard — redirects to login if not authenticated.
+ */
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isLoading = useAuthStore((s) => s.isLoading);
+
+  if (isLoading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin w-8 h-8 border-3 border-primary border-t-transparent rounded-full" /></div>;
+
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+  return <>{children}</>;
+}
 
 export default function App() {
   return (
     <Routes>
+      {/* Public routes */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      <Route path="/" element={<Layout />}>
+
+      {/* Protected routes */}
+      <Route
+        path="/"
+        element={
+          <RequireAuth>
+            <Layout />
+          </RequireAuth>
+        }
+      >
         <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="dashboard" element={<DashboardPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="jobs" element={<JobsPage />} />
         <Route path="tailor" element={<ResumeTailorPage />} />
@@ -27,6 +84,9 @@ export default function App() {
         <Route path="interview/:id" element={<InterviewModePage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
       </Route>
+
+      {/* Catch-all */}
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }
