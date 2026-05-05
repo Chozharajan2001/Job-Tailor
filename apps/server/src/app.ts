@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { config, validateConfig } from './config/index.js';
 import { connectDatabase } from './config/database.js';
+import { errorHandler, asyncHandler } from './middleware/error-handler.js';
 
 // Validate environment config
 validateConfig();
@@ -61,18 +62,9 @@ app.use((_req, res) => {
   });
 });
 
-// ─── Global Error Handler ──────────────────────────────────────────
+// ─── Global Error Handler (custom — handles Zod, Mongoose, ApiError) ──
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({
-    success: false,
-    error: {
-      code: 'INTERNAL_ERROR',
-      message: config.nodeEnv === 'production' ? 'Internal server error' : err.message,
-    },
-  });
-});
+app.use(errorHandler);
 
 // ─── Start Server ──────────────────────────────────────────────────
 async function startServer(): Promise<void> {
