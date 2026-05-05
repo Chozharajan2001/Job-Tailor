@@ -9,29 +9,9 @@ import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import JobsPage from './pages/JobsPage';
 import ResumeTailorPage from './pages/ResumeTailorPage';
-
-// Placeholder pages (coming in later phases)
-const TrackerPage = () => (
-  <div className="p-8 text-center">
-    <h2 className="text-xl font-semibold mb-2">Application Tracker (Kanban)</h2>
-    <p className="text-muted-foreground mb-4">Track all applications across the hiring pipeline.</p>
-    <span className="inline-block px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-sm border border-yellow-200">Coming in Phase 7</span>
-  </div>
-);
-const InterviewModePage = () => (
-  <div className="p-8 text-center">
-    <h2 className="text-xl font-semibold mb-2">Interview Mode</h2>
-    <p className="text-muted-foreground mb-4">Split-screen view: JD + your tailored resume side by side.</p>
-    <span className="inline-block px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-sm border border-yellow-200">Coming in Phase 8</span>
-  </div>
-);
-const AnalyticsPage = () => (
-  <div className="p-8 text-center">
-    <h2 className="text-xl font-semibold mb-2">Analytics & Insights</h2>
-    <p className="text-muted-foreground mb-4">Learn which resumes get callbacks vs. rejections.</p>
-    <span className="inline-block px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-sm border border-yellow-200">Coming in Phase 7</span>
-  </div>
-);
+import TrackerPage from './pages/TrackerPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+import InterviewModePage from './pages/InterviewModePage';
 
 /**
  * Auth Guard — redirects to login if not authenticated.
