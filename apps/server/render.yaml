@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: jobtailor-server
+    runtime: node
+    plan: free
+    env: node
+    buildCommand: cd apps/server && npm install && npm run build
+    startCommand: cd apps/server && node dist/app.js
+    healthCheckPath: /health
+    autoDeploy: true
+    
+    # Environment variables (set in Render dashboard)
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+
+    # Scaling
+    numInstances: 1
+
+    # Disk — needed for Puppeteer
+    disk:
+      name: puppeteer-data
+      mountPath: /home/render/.cache/puppeteer
+      sizeGB: 1
