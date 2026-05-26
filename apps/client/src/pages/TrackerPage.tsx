@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
-import { Download, FileText, Plus } from 'lucide-react';
+import { Download, FileText, Plus, GripVertical } from 'lucide-react';
 import CreateApplicationModal from '../components/CreateApplicationModal';
+import { DndContext, useDraggable, useDroppable, DragEndEvent } from '@dnd-kit/core';
 
 // ─── Types ────────────────────────────────────────────────────
 interface IApplication {
@@ -30,6 +31,42 @@ export default function TrackerPage() {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // ─── PDF Download Mutation ──────────────────────────────────
+  const downloadPDFMutation = useMutation({
+    mutationFn: (resumeId: string) => api.post<{ pdfUrl: string }>(`/resumes/${resumeId}/pdf`),
+    onSuccess: (response) => {
+      window.open(response.data.pdfUrl, '_blank');
+    },
+    onError: (error: any) => {
+      console.error('PDF download failed:', error);
+      alert('Failed to generate PDF. Please try again.');
+    },
+  });
+
+  // ─── Delete Application Mutation ────────────────────────────
+  const deleteAppMutation = useMutation({
+    mutationFn: (appId: string) => api.delete(`/applications/${appId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['applications'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      setShowDetail(false);
+    },
+  });
+
+  // ─── Handle Drag End ────────────────────────────────────────
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over) return;
+
+    const appId = active.id as string;
+    const newStatus = over.id as string;
+
+    const app = allApps.find((a) => a._id === appId);
+    if (app && app.status !== newStatus) {
+      statusMutation.mutate({ appId, status: newStatus });
+    }
+  }
 
   // ─── Handle URL Parameters for Auto-Create Application ──────
   useEffect(() => {
@@ -100,16 +137,18 @@ export default function TrackerPage() {
       )}
 
       {/* Kanban Board */}
-      <div className="flex gap-4 overflow-x-auto pb-4 min-h-[500px]">
-        {grouped.map((column) => (
-          <KanbanColumn
-            key={column.key}
-            column={column}
-            onCardClick={(appId) => { setSelectedAppId(appId); setShowDetail(true); }}
-            onStatusChange={(appId, newStatus) => statusMutation.mutate({ appId, status: newStatus })}
-          />
-        ))}
-      </div>
+      <DndContext onDragEnd={handleDragEnd}>
+        <div className="flex gap-4 overflow-x-auto pb-4 min-h-[500px]">
+          {grouped.map((column) => (
+            <KanbanColumn
+              key={column.key}
+              column={column}
+              onCardClick={(appId) => { setSelectedAppId(appId); setShowDetail(true); }}
+              onStatusChange={(appId, newStatus) => statusMutation.mutate({ appId, status: newStatus })}
+            />
+          ))}
+        </div>
+      </DndContext>
 
       {/* Detail Modal */}
       {showDetail && selectedApp && (
@@ -122,6 +161,18 @@ export default function TrackerPage() {
           onAddNote={(content) => {
             addNoteMutation.mutate({ appId: selectedApp._id, content });
           }}
+          onDownloadPDF={() => {
+            if (selectedApp.resumeId?._id) {
+              downloadPDFMutation.mutate(selectedApp.resumeId._id);
+            }
+          }}
+          isDownloadingPDF={downloadPDFMutation.isPending}
+          onDelete={() => {
+            if (window.confirm('Are you sure you want to delete this application?')) {
+              deleteAppMutation.mutate(selectedApp._id);
+            }
+          }}
+          isDeleting={deleteAppMutation.isPending}
         />
       )}
     </div>
@@ -139,10 +190,18 @@ function KanbanColumn({
   onCardClick: (id: string) => void;
   onStatusChange: (id: string, status: string) => void;
 }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: column.key,
+  });
   const apps = column.apps;
 
   return (
-    <div className={`min-w-[280px] w-[280px] rounded-xl border ${column.color} flex flex-col`}>
+    <div 
+      ref={setNodeRef} 
+      className={`min-w-[280px] w-[280px] rounded-xl border ${column.color} flex flex-col transition-all ${
+        isOver ? 'ring-2 ring-primary ring-offset-1 scale-[1.01] shadow-md' : ''
+      }`}
+    >
       {/* Column Header */}
       <div className="p-3 border-b border-inherit">
         <div className="flex items-center justify-between">
@@ -191,13 +250,38 @@ function ApplicationCard({
   columns: typeof KANBAN_COLUMNS;
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: app._id,
+  });
+
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+    zIndex: 40,
+  } : undefined;
 
   return (
-    <div className="bg-white rounded-lg border shadow-sm p-3 cursor-pointer hover:shadow-md transition-shadow relative" onClick={() => { onClick(); setShowMenu(false); }}>
+    <div 
+      ref={setNodeRef}
+      style={style}
+      className={`bg-white rounded-lg border shadow-sm p-3 hover:shadow-md transition-all relative ${
+        isDragging ? 'opacity-50 ring-2 ring-primary border-transparent z-50 scale-95 shadow-lg' : ''
+      }`} 
+      onClick={() => { onClick(); setShowMenu(false); }}
+    >
       <div className="flex items-start justify-between mb-2">
-        <div className="min-w-0 flex-1">
-          <h4 className="font-semibold text-sm truncate">{app.jobId.jobTitle}</h4>
-          <p className="text-xs text-primary truncate">{app.jobId.companyName}</p>
+        <div className="min-w-0 flex-1 flex gap-2 items-start">
+          <div 
+            {...listeners} 
+            {...attributes} 
+            className="cursor-grab active:cursor-grabbing p-1 -mt-1 -ml-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="font-semibold text-sm truncate">{app.jobId.jobTitle}</h4>
+            <p className="text-xs text-primary truncate">{app.jobId.companyName}</p>
+          </div>
         </div>
 
         {/* Quick Status Change Menu */}
@@ -251,6 +335,8 @@ function ApplicationDetailModal({
   onAddNote,
   onDownloadPDF,
   isDownloadingPDF,
+  onDelete,
+  isDeleting,
 }: {
   application: IApplication;
   onClose: () => void;
@@ -258,6 +344,8 @@ function ApplicationDetailModal({
   onAddNote: (content: string) => void;
   onDownloadPDF?: () => void;
   isDownloadingPDF?: boolean;
+  onDelete?: () => void;
+  isDeleting?: boolean;
 }) {
   const [noteText, setNoteText] = useState('');
   const [activeTab, setActiveTab] = useState<'details' | 'timeline' | 'notes'>('details');
@@ -326,6 +414,18 @@ function ApplicationDetailModal({
                   ))}
                 </div>
               </div>
+
+              {onDelete && (
+                <div className="pt-4 border-t mt-4">
+                  <button
+                    onClick={onDelete}
+                    disabled={isDeleting}
+                    className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 text-xs font-semibold rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isDeleting ? 'Deleting Application...' : '🗑️ Delete Application'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
