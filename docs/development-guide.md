@@ -106,9 +106,9 @@ cd apps/server && npm run dev        # Dev server with nodemon :5000
 cd apps/server && npm run build      # TypeScript compile
 cd apps/server && npm run start      # Run compiled JS
 
-# Generate new shadcn/ui component (from apps/client)
-npx shadcn-ui@latest add button
-npx shadcn-ui@latest add dialog
+# UI note
+# The current client uses TailwindCSS and Lucide icons.
+# A shadcn/ui component system has not been installed yet.
 ```
 
 ---
@@ -125,7 +125,7 @@ npm install
 2. Set up environment files:
 ```bash
 cp .env.example apps/server/.env
-cp .env.example apps/client/.env.client
+cp apps/client/.env.example apps/client/.env.client
 # Edit both files with your actual values
 ```
 
@@ -155,13 +155,14 @@ npm run dev
 ## 6. Security Checklist
 
 - [x] Passwords hashed with bcrypt (12 rounds)
-- [x] JWT stored in http-only cookies (client) + Authorization header (API)
+- [ ] JWT stored in http-only cookies
+- [x] JWT supported through Authorization header
 - [x] All inputs validated with Zod schemas (server-side)
 - [x] Rate limiting on auth endpoints
 - [x] CORS configured for allowed origins only
 - [x] MongoDB injection protection via Mongoose schemas
 - [x] API keys never exposed to client (server-side env only)
-- [x] File upload size limits (max 5MB)
+- [ ] File upload size limits for user uploads
 - [x] Helmet.js security headers enabled
 
 ---

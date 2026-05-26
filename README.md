@@ -1,113 +1,125 @@
 # JobTailor
 
-**Smart Resume & Job Application Tracker for Developers who apply to 10+ jobs/day**
+**Smart resume and job application tracker for developers who apply to 10+ jobs/day**
 
-![Phase: Architecture Complete](https://img.shields.io/badge/phase-0%20--%201-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6) ![React](https://img.shields.io/badge/React-19-61dafb) ![Node.js](https://img.shields.io/badge/Node.js-22-339933) ![MongoDB](https://img.shields.io/badge/MongoDB-8.0-47a248)
+![Status: MVP Foundation](https://img.shields.io/badge/status-MVP%20foundation-blue)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6)
+![React](https://img.shields.io/badge/React-19-61dafb)
+![Node.js](https://img.shields.io/badge/Node.js-22-339933)
+![MongoDB](https://img.shields.io/badge/MongoDB-8.0-47a248)
 
----
+## What Is JobTailor?
 
-## What is JobTailor?
+JobTailor is a personal job application workspace. Paste a job description, parse its requirements, generate a tailored resume from a master profile, score the ATS match, and track the application.
 
-JobTailor is your personal **Job Application OS**. Paste any job description (JD) → it parses requirements → auto-generates a tailored resume from your master profile → scores ATS match → highlights skill gaps → saves everything together.
+The current repo is a buildable MVP foundation. It is not product-complete yet.
 
-### Core Value
-1. **Apply 10x faster**: JD → tailored resume → applied in **under 3 minutes**
-2. **Never lose context**: Every application stores JD + resume + company + status + notes
-3. **Get interviews**: ATS score + weakness box tells you exactly what to fix
-4. **Learn from data**: See which resume versions get callbacks vs rejections
+## Current Working Loop
 
----
+```text
+Create job -> Parse JD -> Generate tailored resume -> View ATS score and gaps
+```
+
+## Intended Full Loop
+
+```text
+Create job -> Parse JD -> Generate resume -> Create application -> Export PDF -> Track follow-up -> Record outcome -> Analyze performance
+```
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
-| Frontend | React 19 + Vite 6 + TypeScript 5.8 |
-| UI | TailwindCSS + shadcn/ui + Lucide Icons |
-| State | Zustand + TanStack Query v5 |
-| Backend | Node.js 22 + Express 4 + TypeScript |
-| Database | MongoDB Atlas + Mongoose 8 |
+| --- | --- |
+| Frontend | React 19 + Vite 6 + TypeScript |
+| UI | TailwindCSS + Lucide Icons |
+| State | Zustand + TanStack Query |
+| Backend | Node.js + Express + TypeScript |
+| Database | MongoDB + Mongoose |
 | Auth | JWT + bcryptjs |
-| LLM | OpenAI API (JD parsing, resume tailoring) |
-| PDF Generation | Puppeteer |
-| File Storage | Cloudinary |
+| LLM | OpenAI API |
+| PDF Generation | Puppeteer service exists, route pending |
+| File Storage | Cloudinary service support exists |
 | Monorepo | Turborepo |
 
----
+Note: shadcn/ui is not currently installed as a component system.
 
 ## Project Structure
 
-```
+```text
 job-tailor/
-├── apps/
-│   ├── client/          # React frontend (Vite)
-│   └── server/          # Express backend (Node.js)
-├── packages/
-│   └── shared-types/    # Shared TypeScript definitions
-├── docs/                # Architecture & API docs
-└── turbo.json           # Turborepo configuration
+  apps/
+    client/          React frontend
+    server/          Express backend
+  packages/
+    shared-types/    Shared TypeScript definitions
+  docs/              Architecture and API docs
+  MVP_STATUS.md      Current completion and pending work
 ```
 
 ## Quick Start
 
 ### Prerequisites
+
 - Node.js >= 18
 - npm >= 9
-- MongoDB Atlas account (free tier)
-- OpenAI API key
+- MongoDB connection string
+- OpenAI API key for JD parsing and AI summary rewriting
 
 ### Setup
 
 ```bash
-# 1. Clone and install
-git clone <repo-url>
-cd job-tailor
 npm install
-
-# 2. Configure environment
 cp .env.example apps/server/.env
-# Edit .env with your MongoDB URI, JWT secrets, and API keys
-
-# 3. Start development servers
+cp apps/client/.env.example apps/client/.env.client
 npm run dev
 ```
 
-This will start:
-- Frontend: [http://localhost:5173](http://localhost:5173)
-- Backend API: [http://localhost:5000](http://localhost:5000)
+Development URLs:
+
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:5000
 - Health check: http://localhost:5000/health
 
-### Available Commands
+## Commands
 
 ```bash
-npm run dev          # Start both client + server in dev mode
-npm run build        # Build all packages
-npm run lint         # Lint everything
-npm run typecheck    # Type-check everything
-npm run test         # Run tests
+npm run dev
+npm run build
+npm run typecheck
+npm run test
 ```
+
+Known passing checks:
+
+```bash
+npm run typecheck
+npm run build
+```
+
+Tests are not meaningful yet because no real test suite has been added.
 
 ## Development Phases
 
 | Phase | Status | Description |
-|-------|--------|-------------|
-| 0 | Done | System architecture, DB schema, API contracts |
-| 1 | In Progress | Project scaffold, monorepo setup, configs |
-| 2 | Pending | Backend foundation — Express, MongoDB, auth system |
-| 3 | Pending | Core models + APIs — Profile, Jobs, Resumes, ATS |
-| 4 | Pending | Frontend shell — Routing, layout, auth flow |
-| 5 | Pending | Dashboard + Master Profile UI |
-| 6 | Pending | Job ingestion + Resume tailor UI |
-| 7 | Pending | Application tracker CRM (Kanban) |
-| 8 | Pending | PDF export + Interview mode |
-| 9 | Pending | Polish, error handling, deployment |
+| --- | --- | --- |
+| 0 | Done | Architecture, schema, API plan |
+| 1 | Done | Monorepo scaffold and configs |
+| 2 | Done | Express, MongoDB, auth foundation |
+| 3 | Done | Core models and first-pass APIs |
+| 4 | Done | Frontend routing, layout, auth pages |
+| 5 | Partial | Dashboard and master profile UI |
+| 6 | Partial | Job ingestion and resume tailor UI |
+| 7 | Partial | Application tracker CRM |
+| 8 | Partial | PDF service and interview mode |
+| 9 | Partial | Polish, docs, deployment config |
 
-See [docs/architecture.md](./docs/architecture.md) for full design documentation.
-See [docs/api-reference.md](./docs/api-reference.md) for complete API reference.
-See [docs/development-guide.md](./docs/development-guide.md) for coding conventions.
+## Documentation
 
----
+- [MVP status](./MVP_STATUS.md)
+- [Architecture](./docs/architecture.md)
+- [API reference](./docs/api-reference.md)
+- [Development guide](./docs/development-guide.md)
 
 ## License
 
-MIT © Chozharajan M
+MIT

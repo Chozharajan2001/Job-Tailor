@@ -32,7 +32,7 @@ Edit `apps/server/.env` with your values:
 | `CLOUDINARY_*` | Optional | For PDF storage (can skip locally) |
 
 ```bash
-cp .env.example apps/client/.env.client
+cp apps/client/.env.example apps/client/.env.client
 ```
 
 ## 3. Local Development
