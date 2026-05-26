@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from './services/api';
+import { api } from '../services/api';
+import { Download, FileText } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────
 interface IJob { _id: string; companyName: string; jobTitle: string; status: string; parsedJD: unknown | null; }
@@ -17,7 +18,7 @@ interface IATSScore {
     actionItems: string[];
   };
 }
-interface IResume { _id: string; versionLabel: string; atsScore: IATSScore; tailoredSummary: string; skills: unknown[]; experience: unknown[]; projects: unknown[]; status: string; createdAt: string; }
+interface IResume { _id: string; versionLabel: string; atsScore: IATSScore; tailoredSummary: string; skills: unknown[]; experience: unknown[]; projects: unknown[]; status: string; createdAt: string; pdfUrl?: string; }
 
 export default function ResumeTailorPage() {
   const queryClient = useQueryClient();
@@ -39,6 +40,7 @@ export default function ResumeTailorPage() {
     enabled: !!selectedJobId,
   });
   const existingResumes = resumesRes?.data?.resumes || [];
+  const latestResume = existingResumes[0];
 
   // ─── Generate Resume Mutation ───────────────────────────────
   const generateMutation = useMutation({
@@ -46,6 +48,19 @@ export default function ResumeTailorPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['resumes', selectedJobId] });
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+
+  // ─── Download PDF Mutation ──────────────────────────────────
+  const downloadPDFMutation = useMutation({
+    mutationFn: (resumeId: string) => api.post<{ pdfUrl: string }>(`/resumes/${resumeId}/pdf`),
+    onSuccess: (response) => {
+      // Open PDF in new tab or trigger download
+      window.open(response.data.pdfUrl, '_blank');
+    },
+    onError: (error: any) => {
+      console.error('PDF download failed:', error);
+      alert('Failed to generate PDF. Please try again.');
     },
   });
 
@@ -108,20 +123,35 @@ export default function ResumeTailorPage() {
               </div>
             )}
 
+            {/* Quick Apply Button - Shows after successful generation */}
+            {latestResume && !generateMutation.isPending && (
+              <a
+                href={`/tracker?jobId=${selectedJobId}&resumeId=${latestResume._id}`}
+                className="w-full py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                ✓ Create Application & Track Progress
+              </a>
+            )}
+
             {/* Existing Resume Versions */}
             {existingResumes.length > 0 && (
               <div className="space-y-3">
                 <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Generated Versions ({existingResumes.length})</h3>
                 {existingResumes.map((resume) => (
-                  <ResumeCard key={resume._id} resume={resume} />
+                  <ResumeCard 
+                    key={resume._id} 
+                    resume={resume}
+                    onDownloadPDF={() => downloadPDFMutation.mutate(resume._id)}
+                    isDownloading={downloadPDFMutation.isPending}
+                  />
                 ))}
               </div>
             )}
           </div>
 
           {/* Right: Latest ATS Score */}
-          {existingResumes.length > 0 && (
-            <ATSDashboard score={existingResumes[0].atsScore} versionLabel={existingResumes[0].versionLabel} />
+          {latestResume && (
+            <ATSDashboard score={latestResume.atsScore} versionLabel={latestResume.versionLabel} />
           )}
         </div>
       )}
@@ -131,7 +161,15 @@ export default function ResumeTailorPage() {
 
 // ══════════════════════════════════════════════════════════════
 
-function ResumeCard({ resume }: { resume: IResume }) {
+function ResumeCard({ 
+  resume, 
+  onDownloadPDF,
+  isDownloading 
+}: { 
+  resume: IResume; 
+  onDownloadPDF: () => void;
+  isDownloading: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const s = resume.atsScore;
 
@@ -143,7 +181,28 @@ function ResumeCard({ resume }: { resume: IResume }) {
             <h4 className="font-semibold text-sm">{resume.versionLabel}</h4>
             <span className="text-xs text-muted-foreground">v{resume._id.slice(-4)} · {new Date(resume.createdAt).toLocaleDateString()}</span>
           </div>
-          <ATSScoreBadge score={s?.overallScore || 0} />
+          <div className="flex items-center gap-2">
+            <ATSScoreBadge score={s?.overallScore || 0} />
+            {/* Download PDF Button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDownloadPDF();
+              }}
+              disabled={isDownloading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 cursor-pointer"
+              title="Download PDF"
+            >
+              {isDownloading ? (
+                <div className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
+              ) : (
+                <>
+                  <FileText className="w-3.5 h-3.5" />
+                  PDF
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
