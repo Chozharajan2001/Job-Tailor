@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
+import { Download, FileText, Plus } from 'lucide-react';
+import CreateApplicationModal from '../components/CreateApplicationModal';
 
 // ─── Types ────────────────────────────────────────────────────
 interface IApplication {
   _id: string;
   jobId: { _id: string; companyName: string; jobTitle: string; location?: string; workType?: string };
-  resumeId?: { _id: string; versionLabel?: string; atsScore?: { overallScore: number } };
+  resumeId?: { _id: string; versionLabel?: string; atsScore?: { overallScore: number }; pdfUrl?: string };
   status: string;
   timelineEvents: Array<{ event: string; description: string; eventDate: string; type: string }>;
   createdAt: string;
@@ -21,10 +23,27 @@ const KANBAN_COLUMNS = [
   { key: 'rejected', label: 'Rejected', color: 'bg-red-50 border-red-200' },
 ] as const;
 
+type KanbanColumnData = (typeof KANBAN_COLUMNS)[number] & { apps: IApplication[] };
+
 export default function TrackerPage() {
   const queryClient = useQueryClient();
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // ─── Handle URL Parameters for Auto-Create Application ──────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const jobId = params.get('jobId');
+    const resumeId = params.get('resumeId');
+
+    if (jobId && resumeId) {
+      // Auto-open create application modal with pre-filled values
+      setShowCreateModal(true);
+      // Clean URL without refreshing
+      window.history.replaceState({}, '', '/tracker');
+    }
+  }, []);
 
   // ─── Fetch All Applications ──────────────────────────────────
   const { data: appsRes, isLoading } = useQuery({
@@ -64,7 +83,21 @@ export default function TrackerPage() {
           <h1 className="text-2xl font-bold">Application Tracker</h1>
           <p className="text-muted-foreground mt-1">{allApps.length} applications across pipeline stages</p>
         </div>
+        
+        {/* Create Application Button */}
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+          Create Application
+        </button>
       </div>
+
+      {/* Create Application Modal */}
+      {showCreateModal && (
+        <CreateApplicationModal onClose={() => setShowCreateModal(false)} />
+      )}
 
       {/* Kanban Board */}
       <div className="flex gap-4 overflow-x-auto pb-4 min-h-[500px]">
@@ -102,8 +135,7 @@ function KanbanColumn({
   onCardClick,
   onStatusChange,
 }: {
-  column: (typeof KANBAN_COLUMNS)[number];
-  apps: IApplication[];
+  column: KanbanColumnData;
   onCardClick: (id: string) => void;
   onStatusChange: (id: string, status: string) => void;
 }) {
@@ -217,11 +249,15 @@ function ApplicationDetailModal({
   onClose,
   onStatusChange,
   onAddNote,
+  onDownloadPDF,
+  isDownloadingPDF,
 }: {
   application: IApplication;
   onClose: () => void;
   onStatusChange: (status: string) => void;
   onAddNote: (content: string) => void;
+  onDownloadPDF?: () => void;
+  isDownloadingPDF?: boolean;
 }) {
   const [noteText, setNoteText] = useState('');
   const [activeTab, setActiveTab] = useState<'details' | 'timeline' | 'notes'>('details');
@@ -240,7 +276,27 @@ function ApplicationDetailModal({
               <span className="text-xs text-muted-foreground">Applied: {formatRelativeTime(application.createdAt)}</span>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">&times;</button>
+          <div className="flex items-center gap-2">
+            {/* Download PDF Button */}
+            {onDownloadPDF && application.resumeId && (
+              <button
+                onClick={onDownloadPDF}
+                disabled={isDownloadingPDF}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 cursor-pointer"
+                title="Download Resume PDF"
+              >
+                {isDownloadingPDF ? (
+                  <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4" />
+                    PDF
+                  </>
+                )}
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">&times;</button>
+          </div>
         </div>
 
         {/* Tabs */}
