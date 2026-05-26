@@ -77,13 +77,13 @@ const jobSchema = new Schema<IJob>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
 
-    // Company info
-    companyName: { type: String, required: true, trim: true },
-    jobTitle: { type: String, required: true, trim: true },
+    // Company info - Only jobTitle is required
+    companyName: { type: String, trim: true, default: '' },
+    jobTitle: { type: String, required: [true, 'Job title is required'], trim: true },
     jobLink: { type: String },
-    location: { type: String, required: true },
-    workType: { type: String, enum: ['remote', 'hybrid', 'onsite'], required: true },
-    employmentType: { type: String, enum: ['full-time', 'part-time', 'contract', 'internship'], required: true },
+    location: { type: String, default: '' },
+    workType: { type: String, enum: ['remote', 'hybrid', 'onsite'], default: 'remote' },
+    employmentType: { type: String, enum: ['full-time', 'part-time', 'contract', 'internship'], default: 'full-time' },
     salaryRange: {
       min: Number,
       max: Number,
@@ -91,11 +91,11 @@ const jobSchema = new Schema<IJob>(
     },
     postedDate: Date,
 
-    // Job Description
-    jdRawText: { type: String, required: true },
+    // Job Description - Optional (can be added later)
+    jdRawText: { type: String, default: '' },
     parsedJD: parsedJDSchema,
 
-    // Pipeline status
+    // Pipeline status - Moved to Application model conceptually, but kept here for backward compatibility
     status: {
       type: String,
       enum: ['saved', 'applied', 'screening', 'interview', 'offer', 'rejected', 'withdrawn'],
