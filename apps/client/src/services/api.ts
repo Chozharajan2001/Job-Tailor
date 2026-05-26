@@ -4,6 +4,12 @@ interface ApiOptions extends RequestInit {
   params?: Record<string, string | number>;
 }
 
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: { code: string; message: string };
+}
+
 /**
  * Typed API client for JobTailor backend.
  * Auto-injects JWT tokens, handles errors consistently.
@@ -21,7 +27,7 @@ class ApiClient {
       : null;
   }
 
-  async request<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
+  async request<T>(endpoint: string, options: ApiOptions = {}): Promise<ApiResponse<T>> {
     const { params, ...fetchOptions } = options;
     const token = this.getToken();
 
@@ -54,23 +60,23 @@ class ApiClient {
     return response.json();
   }
 
-  get<T>(endpoint: string, params?: Record<string, string | number>): Promise<T> {
+  get<T>(endpoint: string, params?: Record<string, string | number>): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'GET', params });
   }
 
-  post<T>(endpoint: string, body?: unknown): Promise<T> {
+  post<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
   }
 
-  put<T>(endpoint: string, body?: unknown): Promise<T> {
+  put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'PUT', body: body ? JSON.stringify(body) : undefined });
   }
 
-  patch<T>(endpoint: string, body?: unknown): Promise<T> {
+  patch<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined });
   }
 
-  delete<T>(endpoint: string): Promise<T> {
+  delete<T>(endpoint: string): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'DELETE' });
   }
 }

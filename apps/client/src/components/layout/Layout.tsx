@@ -1,10 +1,10 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, UserBriefcase, FileText, Kanban, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Briefcase, FileText, Kanban, BarChart3 } from 'lucide-react';
 import ErrorBoundary from '../ErrorBoundary';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/profile', label: 'Profile', icon: UserBriefcase },
+  { to: '/profile', label: 'Profile', icon: Briefcase },
   { to: '/jobs', label: 'Jobs', icon: FileText },
   { to: '/tailor', label: 'Tailor Resume', icon: FileText },
   { to: '/tracker', label: 'Tracker', icon: Kanban },

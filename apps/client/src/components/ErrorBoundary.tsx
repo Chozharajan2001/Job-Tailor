@@ -13,7 +13,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: { componentStack: string }) {
+  override componentDidCatch(error: Error, info: { componentStack: string }) {
     console.error('ErrorBoundary caught:', error, info);
   }
 
@@ -21,7 +21,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     this.setState({ hasError: false, error: null });
   };
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
 
@@ -33,7 +33,7 @@ export default class ErrorBoundary extends Component<Props, State> {
             <p className="text-sm text-muted-foreground mb-2">
               An unexpected error occurred in this part of the application.
             </p>
-            {process.env.NODE_ENV === 'development' && this.state.error?.message && (
+            {import.meta.env.DEV && this.state.error?.message && (
               <pre className="bg-red-50 text-red-700 text-xs p-3 rounded-lg mb-4 overflow-auto text-left">
                 {this.state.error.message}
               </pre>

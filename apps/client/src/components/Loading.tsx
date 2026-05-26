@@ -17,7 +17,7 @@ export default function Loading({ message = 'Loading...', fullScreen = false }: 
 }
 
 /** Compact inline loading spinner */
-export function Spinner({ size = 20, className = '' }: { size?: number; string?: string }) {
+export function Spinner({ size = 20, className = '' }: { size?: number; className?: string }) {
   return (
     <div
       className={`rounded-full border-2 border-gray-200 border-t-primary animate-spin ${className}`}

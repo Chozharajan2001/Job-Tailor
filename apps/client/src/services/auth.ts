@@ -15,14 +15,17 @@ interface AuthResponse {
 
 export const authService = {
   async register(data: { email: string; password: string; firstName: string; lastName: string }): Promise<AuthResponse> {
-    return api.post<AuthResponse>('/auth/register', data);
+    const response = await api.post<AuthResponse>('/auth/register', data);
+    return response.data;
   },
 
   async login(email: string, password: string): Promise<AuthResponse> {
-    return api.post<AuthResponse>('/auth/login', { email, password });
+    const response = await api.post<AuthResponse>('/auth/login', { email, password });
+    return response.data;
   },
 
   async getMe(): Promise<{ user: User }> {
-    return api.get<{ user: User }>('/auth/me');
+    const response = await api.get<{ user: User }>('/auth/me');
+    return response.data;
   },
 };
