@@ -179,7 +179,7 @@ const profileSchema = new Schema<IProfile>(
   }
 );
 
-// Index for fast user lookup
-profileSchema.index({ userId: 1 });
+// Index for fast user lookup - REMOVED: userId already has unique: true which creates an index automatically
+// profileSchema.index({ userId: 1 }); // Duplicate index removed
 
 export const Profile = mongoose.model<IProfile>('Profile', profileSchema);
