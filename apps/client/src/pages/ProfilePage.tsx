@@ -20,6 +20,17 @@ interface IProfile {
   links: ILinks;
 }
 
+interface ExperienceForm {
+  company: string;
+  role: string;
+  startDate: string;
+  endDate: string;
+  location: string;
+  isCurrentRole: boolean;
+  description: string;
+  bullets: Array<{ id: string; text: string; tags: string[] }>;
+}
+
 const SKILL_CATEGORIES = ['frontend', 'backend', 'devops', 'ai', 'mobile', 'database', 'other'] as const;
 const PROFICIENCY_LEVELS = ['beginner', 'intermediate', 'advanced', 'expert'] as const;
 const BULLET_TAGS = ['frontend', 'backend', 'devops', 'ai', 'testing', 'leadership'] as const;
@@ -194,7 +205,7 @@ function SkillsSection({ skills, onAdd }: { skills: ISkill[]; onAdd: (skill: Omi
 
 function ExperienceSection({ experiences, onAdd }: { experiences: IExperience[]; onAdd: (exp: Omit<IExperience, '_id'>) => void }) {
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<ExperienceForm>({
     company: '', role: '', startDate: '', endDate: '', location: '', isCurrentRole: true,
     description: '', bullets: [{ id: crypto.randomUUID(), text: '', tags: [] }],
   });

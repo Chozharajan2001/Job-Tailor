@@ -121,7 +121,7 @@ export interface IProfileLinks {
   website?: string;
 }
 
-export interface IProfile extends Document {
+export interface IProfile {
   _id: ID;
   userId: ID;
   summary: string;
