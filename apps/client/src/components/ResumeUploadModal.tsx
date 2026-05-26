@@ -19,11 +19,14 @@ export default function ResumeUploadModal({ onClose, onSuccess }: ResumeUploadMo
       const formData = new FormData();
       formData.append('resume', file);
       
-      const response = await api.post<{ 
+      // Use request method directly to support custom headers for file upload
+      const response = await api.request<{ 
         success: boolean; 
         data: { pdfUrl: string; filename: string; message: string };
-      }>('/resumes/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      }>('/resumes/upload', {
+        method: 'POST',
+        body: formData,
+        headers: {}, // Don't set Content-Type, let browser set it with boundary
       });
       
       return response.data;

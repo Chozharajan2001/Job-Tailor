@@ -39,8 +39,8 @@ export default function CreateApplicationModal({
     async function fetchData() {
       try {
         const [jobsRes, resumesRes] = await Promise.all([
-          api.get('/jobs?limit=100'),
-          api.get('/resumes'),
+          api.get<{ jobs: IJob[] }>('/jobs?limit=100'),
+          api.get<{ resumes: IResume[] }>('/resumes'),
         ]);
         setJobs(jobsRes.data.jobs || []);
         setResumes(resumesRes.data.resumes || []);
