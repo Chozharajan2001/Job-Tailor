@@ -12,7 +12,15 @@ import {
   addProject,
   updateProject,
   deleteProject,
+  uploadAndPopulateProfile,
+  addEducation,
+  updateEducation,
+  deleteEducation,
+  addCertification,
+  updateCertification,
+  deleteCertification,
 } from '../controllers/profile.controller.js';
+import { upload } from '../controllers/resume.controller.js';
 import { validateBody } from '../middleware/validation.js';
 import { z } from 'zod';
 
@@ -24,6 +32,7 @@ router.use(authenticate);
 // ─── Profile CRUD ──────────────────────────────────────────────
 router.get('/', getProfile);
 router.put('/', validateBody(z.object({ summary: z.string().optional(), links: z.record(z.string()).optional() }).partial()), updateProfile);
+router.post('/upload', upload.single('resume'), uploadAndPopulateProfile);
 
 // ─── Skills ────────────────────────────────────────────────────
 router.post('/skills', validateBody(z.object({
@@ -60,5 +69,39 @@ router.post('/projects', validateBody(z.object({
 })), addProject);
 router.put('/projects/:id', validateBody(z.object({}).partial()), updateProject);
 router.delete('/projects/:id', deleteProject);
+
+// ─── Education ────────────────────────────────────────────────
+router.post('/education', validateBody(z.object({
+  institution: z.string().min(1),
+  degree: z.string().min(1),
+  field: z.string().min(1),
+  startYear: z.number().min(1980).max(2035),
+  endYear: z.number().min(1980).max(2035).optional(),
+  gpa: z.string().optional(),
+})), addEducation);
+router.put('/education/:id', validateBody(z.object({
+  institution: z.string().optional(),
+  degree: z.string().optional(),
+  field: z.string().optional(),
+  startYear: z.number().min(1980).max(2035).optional(),
+  endYear: z.number().min(1980).max(2035).optional(),
+  gpa: z.string().optional(),
+}).partial()), updateEducation);
+router.delete('/education/:id', deleteEducation);
+
+// ─── Certifications ───────────────────────────────────────────
+router.post('/certifications', validateBody(z.object({
+  name: z.string().min(1),
+  issuer: z.string().min(1),
+  date: z.string(),
+  credentialUrl: z.string().optional(),
+})), addCertification);
+router.put('/certifications/:id', validateBody(z.object({
+  name: z.string().optional(),
+  issuer: z.string().optional(),
+  date: z.string().optional(),
+  credentialUrl: z.string().optional(),
+}).partial()), updateCertification);
+router.delete('/certifications/:id', deleteCertification);
 
 export default router;

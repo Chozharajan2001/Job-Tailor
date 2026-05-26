@@ -116,3 +116,92 @@ export async function deleteProject(req: Request, res: Response): Promise<void> 
 
   res.json({ success: true, data: { message: 'Project deleted' } });
 }
+
+/**
+ * POST /api/v1/profile/upload — Upload PDF resume and auto-populate master profile.
+ */
+export async function uploadAndPopulateProfile(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  
+  if (!req.file) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'NO_FILE_UPLOADED', message: 'No PDF file uploaded.' },
+    });
+    return;
+  }
+
+  try {
+    const profile = await profileService.uploadAndPopulateProfile(userId, req.file);
+    res.json({ success: true, data: { profile } });
+  } catch (error) {
+    console.error('Profile upload/parse error:', error);
+    const code = (error as any).code || 'INTERNAL_ERROR';
+    const status = (error as any).status || 500;
+    res.status(status).json({
+      success: false,
+      error: {
+        code,
+        message: (error as any).message || 'Failed to parse resume and update profile.',
+      },
+    });
+  }
+}
+
+// ─── Education ────────────────────────────────────────────────
+export async function addEducation(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const profile = await profileService.addEducation(userId, req.body);
+  res.status(201).json({
+    success: true,
+    data: { education: profile.education[profile.education.length - 1] },
+  });
+}
+
+export async function updateEducation(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const id = req.params.id as string;
+  const profile = await profileService.updateEducation(userId, id, req.body);
+
+  if (!profile) {
+    res.status(404).json({ success: false, error: { code: 'EDUCATION_NOT_FOUND', message: 'Education not found.' } });
+    return;
+  }
+  res.json({ success: true, data: { message: 'Education updated' } });
+}
+
+export async function deleteEducation(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const id = req.params.id as string;
+  await profileService.deleteEducation(userId, id);
+  res.json({ success: true, data: { message: 'Education deleted' } });
+}
+
+// ─── Certifications ───────────────────────────────────────────
+export async function addCertification(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const profile = await profileService.addCertification(userId, req.body);
+  res.status(201).json({
+    success: true,
+    data: { certification: profile.certifications[profile.certifications.length - 1] },
+  });
+}
+
+export async function updateCertification(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const id = req.params.id as string;
+  const profile = await profileService.updateCertification(userId, id, req.body);
+
+  if (!profile) {
+    res.status(404).json({ success: false, error: { code: 'CERTIFICATION_NOT_FOUND', message: 'Certification not found.' } });
+    return;
+  }
+  res.json({ success: true, data: { message: 'Certification updated' } });
+}
+
+export async function deleteCertification(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const id = req.params.id as string;
+  await profileService.deleteCertification(userId, id);
+  res.json({ success: true, data: { message: 'Certification deleted' } });
+}
