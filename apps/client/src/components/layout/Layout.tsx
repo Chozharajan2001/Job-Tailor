@@ -1,6 +1,7 @@
-import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, FileText, Kanban, BarChart3 } from 'lucide-react';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Briefcase, FileText, Kanban, BarChart3, LogOut } from 'lucide-react';
 import ErrorBoundary from '../ErrorBoundary';
+import { useAuthStore } from '../../stores/authStore';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -12,6 +13,17 @@ const navItems = [
 ];
 
 export default function Layout() {
+  const user = useAuthStore((s) => s.user);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
+  const navigate = useNavigate();
+
+  const initials = user
+    ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase()
+    : 'U';
+  const fullName = user
+    ? `${user.firstName} ${user.lastName}`
+    : 'User Profile';
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
@@ -41,16 +53,26 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-gray-200">
+        <div className="p-4 border-t border-gray-200 space-y-2">
           <div className="flex items-center gap-3 px-3 py-2">
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
-              CM
+              {initials}
             </div>
-            <div>
-              <p className="text-sm font-medium">Chozharajan M</p>
-              <p className="text-xs text-muted-foreground">Full Stack Dev</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium truncate">{fullName}</p>
+              <p className="text-xs text-muted-foreground truncate">{user?.email || 'authenticated'}</p>
             </div>
           </div>
+          <button
+            onClick={() => {
+              clearAuth();
+              navigate('/login');
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" />
+            Log Out
+          </button>
         </div>
       </aside>
 
