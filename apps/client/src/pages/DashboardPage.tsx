@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { LayoutDashboard, FileText, Briefcase, TrendingUp, Target, AlertCircle, Plus } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
 
 interface DashboardData {
   totalApplications: number;
@@ -13,6 +14,7 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const { data: dashboard, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.get<DashboardData>('/analytics/overview'),
@@ -61,7 +63,7 @@ export default function DashboardPage() {
           <p className="text-muted-foreground mt-1">Welcome back! Here's your job search overview.</p>
         </div>
         <button
-          onClick={() => window.location.href = '/jobs'}
+          onClick={() => navigate('/jobs')}
           className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer"
         >
           <Plus className="w-4 h-4" /> Add Job
@@ -140,18 +142,18 @@ export default function DashboardPage() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <a href="/profile" className="block p-5 bg-white rounded-xl border hover:border-primary/30 transition-colors group">
+        <Link to="/profile" className="block p-5 bg-white rounded-xl border hover:border-primary/30 transition-colors group">
           <h3 className="font-semibold group-hover:text-primary">Update Master Profile</h3>
           <p className="text-sm text-muted-foreground mt-1">Keep your skills & experience current</p>
-        </a>
-        <a href="/jobs" className="block p-5 bg-white rounded-xl border hover:border-primary/30 transition-colors group">
+        </Link>
+        <Link to="/jobs" className="block p-5 bg-white rounded-xl border hover:border-primary/30 transition-colors group">
           <h3 className="font-semibold group-hover:text-primary">Paste a New JD</h3>
           <p className="text-sm text-muted-foreground mt-1">Parse and analyze a job description</p>
-        </a>
-        <a href="/tailor" className="block p-5 bg-white rounded-xl border hover:border-primary/30 transition-colors group">
+        </Link>
+        <Link to="/tailor" className="block p-5 bg-white rounded-xl border hover:border-primary/30 transition-colors group">
           <h3 className="font-semibold group-hover:text-primary">Generate Tailored Resume</h3>
           <p className="text-sm text-muted-foreground mt-1">Auto-tailor for any saved job</p>
-        </a>
+        </Link>
       </div>
     </div>
   );

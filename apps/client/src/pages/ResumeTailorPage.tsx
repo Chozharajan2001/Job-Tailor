@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { Download, FileText } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 // ─── Types ────────────────────────────────────────────────────
 interface IJob { _id: string; companyName: string; jobTitle: string; status: string; parsedJD: unknown | null; }
@@ -77,7 +78,7 @@ export default function ResumeTailorPage() {
         {parsedJobs.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No parsed jobs yet.{' '}
-            <a href="/jobs" className="text-primary hover:underline">Go to Jobs</a> and paste a JD first.
+            <Link to="/jobs" className="text-primary hover:underline">Go to Jobs</Link> and paste a JD first.
           </p>
         ) : (
           <select
@@ -118,19 +119,25 @@ export default function ResumeTailorPage() {
             </button>
 
             {generateMutation.isError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                Failed to generate resume. Make sure your master profile is set up.
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 space-y-2">
+                <p className="font-semibold">Failed to generate resume</p>
+                <p className="text-xs text-red-600">Make sure your master profile has details (Skills, Experience, Summary) set up.</p>
+                <div className="pt-1">
+                  <Link to="/profile" className="text-xs px-3 py-1.5 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 inline-block transition-colors">
+                    Go to Profile Setup →
+                  </Link>
+                </div>
               </div>
             )}
 
             {/* Quick Apply Button - Shows after successful generation */}
             {latestResume && !generateMutation.isPending && (
-              <a
-                href={`/tracker?jobId=${selectedJobId}&resumeId=${latestResume._id}`}
+              <Link
+                to={`/tracker?jobId=${selectedJobId}&resumeId=${latestResume._id}`}
                 className="w-full py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-colors cursor-pointer flex items-center justify-center gap-2"
               >
                 ✓ Create Application & Track Progress
-              </a>
+              </Link>
             )}
 
             {/* Existing Resume Versions */}

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { Upload, FileText, X } from 'lucide-react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
+import { Link } from 'react-router-dom';
 
 // ─── Types ────────────────────────────────────────────────────
 interface IParsedJD {
@@ -43,6 +44,26 @@ export default function JobsPage() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [showApplicationModal, setShowApplicationModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showQuickATSModal, setShowQuickATSModal] = useState(false);
+
+  const quickATSMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      const response = await api.post<{
+        atsScore: {
+          overallScore: number;
+          keywordMatchScore: number;
+          breakdown: {
+            matchedSkills: Array<{ skill: string; presentInResume: boolean }>;
+            missingSkills: Array<{ skill: string; required: boolean; suggestion: string }>;
+          }
+        };
+        resumeSource: string;
+        resumeVersionLabel: string;
+        message: string;
+      }>('/resumes/quick-ats-check', { jobId });
+      return response.data;
+    }
+  });
 
   // ─── Fetch Jobs ─────────────────────────────────────────────
   const { data: jobsRes, isLoading } = useQuery({
@@ -158,6 +179,10 @@ export default function JobsPage() {
                 setSelectedJobId(selectedJob._id);
                 setShowApplicationModal(true);
               }}
+              onQuickATSCheck={() => {
+                setShowQuickATSModal(true);
+                quickATSMutation.mutate(selectedJob._id);
+              }}
             />
           ) : (
             <div className="border rounded-xl h-[500px] flex items-center justify-center text-muted-foreground">
@@ -196,6 +221,97 @@ export default function JobsPage() {
           }}
         />
       )}
+    {/* Quick ATS Preview Modal */}
+      {showQuickATSModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowQuickATSModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                🔍 Quick ATS Match Check
+              </h2>
+              <button onClick={() => setShowQuickATSModal(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">&times;</button>
+            </div>
+            
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {quickATSMutation.isPending ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                  <div className="animate-spin w-8 h-8 border-3 border-primary border-t-transparent rounded-full" />
+                  <p className="text-sm text-muted-foreground">Running semantic matcher and check gaps...</p>
+                </div>
+              ) : quickATSMutation.isError ? (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-800 text-sm space-y-3">
+                  <p className="font-semibold">Match Check Failed</p>
+                  <p className="text-xs text-red-700">
+                    {(quickATSMutation.error as any)?.response?.data?.error?.message || 
+                     (quickATSMutation.error as any)?.message || 
+                     "Make sure you have uploaded a resume or completed your profile."}
+                  </p>
+                  <div className="pt-2">
+                    <Link 
+                      to="/profile" 
+                      onClick={() => setShowQuickATSModal(false)}
+                      className="px-4 py-2 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700 transition-colors inline-block"
+                    >
+                      Go to Profile Setup →
+                    </Link>
+                  </div>
+                </div>
+              ) : quickATSMutation.data ? (
+                <div className="space-y-4">
+                  {/* Score Gauge */}
+                  <div className="flex items-center gap-6 p-4 bg-gray-50 rounded-xl border">
+                    <div className="relative w-20 h-20 rounded-full flex items-center justify-center bg-white shadow-sm border border-gray-100 shrink-0">
+                      <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
+                        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e5e7eb" strokeWidth="3" />
+                        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" 
+                          stroke={quickATSMutation.data.atsScore.overallScore >= 75 ? '#22c55e' : quickATSMutation.data.atsScore.overallScore >= 50 ? '#f59e0b' : '#ef4444'} 
+                          strokeWidth="3" strokeDasharray={`${quickATSMutation.data.atsScore.overallScore}, 100`} strokeLinecap="round" />
+                      </svg>
+                      <span className="text-xl font-black">{quickATSMutation.data.atsScore.overallScore}</span>
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <h4 className="font-semibold text-sm text-gray-900">Score Check Completed</h4>
+                      <p className="text-xs text-muted-foreground">{quickATSMutation.data.message}</p>
+                      <p className="text-xs font-semibold text-primary mt-1">Resume: {quickATSMutation.data.resumeVersionLabel}</p>
+                    </div>
+                  </div>
+
+                  {/* Skills lists */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Skill Gap Analysis</h4>
+                    
+                    {quickATSMutation.data.atsScore.breakdown.missingSkills.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {quickATSMutation.data.atsScore.breakdown.missingSkills.map((ms: any) => (
+                          <div key={ms.skill} className="flex gap-2 items-start text-xs bg-red-50/50 p-2 border border-red-100/50 rounded-lg">
+                            <span className="font-semibold text-red-700">{ms.skill}</span>
+                            {ms.required && <span className="text-[9px] bg-red-100 text-red-600 px-1 rounded font-bold uppercase shrink-0">Required</span>}
+                            <span className="text-gray-500 flex-1">{ms.suggestion}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-green-700 bg-green-50 p-3 rounded-lg border border-green-200">
+                        🎉 Zero missing skills! Your resume matches the job requirements perfectly.
+                      </p>
+                    )}
+                  </div>
+                  
+                  {/* Actions */}
+                  <div className="pt-3 flex justify-between gap-3 border-t">
+                    <button onClick={() => setShowQuickATSModal(false)} className="px-4 py-2 border rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">
+                      Close
+                    </button>
+                    <Link to="/tailor" onClick={() => setShowQuickATSModal(false)} className="px-5 py-2.5 bg-primary text-white text-xs font-bold rounded-lg hover:opacity-95 shadow-sm inline-flex items-center gap-1">
+                      🪄 Go Generate Tailored Version
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -212,11 +328,12 @@ function statusColor(status: string): string {
   return map[status] || 'bg-gray-100 text-gray-700';
 }
 
-function JobDetailPanel({ job, isParsing, onParse, onCreateApplication }: { 
+function JobDetailPanel({ job, isParsing, onParse, onCreateApplication, onQuickATSCheck }: { 
   job: IJob; 
   isParsing: boolean; 
   onParse: () => void;
   onCreateApplication: () => void;
+  onQuickATSCheck: () => void;
 }) {
   if (!job.parsedJD) {
     return (
@@ -265,16 +382,22 @@ function JobDetailPanel({ job, isParsing, onParse, onCreateApplication }: {
             <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700">{jd.tone} tone</span>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={onQuickATSCheck}
+            className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors cursor-pointer"
+          >
+            🔍 Check ATS Score
+          </button>
           <button
             onClick={onCreateApplication}
             className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors cursor-pointer"
           >
             📝 Create Application
           </button>
-          <a href="/tailor" className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 transition-colors">
+          <Link to="/tailor" className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 transition-colors">
             Tailor Resume →
-          </a>
+          </Link>
         </div>
       </div>
 
