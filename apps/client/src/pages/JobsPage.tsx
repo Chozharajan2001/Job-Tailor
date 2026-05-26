@@ -46,6 +46,12 @@ export default function JobsPage() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showQuickATSModal, setShowQuickATSModal] = useState(false);
 
+  // ─── Search & Filter States ──────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [workTypeFilter, setWorkTypeFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
+
   const quickATSMutation = useMutation({
     mutationFn: async (jobId: string) => {
       const response = await api.post<{
@@ -110,6 +116,35 @@ export default function JobsPage() {
     },
   });
 
+  // ─── Filter & Sort Logic ────────────────────────────────────
+  const filteredJobs = jobs.filter((job) => {
+    const matchesSearch = 
+      job.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      job.jobTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (job.location && job.location.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+    const matchesStatus = statusFilter === 'all' || job.status === statusFilter;
+    const matchesWorkType = workTypeFilter === 'all' || job.workType === workTypeFilter;
+    
+    return matchesSearch && matchesStatus && matchesWorkType;
+  });
+
+  const sortedJobs = [...filteredJobs].sort((a, b) => {
+    if (sortBy === 'newest') {
+      return new Date(b.savedAt || 0).getTime() - new Date(a.savedAt || 0).getTime();
+    }
+    if (sortBy === 'oldest') {
+      return new Date(a.savedAt || 0).getTime() - new Date(b.savedAt || 0).getTime();
+    }
+    if (sortBy === 'company') {
+      return a.companyName.localeCompare(b.companyName);
+    }
+    if (sortBy === 'title') {
+      return a.jobTitle.localeCompare(b.jobTitle);
+    }
+    return 0;
+  });
+
   const selectedJob = selectedJobId ? jobs.find((j) => j._id === selectedJobId) : null;
 
   return (
@@ -118,7 +153,11 @@ export default function JobsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Jobs</h1>
-          <p className="text-muted-foreground mt-1">{jobs.length} jobs tracked</p>
+          <p className="text-muted-foreground mt-1">
+            {sortedJobs.length === jobs.length 
+              ? `${jobs.length} jobs tracked` 
+              : `${sortedJobs.length} of ${jobs.length} matching`}
+          </p>
         </div>
         <div className="flex gap-3">
           {/* Add Job Button */}
@@ -129,6 +168,69 @@ export default function JobsPage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
             Add Job
           </button>
+        </div>
+      </div>
+
+      {/* Search & Filters Controls */}
+      <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="flex-1 relative">
+            <span className="absolute inset-y-0 left-3 flex items-center text-gray-400">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </span>
+            <input
+              type="text"
+              placeholder="Search by title, company, or location..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600 text-sm font-bold"
+              >
+                &times;
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 border rounded-lg text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            >
+              <option value="all">All Statuses</option>
+              <option value="saved">Saved</option>
+              <option value="applied">Applied</option>
+              <option value="screening">Screening</option>
+              <option value="interview">Interview</option>
+              <option value="offer">Offer</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            <select
+              value={workTypeFilter}
+              onChange={(e) => setWorkTypeFilter(e.target.value)}
+              className="px-3 py-2 border rounded-lg text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            >
+              <option value="all">All Work Types</option>
+              <option value="remote">Remote</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="onsite">Onsite</option>
+            </select>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-3 py-2 border rounded-lg text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="company">Company (A-Z)</option>
+              <option value="title">Title (A-Z)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -144,8 +246,18 @@ export default function JobsPage() {
               <p className="text-muted-foreground mb-3">No jobs yet</p>
               <button onClick={() => setShowModal(true)} className="px-4 py-2 bg-primary text-white rounded-lg text-sm cursor-pointer hover:bg-primary/90">Add Your First Job</button>
             </div>
+          ) : sortedJobs.length === 0 ? (
+            <div className="text-center py-12 border border-dashed rounded-lg bg-gray-50/50">
+              <p className="text-muted-foreground text-sm">No matching jobs found</p>
+              <button 
+                onClick={() => { setSearchQuery(''); setStatusFilter('all'); setWorkTypeFilter('all'); }} 
+                className="mt-2 text-xs font-semibold text-primary hover:underline cursor-pointer"
+              >
+                Clear Filters
+              </button>
+            </div>
           ) : (
-            jobs.map((job) => (
+            sortedJobs.map((job) => (
               <button
                 key={job._id}
                 onClick={() => setSelectedJobId(job._id)}
