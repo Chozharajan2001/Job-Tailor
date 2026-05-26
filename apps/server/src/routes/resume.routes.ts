@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { generateResume, listResumes, getResume, updateResume } from '../controllers/resume.controller.js';
+import { generateResume, listResumes, getResume, updateResume, downloadPDF, uploadResumePDF, getReusableResume, upload } from '../controllers/resume.controller.js';
 import { validateBody, validateParams, validateQuery } from '../middleware/validation.js';
 
 const router = Router();
@@ -28,5 +28,10 @@ router.post('/generate', validateBody(generateSchema), generateResume);
 router.get('/', validateQuery(listQuery), listResumes);
 router.get('/:id', validateParams(idParamSchema), getResume);
 router.put('/:id', validateParams(idParamSchema), updateResume);
+
+// PDF endpoints
+router.post('/:id/pdf', validateParams(idParamSchema), downloadPDF);
+router.post('/upload', upload.single('resume'), uploadResumePDF);
+router.get('/reuse', getReusableResume);
 
 export default router;

@@ -3,6 +3,39 @@ import { Resume, IResume } from '../models/Resume.model.js';
 import { Job, IJob } from '../models/Job.model.js';
 import { Profile, IProfile } from '../models/Profile.model.js';
 import { tailorResume } from '../services/resume-tailor.service.js';
+import { generatePDF } from '../services/pdf-generator.service.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const uploadDir = 'uploads/resumes';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+    cb(null, `resume-${uniqueSuffix}${path.extname(file.originalname)}`);
+  },
+});
+
+const fileFilter = (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  if (file.mimetype === 'application/pdf') {
+    cb(null, true);
+  } else {
+    cb(new Error('Only PDF files are allowed'));
+  }
+};
+
+export const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+});
 
 /**
  * POST /api/v1/resumes/generate — Generate tailored resume for a job.
@@ -52,7 +85,7 @@ export async function generateResume(req: Request, res: Response): Promise<void>
   try {
     // Run the tailor engine!
     const tailored = await tailorResume(
-      profile as IProfile,
+      profile as unknown as IProfile,
       job.parsedJD,
       options
     );
@@ -136,4 +169,107 @@ export async function updateResume(req: Request, res: Response): Promise<void> {
   }
 
   res.json({ success: true, data: { resume } });
+}
+
+/**
+ * POST /api/v1/resumes/:id/pdf — Generate and download PDF for a resume.
+ */
+export async function downloadPDF(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+
+  const resume = await Resume.findOne({ _id: req.params.id, userId }).exec();
+
+  if (!resume) {
+    res.status(404).json({ success: false, error: { code: 'RESUME_NOT_FOUND', message: 'Resume not found.' } });
+    return;
+  }
+
+  try {
+    const { pdfUrl } = await generatePDF(resume);
+
+    // Update resume with PDF URL if it's a Cloudinary URL (not base64)
+    if (!pdfUrl.startsWith('data:')) {
+      resume.pdfUrl = pdfUrl;
+      await resume.save();
+    }
+
+    res.json({ success: true, data: { pdfUrl, resumeId: resume._id } });
+  } catch (error) {
+    console.error('PDF generation failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to generate PDF';
+    res.status(500).json({
+      success: false,
+      error: { code: 'PDF_GENERATION_FAILED', message },
+    });
+  }
+}
+
+/**
+ * POST /api/v1/resumes/upload — Upload existing resume PDF.
+ */
+export async function uploadResumePDF(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+
+  if (!req.file) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'NO_FILE_UPLOADED', message: 'No PDF file uploaded.' },
+    });
+    return;
+  }
+
+  // For now, store local path. In production, upload to Cloudinary/S3
+  const pdfUrl = `/uploads/resumes/${req.file.filename}`;
+
+  res.status(201).json({
+    success: true,
+    data: {
+      pdfUrl,
+      filename: req.file.filename,
+      message: 'Resume PDF uploaded successfully',
+    },
+  });
+}
+
+/**
+ * GET /api/v1/resumes/:id/reuse — Get latest resume for reuse in new application.
+ */
+export async function getReusableResume(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { jobId } = req.query;
+
+  // If jobId provided, get latest resume for that job
+  if (jobId) {
+    const resume = await Resume.findOne({ userId, jobId })
+      .sort({ version: -1 })
+      .lean<IResume>()
+      .exec();
+
+    if (!resume) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'NO_RESUME_FOUND', message: 'No existing resume found for this job.' },
+      });
+      return;
+    }
+
+    res.json({ success: true, data: { resume, canReuse: true } });
+    return;
+  }
+
+  // Otherwise, get most recent resume across all jobs
+  const resume = await Resume.findOne({ userId })
+    .sort({ createdAt: -1 })
+    .lean<IResume>()
+    .exec();
+
+  if (!resume) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'NO_RESUME_FOUND', message: 'No existing resumes found.' },
+    });
+    return;
+  }
+
+  res.json({ success: true, data: { resume, canReuse: true } });
 }

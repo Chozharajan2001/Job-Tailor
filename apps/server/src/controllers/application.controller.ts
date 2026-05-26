@@ -1,5 +1,91 @@
 import { Request, Response } from 'express';
 import { Application, IApplication } from '../models/Application.model.js';
+import { Job } from '../models/Job.model.js';
+import { Resume } from '../models/Resume.model.js';
+
+/**
+ * POST /api/v1/applications — Create a new job application (link job + resume).
+ */
+export async function createApplication(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { jobId, resumeId, status = 'applied', appliedDate = new Date() } = req.body;
+
+  // Validate required fields
+  if (!jobId) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_JOB_ID', message: 'jobId is required to create an application.' },
+    });
+    return;
+  }
+
+  // Verify job exists and belongs to user
+  const job = await Job.findOne({ _id: jobId, userId }).lean().exec();
+  if (!job) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'JOB_NOT_FOUND', message: 'Job not found or does not belong to you.' },
+    });
+    return;
+  }
+
+  // If resumeId provided, verify it exists
+  if (resumeId) {
+    const resume = await Resume.findOne({ _id: resumeId, userId }).lean().exec();
+    if (!resume) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'RESUME_NOT_FOUND', message: 'Resume not found or does not belong to you.' },
+      });
+      return;
+    }
+  }
+
+  // Check if application already exists for this job
+  const existingApplication = await Application.findOne({ userId, jobId }).lean().exec();
+  if (existingApplication) {
+    res.status(409).json({
+      success: false,
+      error: { 
+        code: 'APPLICATION_EXISTS', 
+        message: 'An application for this job already exists.',
+        data: { applicationId: existingApplication._id }
+      },
+    });
+    return;
+  }
+
+  // Create application with initial timeline event
+  const application = await Application.create({
+    userId,
+    jobId,
+    resumeId: resumeId || null,
+    status,
+    previousStatus: [],
+    timelineEvents: [
+      {
+        event: 'Application created',
+        description: `Application submitted for ${job.jobTitle} at ${job.companyName}`,
+        eventDate: new Date(appliedDate),
+        type: 'status_change',
+      },
+    ],
+    reminders: [],
+    callbackReceived: false,
+  });
+
+  // Update job status to match application
+  await Job.findByIdAndUpdate(jobId, { status, appliedDate });
+
+  // Populate response
+  const populatedApplication = await Application.findById(application._id)
+    .populate('jobId', 'companyName jobTitle location workType')
+    .populate('resumeId', 'versionLabel atsScore pdfUrl')
+    .lean()
+    .exec();
+
+  res.status(201).json({ success: true, data: { application: populatedApplication } });
+}
 
 /**
  * GET /api/v1/applications — List all applications (for Kanban board data).
@@ -69,8 +155,6 @@ export async function updateStatus(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const updateData: Record<string, unknown> = { $set: { status }, $push: {} };
-
   // Add timeline event
   const timelineEvent = {
     event: `Status changed to ${status}`,
@@ -78,10 +162,16 @@ export async function updateStatus(req: Request, res: Response): Promise<void> {
     eventDate: new Date(),
     type: 'status_change',
   };
-  (updateData.$push as Record<string, unknown>).timelineEvents = timelineEvent;
 
-  // Track previous status
-  (updateData.$push as Record<string, unknown>).previousStatus = { $each: [] }; // Will be handled differently
+  const existingApplication = await Application.findOne({ _id: req.params.id, userId }).select('status').exec();
+
+  if (!existingApplication) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
+    });
+    return;
+  }
 
   const application = await Application.findOneAndUpdate(
     { _id: req.params.id, userId },
@@ -89,7 +179,7 @@ export async function updateStatus(req: Request, res: Response): Promise<void> {
       status,
       $push: {
         timelineEvents: timelineEvent,
-        previousStatus: '$status',
+        previousStatus: existingApplication.status,
       },
     },
     { new: true }

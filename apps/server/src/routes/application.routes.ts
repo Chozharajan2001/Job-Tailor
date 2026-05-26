@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware.js';
 import {
+  createApplication,
   listApplications,
   getApplication,
   updateStatus,
@@ -15,6 +16,13 @@ router.use(authenticate);
 
 // ─── Validation Schemas ────────────────────────────────────────
 const idParamSchema = z.object({ id: z.string() });
+
+const createApplicationSchema = z.object({
+  jobId: z.string().min(1, 'jobId is required'),
+  resumeId: z.string().optional(),
+  status: z.enum(['saved', 'applied', 'screening', 'interview', 'offer', 'rejected', 'withdrawn']).default('applied'),
+  appliedDate: z.string().datetime().optional(),
+});
 
 const statusUpdateSchema = z.object({
   status: z.enum(['saved', 'applied', 'screening', 'interview', 'offer', 'rejected', 'withdrawn']),
@@ -35,6 +43,7 @@ const listQuery = z.object({
 });
 
 // ─── Routes ────────────────────────────────────────────────────
+router.post('/', validateBody(createApplicationSchema), createApplication);
 router.get('/', validateQuery(listQuery), listApplications);
 router.get('/:id', validateParams(idParamSchema), getApplication);
 router.patch('/:id/status', validateParams(idParamSchema), validateBody(statusUpdateSchema), updateStatus);
