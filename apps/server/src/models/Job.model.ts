@@ -95,6 +95,9 @@ const jobSchema = new Schema<IJob>(
     jdRawText: { type: String, default: '' },
     parsedJD: parsedJDSchema,
 
+    // Job-specific resume attachment (uploaded when creating job)
+    attachedResumeId: { type: Schema.Types.ObjectId, ref: 'Resume' },
+
     // Pipeline status - Moved to Application model conceptually, but kept here for backward compatibility
     status: {
       type: String,

@@ -273,3 +273,114 @@ export async function getReusableResume(req: Request, res: Response): Promise<vo
 
   res.json({ success: true, data: { resume, canReuse: true } });
 }
+
+/**
+ * POST /api/v1/resumes/quick-ats-check — Quick ATS score check for a job without generating full resume.
+ * Uses job-specific attached resume if available, otherwise uses profile-based resume.
+ */
+export async function quickATSCheck(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { jobId } = req.body;
+
+  // Validate inputs
+  if (!jobId) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_JOB_ID', message: 'jobId is required.' },
+    });
+    return;
+  }
+
+  try {
+    // Get the job with parsed JD
+    const job = await Job.findOne({ _id: jobId, userId }).lean<IJob>().exec();
+    
+    if (!job) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'JOB_NOT_FOUND', message: 'Job not found or access denied.' },
+      });
+      return;
+    }
+
+    if (!job.parsedJD) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'JD_NOT_PARSED', message: 'Job description must be parsed first.' },
+      });
+      return;
+    }
+
+    // Determine which resume to use for ATS check
+    let resumeToUse: IResume | null = null;
+    let resumeSource: 'attached' | 'profile' | 'none' = 'none';
+
+    // Priority 1: Check if job has an attached resume
+    if (job.attachedResumeId) {
+      const attachedResume = await Resume.findOne({ 
+        _id: job.attachedResumeId, 
+        userId 
+      }).lean<IResume>().exec();
+      
+      if (attachedResume) {
+        resumeToUse = attachedResume;
+        resumeSource = 'attached';
+      }
+    }
+
+    // Priority 2: If no attached resume, use profile-based resume
+    if (!resumeToUse) {
+      const profileResume = await Resume.findOne({ 
+        userId, 
+        isProfileResume: true 
+      })
+        .sort({ createdAt: -1 })
+        .lean<IResume>()
+        .exec();
+      
+      if (profileResume) {
+        resumeToUse = profileResume;
+        resumeSource = 'profile';
+      }
+    }
+
+    // If no resume found at all
+    if (!resumeToUse) {
+      res.status(404).json({
+        success: false,
+        error: { 
+          code: 'NO_RESUME_AVAILABLE', 
+          message: 'No resume available for ATS check. Please upload a resume to your profile or attach one to this job.',
+          suggestion: 'Go to Profile page to set up your master resume, or upload a resume when creating/editing this job.'
+        },
+      });
+      return;
+    }
+
+    // Calculate ATS score using existing service
+    const atsScore = await tailorResume(job, resumeToUse);
+
+    res.json({
+      success: true,
+      data: {
+        atsScore,
+        resumeSource, // Indicates whether we used 'attached' or 'profile' resume
+        resumeId: resumeToUse._id,
+        resumeVersionLabel: resumeToUse.versionLabel,
+        pdfUrl: resumeToUse.pdfUrl,
+        message: resumeSource === 'attached' 
+          ? 'ATS score calculated using job-specific attached resume'
+          : 'ATS score calculated using your profile-based master resume',
+      },
+    });
+  } catch (error) {
+    console.error('Quick ATS check error:', error);
+    res.status(500).json({
+      success: false,
+      error: { 
+        code: 'INTERNAL_ERROR', 
+        message: 'Failed to perform ATS check. Please try again.' 
+      },
+    });
+  }
+}

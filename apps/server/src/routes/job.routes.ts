@@ -8,6 +8,7 @@ import {
   updateJob,
   deleteJob,
   parseJobJD,
+  attachResumeToJob,
 } from '../controllers/job.controller.js';
 import { validateBody, validateQuery, validateParams } from '../middleware/validation.js';
 
@@ -25,6 +26,7 @@ const jobCreateSchema = z.object({
   salaryRange: z.object({ min: z.number(), max: z.number(), currency: z.string() }).optional(),
   postedDate: z.string().datetime().optional(),
   jdRawText: z.string().min(10, 'JD text must be at least 10 characters'),
+  attachedResumeId: z.string().optional(), // Support resume attachment at creation
 });
 
 const idParamSchema = z.object({ id: z.string() });
@@ -38,6 +40,10 @@ const jobListQuery = z.object({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
+const attachResumeSchema = z.object({
+  resumeId: z.string().min(1, 'resumeId is required'),
+});
+
 // ─── Routes ────────────────────────────────────────────────────
 router.post('/', validateBody(jobCreateSchema), createJob);
 router.get('/', validateQuery(jobListQuery), listJobs);
@@ -45,5 +51,6 @@ router.get('/:id', validateParams(idParamSchema), getJob);
 router.put('/:id', validateParams(idParamSchema), updateJob);
 router.delete('/:id', validateParams(idParamSchema), deleteJob);
 router.post('/:id/parse', validateParams(idParamSchema), parseJobJD);
+router.patch('/:id/attach-resume', validateParams(idParamSchema).merge(attachResumeSchema), attachResumeToJob);
 
 export default router;

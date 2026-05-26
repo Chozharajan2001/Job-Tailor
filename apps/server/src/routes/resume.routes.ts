@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { generateResume, listResumes, getResume, updateResume, downloadPDF, uploadResumePDF, getReusableResume, upload } from '../controllers/resume.controller.js';
+import { generateResume, listResumes, getResume, updateResume, downloadPDF, uploadResumePDF, getReusableResume, quickATSCheck, upload } from '../controllers/resume.controller.js';
 import { validateBody, validateParams, validateQuery } from '../middleware/validation.js';
 
 const router = Router();
@@ -23,6 +23,10 @@ const listQuery = z.object({
   jobId: z.string().optional(),
 });
 
+const quickATSSchema = z.object({
+  jobId: z.string().min(1, 'jobId is required'),
+});
+
 // ─── Routes ────────────────────────────────────────────────────
 router.post('/generate', validateBody(generateSchema), generateResume);
 router.get('/', validateQuery(listQuery), listResumes);
@@ -33,5 +37,8 @@ router.put('/:id', validateParams(idParamSchema), updateResume);
 router.post('/:id/pdf', validateParams(idParamSchema), downloadPDF);
 router.post('/upload', upload.single('resume'), uploadResumePDF);
 router.get('/reuse', getReusableResume);
+
+// Quick ATS Check endpoint
+router.post('/quick-ats-check', validateBody(quickATSSchema), quickATSCheck);
 
 export default router;

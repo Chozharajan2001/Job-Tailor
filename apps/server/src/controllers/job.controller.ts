@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Job, IJob } from '../models/Job.model.js';
+import { Resume } from '../models/Resume.model.js';
 import { parseJD } from '../services/jd-parser.service.js';
 
 /**
@@ -19,6 +20,7 @@ export async function createJob(req: Request, res: Response): Promise<void> {
     salaryRange: req.body.salaryRange,
     postedDate: req.body.postedDate,
     jdRawText: req.body.jdRawText,
+    attachedResumeId: req.body.attachedResumeId || null, // Support job-specific resume attachment
     status: 'saved',
   });
 
@@ -127,6 +129,65 @@ export async function deleteJob(req: Request, res: Response): Promise<void> {
   }
 
   res.json({ success: true, data: { message: 'Job deleted successfully.' } });
+}
+
+/**
+ * PATCH /api/v1/jobs/:id/attach-resume — Attach a resume to an existing job.
+ */
+export async function attachResumeToJob(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { jobId } = req.params;
+  const { resumeId } = req.body;
+
+  if (!resumeId) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_RESUME_ID', message: 'resumeId is required.' },
+    });
+    return;
+  }
+
+  try {
+    // Verify job exists and belongs to user
+    const job = await Job.findOne({ _id: jobId, userId });
+    
+    if (!job) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'JOB_NOT_FOUND', message: 'Job not found or access denied.' },
+      });
+      return;
+    }
+
+    // Verify resume exists and belongs to user
+    const resume = await Resume.findOne({ _id: resumeId, userId });
+    
+    if (!resume) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'RESUME_NOT_FOUND', message: 'Resume not found or access denied.' },
+      });
+      return;
+    }
+
+    // Attach resume to job
+    job.attachedResumeId = resume._id as any;
+    await job.save();
+
+    res.json({
+      success: true,
+      data: {
+        job,
+        message: 'Resume successfully attached to job.',
+      },
+    });
+  } catch (error) {
+    console.error('Attach resume error:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to attach resume to job.' },
+    });
+  }
 }
 
 /**

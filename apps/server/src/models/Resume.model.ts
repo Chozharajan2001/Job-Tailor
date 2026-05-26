@@ -37,7 +37,8 @@ export interface IATSScore {
 
 export interface IResume extends Document {
   userId: Types.ObjectId;
-  jobId: Types.ObjectId;
+  jobId?: Types.ObjectId; // Optional - if null, it's a profile-based master resume
+  isProfileResume?: boolean; // Flag to indicate this is the user's master/profile resume
   version: number;
   versionLabel: string;
   tailoredSummary: string;
@@ -85,7 +86,8 @@ const atsSchema = new Schema<IATSScore>(
 const resumeSchema = new Schema<IResume>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true }, // index: true removed - compound index below covers this
-    jobId: { type: Schema.Types.ObjectId, ref: 'Job', required: true, index: true },
+    jobId: { type: Schema.Types.ObjectId, ref: 'Job' }, // Optional - null for profile-based resumes
+    isProfileResume: { type: Boolean, default: false }, // Flag to identify master/profile resume
 
     // Versioning
     version: { type: Number, required: true },
@@ -147,7 +149,8 @@ const resumeSchema = new Schema<IResume>(
   }
 );
 
-// Compound index for querying resumes per job
-resumeSchema.index({ userId: 1, jobId: 1 });
+// Indexes for querying resumes
+resumeSchema.index({ userId: 1, jobId: 1 }); // For job-specific resumes
+resumeSchema.index({ userId: 1, isProfileResume: 1 }); // For profile-based resumes
 
 export const Resume = mongoose.model<IResume>('Resume', resumeSchema);
