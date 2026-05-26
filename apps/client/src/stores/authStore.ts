@@ -18,15 +18,29 @@ interface AuthState {
   setAuth: (user: User, accessToken: string) => void;
   clearAuth: () => void;
   setLoading: (loading: boolean) => void;
+  initialize: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       accessToken: null,
       isAuthenticated: false,
       isLoading: true,
+
+      // Initialize auth state - call this on app mount
+      initialize: () => {
+        // Check if we have persisted auth data
+        const state = get();
+        if (state.accessToken && state.user) {
+          // We have valid auth, keep isLoading false (already set by persist)
+          set({ isLoading: false });
+        } else {
+          // No auth data, stop loading
+          set({ isLoading: false });
+        }
+      },
 
       setAuth: (user, accessToken) =>
         set({
