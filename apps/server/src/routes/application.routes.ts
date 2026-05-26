@@ -8,6 +8,7 @@ import {
   updateStatus,
   addNote,
   addReminder,
+  deleteApplication,
 } from '../controllers/application.controller.js';
 import { validateBody, validateParams, validateQuery } from '../middleware/validation.js';
 
@@ -49,5 +50,6 @@ router.get('/:id', validateParams(idParamSchema), getApplication);
 router.patch('/:id/status', validateParams(idParamSchema), validateBody(statusUpdateSchema), updateStatus);
 router.post('/:id/notes', validateParams(idParamSchema), validateBody(noteSchema), addNote);
 router.post('/:id/reminders', validateParams(idParamSchema), validateBody(reminderSchema), addReminder);
+router.delete('/:id', validateParams(idParamSchema), deleteApplication);
 
 export default router;

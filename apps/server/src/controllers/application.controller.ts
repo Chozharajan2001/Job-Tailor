@@ -282,3 +282,23 @@ export async function addReminder(req: Request, res: Response): Promise<void> {
 
   res.status(201).json({ success: true, data: { reminder: application.reminders[application.reminders.length - 1] } });
 }
+
+/**
+ * DELETE /api/v1/applications/:id — Delete a job application.
+ */
+export async function deleteApplication(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { id } = req.params;
+
+  const result = await Application.deleteOne({ _id: id, userId }).exec();
+  if (result.deletedCount === 0) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found or does not belong to you.' },
+    });
+    return;
+  }
+
+  res.json({ success: true, data: { message: 'Application deleted successfully.' } });
+}
+
