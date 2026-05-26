@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
-import { Upload } from 'lucide-react';
+import { Upload, FileText, X } from 'lucide-react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -63,9 +63,11 @@ export default function JobsPage() {
     mutationFn: (data: {
       companyName: string; jobTitle: string; location: string;
       workType: string; employmentType: string; jdRawText: string; jobLink?: string;
+      attachedResumeId?: string;
     }) => api.post<{ job: IJob }>('/jobs', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['resumes'] });
       setShowModal(false);
     },
   });
@@ -377,14 +379,28 @@ function JDPasteModal({ onSubmit, isLoading, onClose }: {
     employmentType: string;
     jdRawText: string;
     jobLink?: string;
+    attachedResumeId?: string;
   }) => void; isLoading: boolean; onClose: () => void;
 }) {
+  const queryClient = useQueryClient();
   const [form, setForm] = useState({ companyName: '', jobTitle: '', location: '', workType: 'remote', employmentType: 'full-time', jdRawText: '', jobLink: '' });
+  const [selectedResumeId, setSelectedResumeId] = useState<string>('');
+  const [showUploadModal, setShowUploadModal] = useState(false);
+
+  // Fetch existing resumes for selection
+  const { data: resumesRes } = useQuery({
+    queryKey: ['resumes'],
+    queryFn: () => api.get<{ resumes: IResume[] }>('/resumes'),
+  });
+  const resumes = resumesRes?.data?.resumes || [];
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.companyName || !form.jobTitle || !form.jdRawText) return;
-    onSubmit(form);
+    onSubmit({
+      ...form,
+      attachedResumeId: selectedResumeId || undefined,
+    });
   }
 
   return (
@@ -392,7 +408,7 @@ function JDPasteModal({ onSubmit, isLoading, onClose }: {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b">
           <h2 className="text-xl font-bold">Add New Job</h2>
-          <p className="text-sm text-muted-foreground">Paste the job description and let AI extract the details.</p>
+          <p className="text-sm text-muted-foreground">Paste the job description and optionally attach a resume.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -407,6 +423,64 @@ function JDPasteModal({ onSubmit, isLoading, onClose }: {
             <select value={form.employmentType} onChange={(e) => setForm(f => ({...f, employmentType: e.target.value}))} className="px-4 py-2.5 border rounded-lg text-sm">
               {['full-time', 'part-time', 'contract', 'internship'].map(o => <option key={o}>{o}</option>)}
             </select>
+          </div>
+
+          {/* Resume Attachment Section */}
+          <div className="border rounded-lg p-4 bg-gray-50">
+            <label className="block text-sm font-medium mb-2">Attach Resume (Optional)</label>
+            
+            {selectedResumeId ? (
+              // Show selected resume with remove option
+              <div className="flex items-center gap-3 p-3 bg-white border rounded-lg">
+                <FileText className="w-5 h-5 text-primary" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">
+                    {resumes.find(r => r._id === selectedResumeId)?.versionLabel || 'Selected Resume'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">This resume will be used for ATS scoring</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedResumeId('')}
+                  className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  title="Remove resume"
+                >
+                  <X className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+            ) : (
+              // Show resume selection or upload options
+              <div className="space-y-3">
+                {resumes.length > 0 ? (
+                  <select
+                    value={selectedResumeId}
+                    onChange={(e) => setSelectedResumeId(e.target.value)}
+                    className="w-full px-4 py-2.5 border rounded-lg text-sm bg-white"
+                  >
+                    <option value="">Select an existing resume</option>
+                    {resumes.map((resume) => (
+                      <option key={resume._id} value={resume._id}>
+                        {resume.versionLabel}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No resumes available yet.</p>
+                )}
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">or</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowUploadModal(true)}
+                    className="flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg hover:border-primary hover:text-primary transition-colors cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Upload New Resume
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
@@ -428,6 +502,18 @@ function JDPasteModal({ onSubmit, isLoading, onClose }: {
           </div>
         </form>
       </div>
+
+      {/* Resume Upload Modal */}
+      {showUploadModal && (
+        <ResumeUploadModal 
+          onClose={() => setShowUploadModal(false)}
+          onSuccess={(pdfUrl) => {
+            // Refresh resumes list after upload
+            queryClient.invalidateQueries({ queryKey: ['resumes'] });
+            setShowUploadModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }
