@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { FileText, Eye, Download, ArrowLeftRight } from 'lucide-react';
@@ -37,7 +37,7 @@ export default function InterviewModePage() {
       <div className="p-8 text-center">
         <h2 className="text-xl font-semibold mb-2">Application Not Found</h2>
         <p className="text-muted-foreground">This application doesn't exist or was deleted.</p>
-        <a href="/tracker" className="inline-block mt-4 text-primary hover:underline">← Back to Tracker</a>
+        <Link to="/tracker" className="inline-block mt-4 text-primary hover:underline">← Back to Tracker</Link>
       </div>
     );
   }
@@ -50,9 +50,9 @@ export default function InterviewModePage() {
       {/* Top Bar */}
       <header className="flex items-center justify-between px-6 py-3 bg-gray-900/80 backdrop-blur-sm border-b border-gray-800">
         <div className="flex items-center gap-3">
-          <a href="/tracker" className="text-muted-foreground hover:text-white cursor-pointer flex items-center gap-1 text-sm">
+          <Link to="/tracker" className="text-muted-foreground hover:text-white cursor-pointer flex items-center gap-1 text-sm">
             ← Back to Tracker
-          </a>
+          </Link>
           <span className="text-gray-700">|</span>
           <h1 className="font-semibold">{job.jobTitle}</h1>
           <span className="text-primary font-medium">@ {job.companyName}</span>
@@ -144,10 +144,19 @@ export default function InterviewModePage() {
               <section>
                 <h3 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-3">Experience</h3>
                 <div className="space-y-4">
-                  {(resume.experience as Array<Record<string, unknown>>).map((exp, i) => (
-                    <div key={i} className="border-l-2 border-gray-200 pl-4">
-                      <h4 className="font-semibold text-base">{String(exp.role || '')}</h4>
-                      <p className="text-sm text-gray-600">{String(exp.company || '')} · {String(exp.startDate || '')}{exp.endDate ? ` → ${String(exp.endDate)}` : ''}</p>
+                  {(resume.experience as Array<Record<string, any>>).map((exp, i) => (
+                    <div key={i} className="border-l-2 border-gray-200 pl-4 space-y-1.5">
+                      <h4 className="font-semibold text-base text-gray-900">{String(exp.role || '')}</h4>
+                      <p className="text-sm text-gray-600 font-medium">{String(exp.company || '')} · {String(exp.startDate || '')}{exp.endDate ? ` – ${String(exp.endDate)}` : ' – Present'}</p>
+                      {exp.bullets && exp.bullets.length > 0 && (
+                        <ul className="list-disc list-inside space-y-1 text-xs text-gray-700 mt-2 pl-1">
+                          {exp.bullets.map((bullet: any) => (
+                            <li key={bullet.id || bullet.text} className="leading-relaxed">
+                              {bullet.text}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -182,12 +191,45 @@ export default function InterviewModePage() {
                 <Eye className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>No resume content available.</p>
                 <p className="text-sm">Generate a tailored resume first to see it here.</p>
-                <a href={`/tailor`} className="mt-3 inline-block px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90">Go to Resume Tailor</a>
+                <Link to="/tailor" className="mt-3 inline-block px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90">Go to Resume Tailor</Link>
               </div>
             )}
           </div>
         </section>
       </main>
+      <style>{`
+        @media print {
+          body, html {
+            background-color: white !important;
+            color: black !important;
+          }
+          header, button, svg, .print-hidden {
+            display: none !important;
+          }
+          main {
+            display: block !important;
+            height: auto !important;
+            overflow: visible !important;
+          }
+          section {
+            display: block !important;
+            page-break-after: always;
+            height: auto !important;
+            overflow: visible !important;
+            background-color: white !important;
+            color: black !important;
+            padding: 0 !important;
+            border: none !important;
+          }
+          .text-white, .text-gray-300, .text-gray-400 {
+            color: #111827 !important;
+          }
+          .bg-gray-950, .bg-gray-900 {
+            background-color: white !important;
+            border: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
