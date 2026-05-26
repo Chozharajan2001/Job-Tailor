@@ -47,7 +47,7 @@ export function errorHandler(err: Error | AppError | ZodError, _req: Request, re
 
   // Handle our custom API errors
   if (err instanceof ApiError) {
-    const response: Record<string, unknown> = {
+    const response: { success: false; error: { code: string; message: string; details?: Array<{ field: string; message: string }> } } = {
       success: false,
       error: {
         code: err.code,
@@ -61,14 +61,15 @@ export function errorHandler(err: Error | AppError | ZodError, _req: Request, re
   }
 
   // Handle Mongoose duplicate key errors
-  if ('code' in err && err.code === 11000) {
+  const maybeMongoError = err as Error & { code?: number; keyValue?: Record<string, unknown>; path?: string };
+  if (maybeMongoError.code === 11000) {
     res.status(409).json({
       success: false,
       error: {
         code: 'DUPLICATE_ENTRY',
         message: 'A record with this value already exists.',
         details: [
-          { field: Object.keys((err as Record<string, unknown>).keyValue || {})[0], message: 'Already exists' },
+          { field: Object.keys(maybeMongoError.keyValue || {})[0] || 'unknown', message: 'Already exists' },
         ],
       },
     });
@@ -76,10 +77,10 @@ export function errorHandler(err: Error | AppError | ZodError, _req: Request, re
   }
 
   // Handle Mongoose cast errors (invalid ObjectId)
-  if (err.name === 'CastError') {
+  if (maybeMongoError.name === 'CastError') {
     res.status(400).json({
       success: false,
-      error: { code: 'INVALID_ID', message: `Invalid ${err.path} format.` },
+      error: { code: 'INVALID_ID', message: `Invalid ${maybeMongoError.path || 'id'} format.` },
     });
     return;
   }
@@ -91,7 +92,7 @@ export function errorHandler(err: Error | AppError | ZodError, _req: Request, re
     error: {
       code: 'INTERNAL_ERROR',
       message: isDev ? err.message : 'Internal server error',
-      ...(isDev && { stack: err.stack }),
+      ...(isDev && err instanceof Error && { stack: err.stack }),
     },
   });
 }

@@ -38,7 +38,7 @@ export async function getOverview(_req: Request, res: Response): Promise<void> {
   const avgATSScore =
     recentResumes.length > 0
       ? Math.round(
-          recentResumes.reduce((sum, r) => sum + ((r as IResume).atsScore?.overallScore || 0), 0) /
+          recentResumes.reduce((sum, r) => sum + ((r as unknown as IResume).atsScore?.overallScore || 0), 0) /
             recentResumes.length
         )
       : 0;
@@ -56,7 +56,7 @@ export async function getOverview(_req: Request, res: Response): Promise<void> {
   // Extract top matching skills from ATS breakdowns of recent resumes
   const skillFrequency: Record<string, number> = {};
   recentResumes.forEach((r) => {
-    const resume = r as IResume;
+    const resume = r as unknown as IResume;
     if (resume.atsScore?.breakdown?.matchedSkills) {
       resume.atsScore.breakdown.matchedSkills.forEach((ms) => {
         if (ms.presentInResume && ms.presentInJD) {
@@ -73,7 +73,7 @@ export async function getOverview(_req: Request, res: Response): Promise<void> {
   // Common missing skills across JDs
   const gapFrequency: Record<string, number> = {};
   recentResumes.forEach((r) => {
-    const resume = r as IResume;
+    const resume = r as unknown as IResume;
     if (resume.atsScore?.breakdown?.missingSkills) {
       resume.atsScore.breakdown.missingSkills.forEach((ms) => {
         gapFrequency[ms.skill] = (gapFrequency[ms.skill] || 0) + 1;
@@ -88,7 +88,7 @@ export async function getOverview(_req: Request, res: Response): Promise<void> {
   // Resume performance by version pattern
   const resumePerfMap: Record<string, { usageCount: number; callbackCount: number }> = {};
   allApplications.forEach((app) => {
-    const application = app as IApplication;
+    const application = app as unknown as IApplication;
     const label = (application.resumeId as unknown as { versionLabel?: string })?.versionLabel || 'unknown';
     if (!resumePerfMap[label]) {
       resumePerfMap[label] = { usageCount: 0, callbackCount: 0 };

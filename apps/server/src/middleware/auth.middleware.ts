@@ -31,10 +31,10 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const token = authHeader.split(' ')[1];
+    const token = authHeader.slice(7);
 
     // Verify JWT
-    const decoded = jwt.verify(token, config.jwt.secret) as {
+    const decoded = jwt.verify(token, config.jwt.secret) as unknown as {
       userId: string;
       email: string;
     };
@@ -84,8 +84,8 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
 
   if (authHeader?.startsWith('Bearer ')) {
     try {
-      const token = authHeader.split(' ')[1];
-      const decoded = jwt.verify(token, config.jwt.secret) as { userId: string; email: string };
+      const token = authHeader.slice(7);
+      const decoded = jwt.verify(token, config.jwt.secret) as unknown as { userId: string; email: string };
       req.user = { userId: decoded.userId, email: decoded.email };
     } catch {
       // Token invalid but we don't block — this is optional auth

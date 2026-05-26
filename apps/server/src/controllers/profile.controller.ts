@@ -32,7 +32,7 @@ export async function addSkill(req: Request, res: Response): Promise<void> {
 
 export async function updateSkill(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  const { id } = req.params;
+  const id = req.params.id as string;
   const profile = await profileService.updateSkill(userId, id, req.body);
 
   if (!profile) {
@@ -45,7 +45,7 @@ export async function updateSkill(req: Request, res: Response): Promise<void> {
 
 export async function deleteSkill(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  const { id } = req.params;
+  const id = req.params.id as string;
   await profileService.deleteSkill(userId, id);
 
   res.json({ success: true, data: { message: 'Skill deleted' } });
@@ -65,7 +65,7 @@ export async function addExperience(req: Request, res: Response): Promise<void> 
 
 export async function updateExperience(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  const { id } = req.params;
+  const id = req.params.id as string;
   const profile = await profileService.updateExperience(userId, id, req.body);
 
   if (!profile) {
@@ -78,7 +78,7 @@ export async function updateExperience(req: Request, res: Response): Promise<voi
 
 export async function deleteExperience(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  const { id } = req.params;
+  const id = req.params.id as string;
   await profileService.deleteExperience(userId, id);
 
   res.json({ success: true, data: { message: 'Experience deleted' } });
@@ -98,7 +98,7 @@ export async function addProject(req: Request, res: Response): Promise<void> {
 
 export async function updateProject(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  const { id } = req.params;
+  const id = req.params.id as string;
   const profile = await profileService.updateProject(userId, id, req.body);
 
   if (!profile) {
@@ -111,7 +111,7 @@ export async function updateProject(req: Request, res: Response): Promise<void> 
 
 export async function deleteProject(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  const { id } = req.params;
+  const id = req.params.id as string;
   await profileService.deleteProject(userId, id);
 
   res.json({ success: true, data: { message: 'Project deleted' } });

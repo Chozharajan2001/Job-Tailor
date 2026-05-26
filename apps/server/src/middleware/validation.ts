@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { ZodSchema, ZodError } from 'zod';
-import { errorHandler } from './error-handler.js';
+import { ZodSchema } from 'zod';
+import { ApiError } from './error-handler.js';
 
 /**
  * Validates request body against a Zod schema.
@@ -17,7 +17,7 @@ export function validateBody<T>(schema: ZodSchema<T>) {
           message: e.message,
         }));
 
-        const error = new errorHandler.ApiError(
+        const error = new ApiError(
           400,
           'VALIDATION_ERROR',
           'Request body validation failed',
@@ -49,7 +49,7 @@ export function validateQuery<T>(schema: ZodSchema<T>) {
           message: e.message,
         }));
 
-        const error = new errorHandler.ApiError(
+        const error = new ApiError(
           400,
           'VALIDATION_ERROR',
           'Query parameter validation failed',
@@ -80,7 +80,7 @@ export function validateParams<T>(schema: ZodSchema<T>) {
           message: e.message,
         }));
 
-        const error = new errorHandler.ApiError(
+        const error = new ApiError(
           400,
           'VALIDATION_ERROR',
           'URL parameter validation failed',
