@@ -3,13 +3,18 @@ import { api } from '../services/api';
 import { LayoutDashboard, FileText, Briefcase, TrendingUp, Target, AlertCircle, Plus } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 
+interface SkillCount {
+  skill: string;
+  count: number;
+}
+
 interface DashboardData {
   totalApplications: number;
   thisWeekApplied: number;
   interviewRate: number;
   averageATSScore: number;
-  topMatchingSkills: string[];
-  commonGaps: string[];
+  topMatchingSkills: Array<string | SkillCount>;
+  commonGaps: Array<string | SkillCount>;
   pipelineFunnel: Record<string, number>;
 }
 
@@ -110,11 +115,14 @@ export default function DashboardPage() {
           </h2>
           {(d?.topMatchingSkills && d.topMatchingSkills.length > 0) ? (
             <div className="flex flex-wrap gap-2">
-              {d.topMatchingSkills.map((skill) => (
-                <span key={skill} className="px-3 py-1.5 bg-green-50 text-green-700 text-sm font-medium rounded-full border border-green-200">
-                  {skill}
-                </span>
-              ))}
+              {d.topMatchingSkills.map((item) => {
+                const skill = typeof item === 'string' ? item : item.skill;
+                return (
+                  <span key={skill} className="px-3 py-1.5 bg-green-50 text-green-700 text-sm font-medium rounded-full border border-green-200">
+                    {skill}
+                  </span>
+                );
+              })}
             </div>
           ) : (
             <p className="text-muted-foreground text-sm">Add jobs and generate resumes to see matching skills.</p>
@@ -128,11 +136,14 @@ export default function DashboardPage() {
           </h2>
           {(d?.commonGaps && d.commonGaps.length > 0) ? (
             <div className="flex flex-wrap gap-2">
-              {d.commonGaps.map((gap) => (
-                <span key={gap} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-sm font-medium rounded-full border border-orange-200">
-                  {gap}
-                </span>
-              ))}
+              {d.commonGaps.map((item) => {
+                const gap = typeof item === 'string' ? item : item.skill;
+                return (
+                  <span key={gap} className="px-3 py-1.5 bg-orange-50 text-orange-700 text-sm font-medium rounded-full border border-orange-200">
+                    {gap}
+                  </span>
+                );
+              })}
             </div>
           ) : (
             <p className="text-muted-foreground text-sm">No gaps detected yet — keep building your profile!</p>

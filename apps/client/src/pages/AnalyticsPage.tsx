@@ -2,13 +2,18 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 
 // ─── Types ────────────────────────────────────────────────────
+interface SkillCount {
+  skill: string;
+  count: number;
+}
+
 interface DashboardData {
   totalApplications: number;
   thisWeekApplied: number;
   interviewRate: number;
   averageATSScore: number;
-  topMatchingSkills: string[];
-  commonGaps: string[];
+  topMatchingSkills: Array<string | SkillCount>;
+  commonGaps: Array<string | SkillCount>;
   pipelineFunnel: Record<string, number>;
   resumePerformance: Array<{ versionLabel: string; usageCount: number; callbackRate: number }>;
 }
@@ -87,17 +92,25 @@ export default function AnalyticsPage() {
           </h2>
           {(d?.topMatchingSkills && d.topMatchingSkills.length > 0) ? (
             <div className="space-y-2.5">
-              {d.topMatchingSkills.map((skill, i) => {
-                const pct = Math.max(20, 100 - i * 12); // Simulated relevance
-                return (
-                  <div key={skill} className="flex items-center gap-3">
-                    <span className="w-24 text-sm font-medium truncate">{skill}</span>
-                    <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-green-400 to-green-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
+              {(() => {
+                const maxSkillCount = Math.max(...d.topMatchingSkills.map(item => typeof item === 'string' ? 1 : item.count), 1);
+                return d.topMatchingSkills.map((item, i) => {
+                  const skill = typeof item === 'string' ? item : item.skill;
+                  const count = typeof item === 'string' ? 1 : item.count;
+                  const pct = maxSkillCount > 0 ? Math.max(15, (count / maxSkillCount) * 100) : 0;
+                  return (
+                    <div key={skill} className="flex items-center gap-3">
+                      <span className="w-24 text-sm font-medium truncate text-gray-700" title={skill}>{skill}</span>
+                      <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden relative">
+                        <div className="h-full bg-gradient-to-r from-green-400 to-green-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        <span className="absolute inset-y-0 right-3 flex items-center text-[10px] font-bold text-gray-700">
+                          {count} {count === 1 ? 'match' : 'matches'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           ) : (
             <p className="text-center text-sm text-muted-foreground py-8">Generate resumes to see skill matching data.</p>
@@ -111,18 +124,25 @@ export default function AnalyticsPage() {
           </h2>
           {(d?.commonGaps && d.commonGaps.length > 0) ? (
             <div className="space-y-2.5">
-              {d.commonGaps.map((gap, i) => {
-                const freq = Math.max(15, 90 - i * 14);
-                return (
-                  <div key={gap} className="flex items-center gap-3">
-                    <span className="w-24 text-sm font-medium truncate text-red-700">{gap}</span>
-                    <div className="flex-1 h-6 bg-red-50 rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-orange-400 to-red-500 rounded-full transition-all" style={{ width: `${freq}%` }} />
+              {(() => {
+                const maxGapCount = Math.max(...d.commonGaps.map(item => typeof item === 'string' ? 1 : item.count), 1);
+                return d.commonGaps.map((item, i) => {
+                  const gap = typeof item === 'string' ? item : item.skill;
+                  const count = typeof item === 'string' ? 1 : item.count;
+                  const pct = maxGapCount > 0 ? Math.max(15, (count / maxGapCount) * 100) : 0;
+                  return (
+                    <div key={gap} className="flex items-center gap-3">
+                      <span className="w-24 text-sm font-medium truncate text-red-700" title={gap}>{gap}</span>
+                      <div className="flex-1 h-6 bg-red-50 rounded-full overflow-hidden relative">
+                        <div className="h-full bg-gradient-to-r from-orange-400 to-red-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        <span className="absolute inset-y-0 right-3 flex items-center text-[10px] font-bold text-red-950">
+                          Missing in {count} {count === 1 ? 'JD' : 'JDs'}
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-xs text-muted-foreground w-10 text-right">{freq - 10 + i * 2} jobs</span>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           ) : (
             <p className="text-center text-sm text-muted-foreground py-8">No gaps detected — your profile covers most JDs!</p>
