@@ -55,7 +55,7 @@ const reminderSchema = new Schema<IReminder>(
 
 const applicationSchema = new Schema<IApplication>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true }, // index: true removed - compound index below covers this
     jobId: { type: Schema.Types.ObjectId, ref: 'Job', required: true, index: true },
     resumeId: { type: Schema.Types.ObjectId, ref: 'Resume', index: true },
 

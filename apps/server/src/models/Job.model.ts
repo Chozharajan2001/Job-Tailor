@@ -75,7 +75,7 @@ const noteSchema = new Schema<INote>(
 
 const jobSchema = new Schema<IJob>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true }, // index: true removed - compound indexes below cover this
 
     // Company info - Only jobTitle is required
     companyName: { type: String, trim: true, default: '' },

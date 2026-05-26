@@ -84,7 +84,7 @@ const atsSchema = new Schema<IATSScore>(
 
 const resumeSchema = new Schema<IResume>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true }, // index: true removed - compound index below covers this
     jobId: { type: Schema.Types.ObjectId, ref: 'Job', required: true, index: true },
 
     // Versioning
