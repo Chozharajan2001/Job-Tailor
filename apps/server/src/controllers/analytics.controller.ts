@@ -68,7 +68,7 @@ export async function getOverview(_req: Request, res: Response): Promise<void> {
   const topMatchingSkills = Object.entries(skillFrequency)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
-    .map(([skill]) => skill);
+    .map(([skill, count]) => ({ skill, count }));
 
   // Common missing skills across JDs
   const gapFrequency: Record<string, number> = {};
@@ -83,7 +83,7 @@ export async function getOverview(_req: Request, res: Response): Promise<void> {
   const commonGaps = Object.entries(gapFrequency)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
-    .map(([skill]) => skill);
+    .map(([skill, count]) => ({ skill, count }));
 
   // Resume performance by version pattern
   const resumePerfMap: Record<string, { usageCount: number; callbackCount: number }> = {};
