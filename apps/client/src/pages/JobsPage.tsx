@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from './services/api';
+import { api } from '../services/api';
+import { Upload } from 'lucide-react';
+import ResumeUploadModal from '../components/ResumeUploadModal';
 
 // ─── Types ────────────────────────────────────────────────────
 interface IParsedJD {
@@ -28,10 +30,19 @@ interface IJob {
   savedAt: string;
 }
 
+interface IResume {
+  _id: string;
+  versionLabel: string;
+  atsScore?: { overallScore: number };
+  pdfUrl?: string;
+}
+
 export default function JobsPage() {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [showApplicationModal, setShowApplicationModal] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   // ─── Fetch Jobs ─────────────────────────────────────────────
   const { data: jobsRes, isLoading } = useQuery({
@@ -39,6 +50,13 @@ export default function JobsPage() {
     queryFn: () => api.get<{ jobs: IJob[]; pagination: unknown }>('/jobs?limit=50'),
   });
   const jobs = jobsRes?.data?.jobs || [];
+
+  // ─── Fetch Resumes for dropdown ─────────────────────────────
+  const { data: resumesRes } = useQuery({
+    queryKey: ['resumes'],
+    queryFn: () => api.get<{ resumes: IResume[] }>('/resumes'),
+  });
+  const resumes = resumesRes?.data?.resumes || [];
 
   // ─── Create Job Mutation ─────────────────────────────────────
   const createJobMutation = useMutation({
@@ -58,6 +76,17 @@ export default function JobsPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); },
   });
 
+  // ─── Create Application Mutation ────────────────────────────
+  const createAppMutation = useMutation({
+    mutationFn: (data: { jobId: string; resumeId?: string; status?: string }) =>
+      api.post('/applications', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['applications'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      setShowApplicationModal(false);
+    },
+  });
+
   const selectedJob = selectedJobId ? jobs.find((j) => j._id === selectedJobId) : null;
 
   return (
@@ -68,13 +97,25 @@ export default function JobsPage() {
           <h1 className="text-2xl font-bold">Jobs</h1>
           <p className="text-muted-foreground mt-1">{jobs.length} jobs tracked</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
-          Add Job
-        </button>
+        <div className="flex gap-3">
+          {/* Upload Resume Button */}
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer text-sm"
+          >
+            <Upload className="w-4 h-4" />
+            Upload Resume
+          </button>
+          
+          {/* Add Job Button */}
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+            Add Job
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -120,6 +161,10 @@ export default function JobsPage() {
               job={selectedJob}
               isParsing={parseJDMutation.isPending}
               onParse={() => parseJDMutation.mutate(selectedJob._id)}
+              onCreateApplication={() => {
+                setSelectedJobId(selectedJob._id);
+                setShowApplicationModal(true);
+              }}
             />
           ) : (
             <div className="border rounded-xl h-[500px] flex items-center justify-center text-muted-foreground">
@@ -135,6 +180,27 @@ export default function JobsPage() {
           onSubmit={(data) => createJobMutation.mutate(data)}
           isLoading={createJobMutation.isPending}
           onClose={() => setShowModal(false)}
+        />
+      )}
+
+      {/* Create Application Modal */}
+      {showApplicationModal && selectedJob && (
+        <CreateApplicationModal
+          job={selectedJob}
+          resumes={resumes}
+          onSubmit={(data) => createAppMutation.mutate({ ...data, jobId: selectedJob._id })}
+          isLoading={createAppMutation.isPending}
+          onClose={() => setShowApplicationModal(false)}
+        />
+      )}
+
+      {/* Resume Upload Modal */}
+      {showUploadModal && (
+        <ResumeUploadModal 
+          onClose={() => setShowUploadModal(false)}
+          onSuccess={(pdfUrl) => {
+            console.log('Resume uploaded:', pdfUrl);
+          }}
         />
       )}
     </div>
@@ -153,7 +219,12 @@ function statusColor(status: string): string {
   return map[status] || 'bg-gray-100 text-gray-700';
 }
 
-function JobDetailPanel({ job, isParsing, onParse }: { job: IJob; isParsing: boolean; onParse: () => void }) {
+function JobDetailPanel({ job, isParsing, onParse, onCreateApplication }: { 
+  job: IJob; 
+  isParsing: boolean; 
+  onParse: () => void;
+  onCreateApplication: () => void;
+}) {
   if (!job.parsedJD) {
     return (
       <div className="border rounded-xl p-8 space-y-6">
@@ -201,9 +272,17 @@ function JobDetailPanel({ job, isParsing, onParse }: { job: IJob; isParsing: boo
             <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700">{jd.tone} tone</span>
           </div>
         </div>
-        <a href="/tailor" className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 transition-colors">
-          Tailor Resume →
-        </a>
+        <div className="flex gap-2">
+          <button
+            onClick={onCreateApplication}
+            className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors cursor-pointer"
+          >
+            📝 Create Application
+          </button>
+          <a href="/tailor" className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 transition-colors">
+            Tailor Resume →
+          </a>
+        </div>
       </div>
 
       {/* Summary */}
@@ -277,12 +356,28 @@ function JobDetailPanel({ job, isParsing, onParse }: { job: IJob; isParsing: boo
           </section>
         )}
       </div>
+
+      {/* Apply Button */}
+      <button
+        onClick={onCreateApplication}
+        className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-colors cursor-pointer"
+      >
+        Apply to this Job
+      </button>
     </div>
   );
 }
 
 function JDPasteModal({ onSubmit, isLoading, onClose }: {
-  onSubmit: (data: Record<string, string>) => void; isLoading: boolean; onClose: () => void;
+  onSubmit: (data: {
+    companyName: string;
+    jobTitle: string;
+    location: string;
+    workType: string;
+    employmentType: string;
+    jdRawText: string;
+    jobLink?: string;
+  }) => void; isLoading: boolean; onClose: () => void;
 }) {
   const [form, setForm] = useState({ companyName: '', jobTitle: '', location: '', workType: 'remote', employmentType: 'full-time', jdRawText: '', jobLink: '' });
 
@@ -329,6 +424,110 @@ function JDPasteModal({ onSubmit, isLoading, onClose }: {
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer">Cancel</button>
             <button type="submit" disabled={isLoading || !form.jdRawText.trim()} className="px-6 py-2.5 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 disabled:opacity-50 cursor-pointer">
               {isLoading ? 'Adding...' : '+ Add Job'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateApplicationModal({
+  job,
+  resumes,
+  onSubmit,
+  isLoading,
+  onClose,
+}: {
+  job: IJob;
+  resumes: IResume[];
+  onSubmit: (data: { resumeId?: string; status?: string }) => void;
+  isLoading: boolean;
+  onClose: () => void;
+}) {
+  const [selectedResumeId, setSelectedResumeId] = useState<string>('');
+  const [status, setStatus] = useState<string>('applied');
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    onSubmit({
+      resumeId: selectedResumeId || undefined,
+      status,
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="p-6 border-b">
+          <h2 className="text-xl font-bold">Create Application</h2>
+          <p className="text-sm text-muted-foreground mt-1">{job.jobTitle} at {job.companyName}</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Resume Selection */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Select Resume (Optional)</label>
+            {resumes.length === 0 ? (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
+                <p className="text-yellow-800">No resumes found. You can:</p>
+                <ul className="list-disc list-inside mt-2 space-y-1 text-yellow-700">
+                  <li>Create a tailored resume first</li>
+                  <li>Or submit without a resume and add one later</li>
+                </ul>
+              </div>
+            ) : (
+              <>
+                <select
+                  value={selectedResumeId}
+                  onChange={(e) => setSelectedResumeId(e.target.value)}
+                  className="w-full px-4 py-2.5 border rounded-lg text-sm"
+                >
+                  <option value="">-- No resume (add later) --</option>
+                  {resumes.map((resume) => (
+                    <option key={resume._id} value={resume._id}>
+                      {resume.versionLabel} {resume.atsScore ? `(ATS: ${resume.atsScore.overallScore})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  💡 Tip: Use a tailored resume for better tracking
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* Status Selection */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Application Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="w-full px-4 py-2.5 border rounded-lg text-sm"
+            >
+              <option value="saved">Saved (not applied yet)</option>
+              <option value="applied">Applied</option>
+              <option value="screening">Screening</option>
+              <option value="interview">Interview</option>
+              <option value="offer">Offer</option>
+            </select>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="px-6 py-2.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 cursor-pointer"
+            >
+              {isLoading ? 'Creating...' : '✓ Create Application'}
             </button>
           </div>
         </form>
