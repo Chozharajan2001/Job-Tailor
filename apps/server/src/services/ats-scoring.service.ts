@@ -158,8 +158,8 @@ async function semanticScore(
   jd: IParsedJD
 ): Promise<{ score: number; reasoning?: string }> {
   try {
-    const client = new OpenAI({ apiKey: config.openaiApiKey });
     if (!config.openaiApiKey) return { score: 75 }; // Fallback if no API key configured
+    const client = new OpenAI({ apiKey: config.openaiApiKey });
 
     const response = await client.chat.completions.create({
       model: 'gpt-4o-mini',

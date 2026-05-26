@@ -11,6 +11,7 @@
 
 import type { IResume } from '../models/Resume.model.js';
 import { config } from '../config/index.js';
+import { v2 as cloudinary } from 'cloudinary';
 
 // ─── Template Generation ───────────────────────────────────────
 
@@ -44,11 +45,12 @@ function buildResumeHTML(resume: IResume): string {
       const p = proj as {
         name?: string; description?: string; techStack?: string[]; highlights?: string[];
       };
+      const techStack = p.techStack || [];
       return `
         <div class="project-item">
           <h3>${p.name || ''}</h3>
           <p class="project-desc">${p.description || ''}</p>
-          ${(p.techStack || []).length > 0 ? `<p class="tech-stack">${p.techStack.join(' · ')}</p>` : ''}
+          ${techStack.length > 0 ? `<p class="tech-stack">${techStack.join(' · ')}</p>` : ''}
         </div>`;
     })
     .join('');
@@ -147,13 +149,13 @@ export async function generatePDF(resume: IResume): Promise<{ pdfUrl: string; pd
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
 
-    const pdfBuffer = await page.pdf({
+    const pdfBuffer = Buffer.from(await page.pdf({
       format: 'A4',
       printBackground: true,
       margin: { top: '0.5in', bottom: '0.5in', left: '0.65in', right: '0.65in' },
       preferCSSPageSize: false,
       displayHeaderFooter: false,
-    });
+    }));
 
     await browser.close();
 
@@ -178,16 +180,14 @@ export async function generatePDF(resume: IResume): Promise<{ pdfUrl: string; pd
 // ─── Cloudinary Upload ───────────────────────────────────────
 
 async function uploadToCloudinary(buffer: Buffer, publicId: string): Promise<string> {
-  const v2 = require('cloudinary').v2;
-
-  v2.config({
+  cloudinary.config({
     cloud_name: config.cloudinary.cloudName,
     api_key: config.cloudinary.apiKey,
     api_secret: config.cloudinary.apiSecret,
   });
 
   return new Promise((resolve, reject) => {
-    const uploadStream = v2.uploader.upload_stream(
+    const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder: config.cloudinary.folder,
         resource_type: 'raw',

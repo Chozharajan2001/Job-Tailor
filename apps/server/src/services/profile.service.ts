@@ -55,7 +55,7 @@ export async function addSkill(userId: string, skillData: Record<string, unknown
 
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.skills.push(skillData as Parameters<typeof profile.skills.push>[0]);
+  profile.skills.push(skillData as unknown as Parameters<typeof profile.skills.push>[0]);
   await profile.save();
 
   return profile.toJSON() as unknown as IProfile;
@@ -89,7 +89,7 @@ export async function addExperience(userId: string, expData: Record<string, unkn
 
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.experience.push(expData as Parameters<typeof profile.experience.push>[0]);
+  profile.experience.push(expData as unknown as Parameters<typeof profile.experience.push>[0]);
   await profile.save();
 
   return profile.toJSON() as unknown as IProfile;
@@ -127,7 +127,7 @@ export async function addProject(userId: string, projectData: Record<string, unk
 
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.projects.push(projectData as Parameters<typeof profile.projects.push>[0]);
+  profile.projects.push(projectData as unknown as Parameters<typeof profile.projects.push>[0]);
   await profile.save();
 
   return profile.toJSON() as unknown as IProfile;

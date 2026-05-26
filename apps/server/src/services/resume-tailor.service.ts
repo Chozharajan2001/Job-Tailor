@@ -81,10 +81,10 @@ function prioritizeBullets(
  * Select and sort projects by relevance to JD focus.
  */
 function selectRelevantProjects(
-  projects: IProfile['project' as keyof IProfile],
+  projects: IProfile['projects'],
   jdSkills: string[],
   maxProjects: number
-): IProfile['project' as keyof IProfile] {
+): IProfile['projects'] {
   if (!Array.isArray(projects)) return [];
 
   const scored = projects.map((p) => {
@@ -177,7 +177,7 @@ export async function tailorResume(
   options: TailorOptions = {}
 ): Promise<TailoredResume> {
   const {
-    rewriteSummary = true,
+    rewriteSummary: shouldRewriteSummary = true,
     maxBulletsPerRole = 4,
     maxProjects = 3,
   } = options;
@@ -197,13 +197,13 @@ export async function tailorResume(
 
   // 3. Projects — pick most relevant ones
   const tailoredProjects = selectRelevantProjects(
-    (profile.projects as unknown as IProfile['project' as keyof IProfile]) || [],
+    profile.projects || [],
     [...jd.requiredSkills, ...jd.preferredSkills],
     maxProjects
   );
 
   // 4. Summary — rewrite via LLM
-  const tailoredSummary = rewriteSummary
+  const tailoredSummary = shouldRewriteSummary
     ? await rewriteSummary(profile.summary || '', profile, jd)
     : profile.summary || '';
 

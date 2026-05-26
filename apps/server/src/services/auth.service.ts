@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import type { Secret, SignOptions } from 'jsonwebtoken';
 import { config } from '../config/index.js';
+import { ApiError } from '../middleware/error-handler.js';
 import { User } from '../models/User.model.js';
 
 // ─── Token Payload ──────────────────────────────────────────────
@@ -16,11 +18,11 @@ export interface TokenPair {
 
 // ─── Token Generation ───────────────────────────────────────────
 function generateAccessToken(payload: TokenPayload): string {
-  return jwt.sign(payload, config.jwt.secret, { expiresIn: config.jwt.expiry });
+  return jwt.sign(payload, config.jwt.secret as Secret, { expiresIn: config.jwt.expiry as SignOptions['expiresIn'] });
 }
 
 function generateRefreshToken(payload: TokenPayload): string {
-  return jwt.sign(payload, config.jwt.refreshSecret, { expiresIn: config.jwt.refreshExpiry });
+  return jwt.sign(payload, config.jwt.refreshSecret as Secret, { expiresIn: config.jwt.refreshExpiry as SignOptions['expiresIn'] });
 }
 
 /**
@@ -61,7 +63,7 @@ export async function registerUser(input: RegisterInput) {
   // Check for existing email
   const existingUser = await User.findOne({ email: input.email.toLowerCase() }).lean();
   if (existingUser) {
-    throw new (await import('../middleware/error-handler.js')).ApiError(
+    throw new ApiError(
       409,
       'EMAIL_EXISTS',
       'An account with this email already exists'
@@ -84,7 +86,7 @@ export async function registerUser(input: RegisterInput) {
   const tokens = generateTokens({ _id: user._id.toString(), email: user.email });
 
   return {
-    user: sanitizeUser(user),
+    user: sanitizeUser(user.toObject() as unknown as Record<string, unknown>),
     ...tokens,
   };
 }
@@ -97,7 +99,7 @@ export async function loginUser(email: string, password: string) {
   const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordHash').lean();
 
   if (!user) {
-    throw new (await import('../middleware/error-handler.js')).ApiError(
+    throw new ApiError(
       401,
       'INVALID_CREDENTIALS',
       'Invalid email or password'
@@ -105,7 +107,7 @@ export async function loginUser(email: string, password: string) {
   }
 
   if (!user.isActive) {
-    throw new (await import('../middleware/error-handler.js')).ApiError(
+    throw new ApiError(
       403,
       'ACCOUNT_DEACTIVATED',
       'This account has been deactivated. Please contact support.'
@@ -115,7 +117,7 @@ export async function loginUser(email: string, password: string) {
   // Verify password
   const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
   if (!isPasswordValid) {
-    throw new (await import('../middleware/error-handler.js')).ApiError(
+    throw new ApiError(
       401,
       'INVALID_CREDENTIALS',
       'Invalid email or password'
@@ -140,7 +142,7 @@ export async function loginUser(email: string, password: string) {
 export async function refreshTokenService(refreshTokenString: string): Promise<TokenPair> {
   const payload = verifyRefreshToken(refreshTokenString);
   if (!payload) {
-    throw new (await import('../middleware/error-handler.js')).ApiError(
+    throw new ApiError(
       401,
       'INVALID_REFRESH_TOKEN',
       'Invalid or expired refresh token. Please login again.'
@@ -150,7 +152,7 @@ export async function refreshTokenService(refreshTokenString: string): Promise<T
   // Verify user still exists and is active
   const user = await User.findById(payload.userId).select('+isActive').lean();
   if (!user || !user.isActive) {
-    throw new (await import('../middleware/error-handler.js')).ApiError(
+    throw new ApiError(
       401,
       'AUTH_INVALID_TOKEN',
       'User not found or account deactivated.'
@@ -166,6 +168,6 @@ export async function refreshTokenService(refreshTokenString: string): Promise<T
 /** Remove sensitive fields from user object */
 function sanitizeUser(user: Record<string, unknown>) {
   const sanitized = { ...user };
-  delete sanitized.passwordHash;
+  delete sanitized['passwordHash'];
   return sanitized;
 }
