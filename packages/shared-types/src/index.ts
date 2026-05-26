@@ -175,6 +175,7 @@ export interface IJob {
   postedDate?: Date;
   jdRawText: string;
   parsedJD: IParsedJD | null;
+  attachedResumeId?: ID;
   status: ApplicationStatus;
   notes: INote[];
   appliedDate?: Date;

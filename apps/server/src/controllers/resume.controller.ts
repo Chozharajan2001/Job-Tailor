@@ -3,6 +3,7 @@ import { Resume, IResume } from '../models/Resume.model.js';
 import { Job, IJob } from '../models/Job.model.js';
 import { Profile, IProfile } from '../models/Profile.model.js';
 import { tailorResume } from '../services/resume-tailor.service.js';
+import { scoreATS } from '../services/ats-scoring.service.js';
 import { generatePDF } from '../services/pdf-generator.service.js';
 import multer from 'multer';
 import path from 'path';
@@ -358,7 +359,12 @@ export async function quickATSCheck(req: Request, res: Response): Promise<void> 
     }
 
     // Calculate ATS score using existing service
-    const atsScore = await tailorResume(job, resumeToUse);
+    const atsScore = await scoreATS({
+      summary: resumeToUse.tailoredSummary || '',
+      skills: resumeToUse.skills as any,
+      experience: resumeToUse.experience as any,
+      projects: resumeToUse.projects as any,
+    }, job.parsedJD);
 
     res.json({
       success: true,

@@ -36,6 +36,7 @@ export interface IJob extends Document {
   postedDate?: Date;
   jdRawText: string;
   parsedJD: IParsedJD | null;
+  attachedResumeId?: Types.ObjectId;
   status: 'saved' | 'applied' | 'screening' | 'interview' | 'offer' | 'rejected' | 'withdrawn';
   notes: INote[];
   appliedDate?: Date;

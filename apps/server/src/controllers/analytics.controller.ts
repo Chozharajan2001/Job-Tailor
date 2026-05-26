@@ -200,8 +200,8 @@ export async function getSkillGapReport(req: Request, res: Response): Promise<vo
       }
       aggregateMissing[ms.skill].frequency++;
       aggregateMissing[ms.skill].suggestions.add(ms.suggestion);
-      if (ms.required) {
-        const job = jobsWithParsedJD.find((j) => j._id.toString() === resume.jobId.toString());
+      if (ms.required && resume.jobId) {
+        const job = jobsWithParsedJD.find((j) => j._id.toString() === resume.jobId!.toString());
         if (job) aggregateMissing[ms.skill].requiredBy.push(job.companyName);
       }
     });

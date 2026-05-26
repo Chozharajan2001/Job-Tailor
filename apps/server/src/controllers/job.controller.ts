@@ -136,7 +136,7 @@ export async function deleteJob(req: Request, res: Response): Promise<void> {
  */
 export async function attachResumeToJob(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  const { jobId } = req.params;
+  const jobId = req.params.id;
   const { resumeId } = req.body;
 
   if (!resumeId) {

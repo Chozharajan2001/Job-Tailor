@@ -51,6 +51,6 @@ router.get('/:id', validateParams(idParamSchema), getJob);
 router.put('/:id', validateParams(idParamSchema), updateJob);
 router.delete('/:id', validateParams(idParamSchema), deleteJob);
 router.post('/:id/parse', validateParams(idParamSchema), parseJobJD);
-router.patch('/:id/attach-resume', validateParams(idParamSchema).merge(attachResumeSchema), attachResumeToJob);
+router.patch('/:id/attach-resume', validateParams(idParamSchema), validateBody(attachResumeSchema), attachResumeToJob);
 
 export default router;
