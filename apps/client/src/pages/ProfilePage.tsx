@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
+import { Upload, Loader2 } from 'lucide-react';
+import ResumeUploadModal from '../components/ResumeUploadModal';
 
 // ─── Types ────────────────────────────────────────────────────
 interface ISkill { _id?: string; name: string; category: string; yearsOfExperience: number; proficiency: string; isHighlighted: boolean; }
@@ -30,7 +32,6 @@ interface ExperienceForm {
   description: string;
   bullets: Array<{ id: string; text: string; tags: string[] }>;
 }
-
 const SKILL_CATEGORIES = ['frontend', 'backend', 'devops', 'ai', 'mobile', 'database', 'other'] as const;
 const PROFICIENCY_LEVELS = ['beginner', 'intermediate', 'advanced', 'expert'] as const;
 const BULLET_TAGS = ['frontend', 'backend', 'devops', 'ai', 'testing', 'leadership'] as const;

@@ -100,15 +100,6 @@ export default function JobsPage() {
           <p className="text-muted-foreground mt-1">{jobs.length} jobs tracked</p>
         </div>
         <div className="flex gap-3">
-          {/* Upload Resume Button */}
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer text-sm"
-          >
-            <Upload className="w-4 h-4" />
-            Upload Resume
-          </button>
-          
           {/* Add Job Button */}
           <button
             onClick={() => setShowModal(true)}
