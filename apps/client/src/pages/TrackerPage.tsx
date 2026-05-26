@@ -32,6 +32,10 @@ export default function TrackerPage() {
   const [showDetail, setShowDetail] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
+  // ─── Search & Filter States ──────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
+  const [resumeFilter, setResumeFilter] = useState('all');
+
   // ─── PDF Download Mutation ──────────────────────────────────
   const downloadPDFMutation = useMutation({
     mutationFn: (resumeId: string) => api.post<{ pdfUrl: string }>(`/resumes/${resumeId}/pdf`),
@@ -104,10 +108,32 @@ export default function TrackerPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['applications'] }); },
   });
 
+  // ─── Filter & Dynamic Stats Logic ───────────────────────────
+  const uniqueResumes = Array.from(
+    new Set(
+      allApps
+        .map((app) => app.resumeId?.versionLabel)
+        .filter((label): label is string => !!label)
+    )
+  );
+
+  const filteredApps = allApps.filter((app) => {
+    const matchesSearch =
+      app.jobId.jobTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      app.jobId.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (app.jobId.location && app.jobId.location.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const matchesResume =
+      resumeFilter === 'all' ||
+      app.resumeId?.versionLabel === resumeFilter;
+
+    return matchesSearch && matchesResume;
+  });
+
   // Group by column
   const grouped = KANBAN_COLUMNS.map((col) => ({
     ...col,
-    apps: allApps.filter((a) => a.status === col.key),
+    apps: filteredApps.filter((a) => a.status === col.key),
   }));
 
   const selectedApp = selectedAppId ? allApps.find((a) => a._id === selectedAppId) : null;
@@ -118,7 +144,11 @@ export default function TrackerPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Application Tracker</h1>
-          <p className="text-muted-foreground mt-1">{allApps.length} applications across pipeline stages</p>
+          <p className="text-muted-foreground mt-1">
+            {filteredApps.length === allApps.length
+              ? `${allApps.length} applications across pipeline stages`
+              : `${filteredApps.length} of ${allApps.length} matching`}
+          </p>
         </div>
         
         {/* Create Application Button */}
@@ -129,6 +159,56 @@ export default function TrackerPage() {
           <Plus className="w-4 h-4" />
           Create Application
         </button>
+      </div>
+
+      {/* Search & Filters Controls */}
+      <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="flex-1 relative">
+            <span className="absolute inset-y-0 left-3 flex items-center text-gray-400">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </span>
+            <input
+              type="text"
+              placeholder="Search applications by title, company, or location..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600 text-sm font-bold"
+              >
+                &times;
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={resumeFilter}
+              onChange={(e) => setResumeFilter(e.target.value)}
+              className="px-3 py-2 border rounded-lg text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer min-w-[180px]"
+            >
+              <option value="all">All Resume Versions</option>
+              {uniqueResumes.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            {(searchQuery || resumeFilter !== 'all') && (
+              <button
+                onClick={() => { setSearchQuery(''); setResumeFilter('all'); }}
+                className="text-xs text-primary font-semibold px-2 hover:underline cursor-pointer"
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Create Application Modal */}
