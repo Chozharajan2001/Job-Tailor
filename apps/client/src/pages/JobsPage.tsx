@@ -59,6 +59,8 @@ export default function JobsPage() {
   const [globalSearchInput, setGlobalSearchInput] = useState('');
   const [globalLocationInput, setGlobalLocationInput] = useState('');
   const [globalWorkType, setGlobalWorkType] = useState('all');
+  const [globalEmploymentType, setGlobalEmploymentType] = useState('all');
+  const [globalSalaryMin, setGlobalSalaryMin] = useState('');
   const [globalSortBy, setGlobalSortBy] = useState('relevance');
   const [globalPage, setGlobalPage] = useState(1);
   const [submittedQuery, setSubmittedQuery] = useState('');
@@ -106,11 +108,23 @@ export default function JobsPage() {
 
   // ─── Global Search Queries ──────────────────────────────────
   const { data: searchRes, isLoading: isSearching } = useQuery({
-    queryKey: ['global-search', submittedQuery, submittedLocation, globalWorkType, globalSortBy, globalPage],
-    queryFn: () => api.get<{ jobs: any[]; pagination: { total: number; page: number; pages: number; limit: number } }>(
-      `/search?q=${encodeURIComponent(submittedQuery)}&location=${encodeURIComponent(submittedLocation)}&workType=${globalWorkType}&sortBy=${globalSortBy}&page=${globalPage}&limit=10`
-    ),
-    enabled: activeSearchTab === 'global' && (!!submittedQuery || !!submittedLocation),
+    queryKey: [
+      'global-search',
+      submittedQuery,
+      submittedLocation,
+      globalWorkType,
+      globalEmploymentType,
+      globalSalaryMin,
+      globalSortBy,
+      globalPage,
+    ],
+    queryFn: () =>
+      api.get<{ jobs: any[]; pagination: { total: number; page: number; pages: number; limit: number } }>(
+        `/search?q=${encodeURIComponent(submittedQuery)}&location=${encodeURIComponent(
+          submittedLocation
+        )}&workType=${globalWorkType}&employmentType=${globalEmploymentType}&salaryMin=${globalSalaryMin}&sortBy=${globalSortBy}&page=${globalPage}&limit=10`
+      ),
+    enabled: activeSearchTab === 'global',
   });
   const searchJobsList = searchRes?.data?.jobs || [];
   const searchPagination = searchRes?.data?.pagination;
@@ -121,6 +135,38 @@ export default function JobsPage() {
     enabled: activeSearchTab === 'global',
   });
   const savedSearches = savedSearchesRes?.data?.savedSearches || [];
+
+  const { data: alertsRes, refetch: refetchAlerts } = useQuery({
+    queryKey: ['job-alerts'],
+    queryFn: () => api.get<{ alerts: any[] }>('/search/alerts'),
+    enabled: activeSearchTab === 'global',
+    refetchInterval: 15000, // Poll alerts every 15s
+  });
+  const alerts = alertsRes?.data?.alerts || [];
+
+  const markAlertReadMutation = useMutation({
+    mutationFn: (alertId: string) => api.patch(`/search/alerts/${alertId}/read`),
+    onSuccess: () => {
+      refetchAlerts();
+    },
+  });
+
+  const deleteSavedSearchMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/search/saved/${id}`),
+    onSuccess: () => {
+      refetchSavedSearches();
+    },
+  });
+
+  const toggleAlertSubscriptionMutation = useMutation({
+    mutationFn: (params: { id: string; inAppEnabled: boolean }) =>
+      api.patch(`/search/saved/${params.id}`, {
+        alertSubscription: { emailEnabled: false, inAppEnabled: params.inAppEnabled },
+      }),
+    onSuccess: () => {
+      refetchSavedSearches();
+    },
+  });
 
   const { data: sourcesRes } = useQuery({
     queryKey: ['search-sources'],
@@ -271,6 +317,63 @@ export default function JobsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left Column: URL Crawling & Saved Searches */}
             <div className="space-y-4">
+              {/* Job Match Alerts (Notification Inbox) */}
+              <div className="bg-white border rounded-xl p-5 shadow-sm space-y-3">
+                <h3 className="font-semibold text-sm flex justify-between items-center">
+                  <span className="flex items-center gap-1">🔔 Match Alerts</span>
+                  {alerts.length > 0 && (
+                    <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-bold">
+                      {alerts.length} new
+                    </span>
+                  )}
+                </h3>
+                {alerts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No new job matches.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-1">
+                    {alerts.map((a: any) => (
+                      <div
+                        key={a._id}
+                        className="p-2.5 border rounded-lg hover:border-gray-300 transition-colors text-xs space-y-2 bg-red-50/20"
+                      >
+                        <div>
+                          <div className="font-bold text-gray-900 truncate">{a.canonicalJobId?.jobTitle}</div>
+                          <div className="text-[10px] text-primary font-semibold">{a.canonicalJobId?.companyName}</div>
+                          <div className="text-[9px] text-muted-foreground mt-0.5">{a.canonicalJobId?.location} • {a.canonicalJobId?.workType}</div>
+                        </div>
+                        <div className="flex justify-between items-center pt-1.5 border-t">
+                          <button
+                            onClick={() => setSelectedSearchJob(a.canonicalJobId)}
+                            className="text-[9px] text-gray-600 hover:text-gray-900 font-semibold cursor-pointer"
+                          >
+                            View
+                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                markAlertReadMutation.mutate(a._id);
+                              }}
+                              className="text-[9px] text-gray-400 hover:text-gray-600 cursor-pointer"
+                            >
+                              Dismiss
+                            </button>
+                            <button
+                              onClick={() => {
+                                importToTrackerMutation.mutate(a.canonicalJobId);
+                                markAlertReadMutation.mutate(a._id);
+                              }}
+                              className="text-[9px] text-green-700 hover:text-green-900 font-bold cursor-pointer"
+                            >
+                              Import
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Crawler Form */}
               <div className="bg-white border rounded-xl p-5 shadow-sm space-y-3">
                 <h3 className="font-semibold text-sm">🌐 Index Job via URL</h3>
@@ -295,29 +398,61 @@ export default function JobsPage() {
 
               {/* Saved Alert criteria */}
               <div className="bg-white border rounded-xl p-5 shadow-sm space-y-3">
-                <h3 className="font-semibold text-sm">🔔 Saved Search Alerts</h3>
+                <h3 className="font-semibold text-sm">💾 Saved Search Alerts</h3>
                 {savedSearches.length === 0 ? (
                   <p className="text-xs text-muted-foreground">No saved search alerts found.</p>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-[35vh] overflow-y-auto pr-1">
                     {savedSearches.map((s) => (
-                      <button
+                      <div
                         key={s._id}
-                        onClick={() => {
-                          setGlobalSearchInput(s.query || '');
-                          setGlobalLocationInput(s.filters?.location || '');
-                          setGlobalWorkType(s.filters?.workType || 'all');
-                          setSubmittedQuery(s.query || '');
-                          setSubmittedLocation(s.filters?.location || '');
-                          setGlobalPage(1);
-                        }}
-                        className="w-full text-left p-2.5 border rounded-lg hover:bg-gray-50/50 cursor-pointer block transition-colors text-xs space-y-1"
+                        className="p-2.5 border rounded-lg hover:border-gray-300 transition-colors text-xs space-y-2 bg-white"
                       >
-                        <div className="font-semibold text-gray-700">{s.name}</div>
-                        <div className="text-[10px] text-muted-foreground">
-                          {s.query && `Query: "${s.query}"`} {s.filters?.location && `• Loc: ${s.filters.location}`} {s.filters?.workType && `• ${s.filters.workType}`}
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-semibold text-gray-800">{s.name}</div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {s.query && `"${s.query}"`} {s.filters?.location && `• ${s.filters.location}`} {s.filters?.workType && `• ${s.filters.workType}`}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => deleteSavedSearchMutation.mutate(s._id)}
+                            className="text-gray-400 hover:text-red-500 font-bold leading-none text-sm p-1 cursor-pointer"
+                            title="Delete alert"
+                          >
+                            &times;
+                          </button>
                         </div>
-                      </button>
+                        <div className="flex justify-between items-center pt-1.5 border-t">
+                          <button
+                            onClick={() => {
+                              setGlobalSearchInput(s.query || '');
+                              setGlobalLocationInput(s.filters?.location || '');
+                              setGlobalWorkType(s.filters?.workType || 'all');
+                              setSubmittedQuery(s.query || '');
+                              setSubmittedLocation(s.filters?.location || '');
+                              setGlobalPage(1);
+                            }}
+                            className="text-[9px] text-primary font-bold hover:underline cursor-pointer"
+                          >
+                            Run Search
+                          </button>
+                          <label className="flex items-center gap-1 text-[9px] text-gray-500 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={s.alertSubscription?.inAppEnabled}
+                              onChange={(e) => {
+                                toggleAlertSubscriptionMutation.mutate({
+                                  id: s._id,
+                                  inAppEnabled: e.target.checked,
+                                });
+                              }}
+                              className="w-2.5 h-2.5 rounded text-primary focus:ring-primary cursor-pointer"
+                            />
+                            <span>Enable Alerts</span>
+                          </label>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -356,31 +491,55 @@ export default function JobsPage() {
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t text-xs">
                   <div className="flex gap-3">
-                    <label className="flex items-center gap-1">
-                      <span>Work Type:</span>
-                      <select
-                        value={globalWorkType}
-                        onChange={(e) => setGlobalWorkType(e.target.value)}
-                        className="border rounded px-1.5 py-0.5 bg-white cursor-pointer"
-                      >
-                        <option value="all">All</option>
-                        <option value="remote">Remote</option>
-                        <option value="hybrid">Hybrid</option>
-                        <option value="onsite">On-site</option>
-                      </select>
-                    </label>
-                    <label className="flex items-center gap-1">
-                      <span>Sort By:</span>
-                      <select
-                        value={globalSortBy}
-                        onChange={(e) => setGlobalSortBy(e.target.value)}
-                        className="border rounded px-1.5 py-0.5 bg-white cursor-pointer"
-                      >
-                        <option value="relevance">Relevance</option>
-                        <option value="date">Date Posted</option>
-                      </select>
-                    </label>
-                  </div>
+                     <label className="flex items-center gap-1">
+                       <span>Work Type:</span>
+                       <select
+                         value={globalWorkType}
+                         onChange={(e) => setGlobalWorkType(e.target.value)}
+                         className="border rounded px-1.5 py-0.5 bg-white cursor-pointer text-[11px]"
+                       >
+                         <option value="all">All</option>
+                         <option value="remote">Remote</option>
+                         <option value="hybrid">Hybrid</option>
+                         <option value="onsite">On-site</option>
+                       </select>
+                     </label>
+                     <label className="flex items-center gap-1">
+                       <span>Job Type:</span>
+                       <select
+                         value={globalEmploymentType}
+                         onChange={(e) => setGlobalEmploymentType(e.target.value)}
+                         className="border rounded px-1.5 py-0.5 bg-white cursor-pointer text-[11px]"
+                       >
+                         <option value="all">All Types</option>
+                         <option value="full-time">Full-time</option>
+                         <option value="part-time">Part-time</option>
+                         <option value="contract">Contract</option>
+                         <option value="internship">Internship</option>
+                       </select>
+                     </label>
+                     <label className="flex items-center gap-1">
+                       <span>Min Salary ($):</span>
+                       <input
+                         type="number"
+                         placeholder="Min pay"
+                         value={globalSalaryMin}
+                         onChange={(e) => setGlobalSalaryMin(e.target.value)}
+                         className="border rounded px-1.5 py-0.5 bg-white text-[11px] w-20 focus:outline-none"
+                       />
+                     </label>
+                     <label className="flex items-center gap-1">
+                       <span>Sort By:</span>
+                       <select
+                         value={globalSortBy}
+                         onChange={(e) => setGlobalSortBy(e.target.value)}
+                         className="border rounded px-1.5 py-0.5 bg-white cursor-pointer text-[11px]"
+                       >
+                         <option value="relevance">Relevance</option>
+                         <option value="date">Date Posted</option>
+                       </select>
+                     </label>
+                   </div>
                   {(submittedQuery || submittedLocation) && (
                     <button
                       onClick={() => setShowSaveSearchModal(true)}
@@ -417,10 +576,22 @@ export default function JobsPage() {
                       <div key={job._id} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative space-y-3">
                         <div className="flex justify-between items-start">
                           <div>
-                            <h4 className="font-bold text-sm text-gray-900">{job.jobTitle}</h4>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-sm text-gray-900">{job.jobTitle}</h4>
+                              {job.relevanceScore !== undefined && job.relevanceScore > 0 && (
+                                <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-1.5 py-0.5 rounded-full font-bold">
+                                  {Math.min(100, Math.round((job.relevanceScore / 130) * 100))}% Match
+                                </span>
+                              )}
+                              {job.skillsMatchedCount > 0 && (
+                                <span className="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200/60 px-1.5 py-0.5 rounded-full font-bold">
+                                  {job.skillsMatchedCount} skills matched
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs font-semibold text-primary mt-0.5">{job.companyName}</p>
                           </div>
-                          <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-medium capitalize">
+                          <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-medium capitalize shrink-0">
                             {job.workType} • {job.employmentType || 'full-time'}
                           </span>
                         </div>

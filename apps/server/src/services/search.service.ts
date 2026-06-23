@@ -1,5 +1,6 @@
 import { CanonicalJob } from '../models/CanonicalJob.model.js';
 import { SourceRegistry } from '../models/SourceRegistry.model.js';
+import { Profile } from '../models/Profile.model.js';
 import { ICanonicalJob } from '@jobtailor/shared-types';
 
 export interface ISearchParams {
@@ -12,11 +13,38 @@ export interface ISearchParams {
   sortBy?: 'relevance' | 'date';
   page?: number;
   limit?: number;
+  userId?: string;
+  employmentType?: string;
+  salaryMin?: number;
+}
+
+/**
+ * Maps common tech synonyms to regex pattern strings
+ */
+function getSynonymRegexString(word: string): string {
+  const lower = word.toLowerCase();
+  if (lower === 'react' || lower === 'reactjs' || lower === 'react.js') {
+    return '\\b(react(js|\\.js)?)\\b';
+  }
+  if (lower === 'node' || lower === 'node.js' || lower === 'nodejs') {
+    return '\\b(node(\\.js|js)?)\\b';
+  }
+  if (lower === 'devops' || lower === 'sre' || lower === 'site reliability') {
+    return '\\b(devops|sre|site reliability)\\b';
+  }
+  if (lower === 'typescript' || lower === 'ts') {
+    return '\\b(typescript|ts)\\b';
+  }
+  if (lower === 'javascript' || lower === 'js') {
+    return '\\b(javascript|js)\\b';
+  }
+  // Escape regex special characters for safety
+  return '\\b' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b';
 }
 
 export class SearchService {
   /**
-   * Search and rank canonical jobs based on keywords, freshness, and trust score.
+   * Search and rank canonical jobs based on keywords, synonyms, filters, freshness, and profile skills overlap.
    */
   static async searchJobs(params: ISearchParams) {
     const q = params.q?.trim();
@@ -28,6 +56,9 @@ export class SearchService {
     const sortBy = params.sortBy || 'relevance';
     const page = params.page || 1;
     const limit = params.limit || 20;
+    const userId = params.userId;
+    const employmentType = params.employmentType;
+    const salaryMin = params.salaryMin;
 
     const query: Record<string, any> = { isActive };
 
@@ -52,14 +83,40 @@ export class SearchService {
       query.lastSeenAt = { $gte: cutOffDate };
     }
 
-    // Keyword filtering
+    // Apply employment type filter
+    if (employmentType && employmentType !== 'all') {
+      query.employmentType = employmentType;
+    }
+
+    // Keyword filtering with synonym expansion
     if (q) {
-      const escapedQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const words = q.split(/\s+/).filter(w => w.trim().length > 0);
+      const regexPatterns = words.map(w => getSynonymRegexString(w));
+      const pattern = regexPatterns.join('|');
+      const regex = new RegExp(pattern, 'i');
+      
       query.$or = [
-        { jobTitle: { $regex: escapedQ, $options: 'i' } },
-        { companyName: { $regex: escapedQ, $options: 'i' } },
-        { description: { $regex: escapedQ, $options: 'i' } },
+        { jobTitle: regex },
+        { companyName: regex },
+        { description: regex },
       ];
+    }
+
+    // Apply salary minimum filter
+    if (salaryMin) {
+      const salaryFilter = {
+        $or: [
+          { 'salaryRange.min': { $gte: salaryMin } },
+          { 'salaryRange.max': { $gte: salaryMin } }
+        ]
+      };
+      if (query.$or) {
+        const keywordFilter = { $or: query.$or };
+        delete query.$or;
+        query.$and = [keywordFilter, salaryFilter];
+      } else {
+        query.$or = salaryFilter.$or;
+      }
     }
 
     // Fetch matching jobs and populate source trust score
@@ -67,6 +124,15 @@ export class SearchService {
       .populate('sourceId')
       .lean()
       .exec();
+
+    // Fetch user profile if provided for skill overlap boost
+    let userSkills: string[] = [];
+    if (userId) {
+      const profile = await Profile.findOne({ userId }).lean().exec();
+      if (profile && profile.skills) {
+        userSkills = profile.skills.map((s: any) => s.name.toLowerCase().trim());
+      }
+    }
 
     // Score jobs
     const scoredJobs = rawJobs.map((job: any) => {
@@ -92,24 +158,55 @@ export class SearchService {
           score += 20;
         }
 
-        // 3. Keyword overlap
-        const keywords = qLower.split(/\s+/).filter(k => k.length > 2);
-        for (const keyword of keywords) {
-          if (titleLower.includes(keyword)) score += 15;
-          if (companyLower.includes(keyword)) score += 10;
-          if (descLower.includes(keyword)) score += 2;
+        // 3. Keyword / Synonym overlap
+        const words = q.split(/\s+/).filter(w => w.trim().length >= 2);
+        for (const word of words) {
+          const patternStr = getSynonymRegexString(word);
+          const regex = new RegExp(patternStr, 'i');
+          
+          if (regex.test(titleLower)) score += 15;
+          if (regex.test(companyLower)) score += 10;
+          if (regex.test(descLower)) score += 2;
 
-          // Skills overlap from structured JD if parsed
           if (job.structuredJD?.requiredSkills) {
             const hasSkill = job.structuredJD.requiredSkills.some(
-              (s: string) => s.toLowerCase().includes(keyword)
+              (s: string) => regex.test(s)
             );
             if (hasSkill) score += 10;
           }
         }
       }
 
-      // 4. Freshness boost: jobs up to 30 days old get decay points
+      // 4. Personalized Profile Skill Match Boost (determinstic, no LLM)
+      let skillsMatchedCount = 0;
+      if (userSkills.length > 0) {
+        const titleLower = (job.jobTitle || '').toLowerCase();
+        const descLower = (job.description || '').toLowerCase();
+
+        for (const skill of userSkills) {
+          const escapedSkill = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const skillRegex = new RegExp(`\\b${escapedSkill}\\b`, 'i');
+          
+          const inTitle = skillRegex.test(titleLower);
+          const inDesc = skillRegex.test(descLower);
+          const inRequiredSkills = job.structuredJD?.requiredSkills?.some(
+            (s: string) => s.toLowerCase().trim() === skill
+          );
+
+          if (inTitle) {
+            score += 15;
+            skillsMatchedCount++;
+          } else if (inRequiredSkills) {
+            score += 10;
+            skillsMatchedCount++;
+          } else if (inDesc) {
+            score += 5;
+            skillsMatchedCount++;
+          }
+        }
+      }
+
+      // 5. Freshness boost: jobs up to 30 days old get decay points
       const postedDate = job.postedDate || job.createdAt || new Date();
       const ageInMs = Date.now() - new Date(postedDate).getTime();
       const ageInDays = Math.max(0, ageInMs / (24 * 60 * 60 * 1000));
@@ -117,7 +214,7 @@ export class SearchService {
         score += (30 - ageInDays);
       }
 
-      // 5. Source trust boost
+      // 6. Source trust boost
       const sourceRegistry = job.sourceId;
       if (sourceRegistry && typeof sourceRegistry.trustScore === 'number') {
         score += sourceRegistry.trustScore * 10;
@@ -126,19 +223,18 @@ export class SearchService {
       return {
         ...job,
         relevanceScore: score,
+        skillsMatchedCount,
       };
     });
 
     // Sort according to requested strategy
     if (sortBy === 'date') {
-      // Primary sort by postedDate/lastSeenAt descending
       scoredJobs.sort((a, b) => {
         const dateA = new Date(a.postedDate || a.lastSeenAt || 0).getTime();
         const dateB = new Date(b.postedDate || b.lastSeenAt || 0).getTime();
         return dateB - dateA;
       });
     } else {
-      // Primary sort by relevanceScore descending, fallback to date
       scoredJobs.sort((a, b) => {
         if (b.relevanceScore !== a.relevanceScore) {
           return b.relevanceScore - a.relevanceScore;

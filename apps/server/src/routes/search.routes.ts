@@ -11,7 +11,10 @@ import {
   listSources,
   createSource,
   cleanupJobs,
+  updateSavedSearch,
+  deleteSavedSearch,
 } from '../controllers/search.controller.js';
+import { listAlerts, markAlertAsRead } from '../controllers/alert.controller.js';
 
 const router = Router();
 router.use(authenticate);
@@ -40,10 +43,26 @@ const searchJobsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   freshnessDays: z.coerce.number().int().min(1).optional(),
+  employmentType: z.string().optional(),
+  salaryMin: z.coerce.number().int().min(0).optional(),
 });
 
 const createSavedSearchSchema = z.object({
   name: z.string().min(1, 'Saved search name is required'),
+  query: z.string().optional(),
+  filters: z.object({
+    location: z.string().optional(),
+    workType: z.enum(['remote', 'hybrid', 'onsite']).optional(),
+    companyName: z.string().optional(),
+  }).optional(),
+  alertSubscription: z.object({
+    emailEnabled: z.boolean(),
+    inAppEnabled: z.boolean(),
+  }).optional(),
+});
+
+const updateSavedSearchSchema = z.object({
+  name: z.string().optional(),
   query: z.string().optional(),
   filters: z.object({
     location: z.string().optional(),
@@ -74,11 +93,24 @@ const cleanupSchema = z.object({
 });
 
 // ─── Routes ────────────────────────────────────────────────────
+// Ingestion
 router.post('/ingest/url', validateBody(ingestUrlSchema), ingestUrl);
 router.post('/ingest/paste', validateBody(ingestPasteSchema), ingestPaste);
+
+// Search Query
 router.get('/', validateQuery(searchJobsQuerySchema), searchJobs);
+
+// Saved Searches alerts management
 router.post('/saved', validateBody(createSavedSearchSchema), createSavedSearch);
 router.get('/saved', listSavedSearches);
+router.patch('/saved/:id', validateBody(updateSavedSearchSchema), updateSavedSearch);
+router.delete('/saved/:id', deleteSavedSearch);
+
+// Alerts Inbox Delivery
+router.get('/alerts', listAlerts);
+router.patch('/alerts/:id/read', markAlertAsRead);
+
+// Source Registry Config & Maintenance
 router.post('/cleanup', validateBody(cleanupSchema), cleanupJobs);
 router.get('/sources', listSources);
 router.post('/sources', validateBody(createSourceSchema), createSource);

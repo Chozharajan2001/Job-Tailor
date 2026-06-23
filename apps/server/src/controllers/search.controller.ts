@@ -81,6 +81,9 @@ export async function searchJobs(req: Request, res: Response): Promise<void> {
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 20;
   const freshnessDays = req.query.freshnessDays ? parseInt(req.query.freshnessDays as string) : undefined;
+  const employmentType = req.query.employmentType as string;
+  const salaryMin = req.query.salaryMin ? parseInt(req.query.salaryMin as string) : undefined;
+  const userId = req.user?.userId;
 
   try {
     const result = await SearchService.searchJobs({
@@ -92,6 +95,9 @@ export async function searchJobs(req: Request, res: Response): Promise<void> {
       page,
       limit,
       freshnessDays,
+      employmentType,
+      salaryMin,
+      userId,
     });
 
     res.json({
@@ -155,6 +161,74 @@ export async function listSavedSearches(req: Request, res: Response): Promise<vo
     res.status(500).json({
       success: false,
       error: { code: 'SAVED_SEARCH_LIST_FAILED', message: 'Failed to retrieve saved searches.' },
+    });
+  }
+}
+
+/**
+ * PATCH /api/v1/search/saved/:id — Update a user's saved search criteria/settings.
+ */
+export async function updateSavedSearch(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const id = req.params.id as string;
+  const { name, query, filters, alertSubscription } = req.body;
+
+  try {
+    const savedSearch = await SavedSearchService.updateSavedSearch(userId, id, {
+      name,
+      query,
+      filters,
+      alertSubscription,
+    });
+
+    if (!savedSearch) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'SAVED_SEARCH_NOT_FOUND', message: 'Saved search not found or access denied.' },
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: { savedSearch },
+      message: 'Saved search updated successfully.',
+    });
+  } catch (error) {
+    console.error('Update saved search error:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'SAVED_SEARCH_UPDATE_FAILED', message: 'Failed to update saved search.' },
+    });
+  }
+}
+
+/**
+ * DELETE /api/v1/search/saved/:id — Delete a user's saved search.
+ */
+export async function deleteSavedSearch(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const id = req.params.id as string;
+
+  try {
+    const deleted = await SavedSearchService.deleteSavedSearch(userId, id);
+    if (!deleted) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'SAVED_SEARCH_NOT_FOUND', message: 'Saved search not found or access denied.' },
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Saved search deleted successfully.',
+    });
+  } catch (error) {
+    console.error('Delete saved search error:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'SAVED_SEARCH_DELETE_FAILED', message: 'Failed to delete saved search.' },
     });
   }
 }

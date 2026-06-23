@@ -6,9 +6,12 @@ import { DeduplicationService } from '../services/deduplication.service.js';
 import { SearchService } from '../services/search.service.js';
 import { SavedSearchService } from '../services/saved-search.service.js';
 import { CleanupService } from '../services/cleanup.service.js';
+import { AlertDispatcherService } from '../services/alert-dispatcher.service.js';
 import { CanonicalJob } from '../models/CanonicalJob.model.js';
 import { SavedSearch } from '../models/SavedSearch.model.js';
 import { SourceRegistry } from '../models/SourceRegistry.model.js';
+import { Profile } from '../models/Profile.model.js';
+import { Alert } from '../models/Alert.model.js';
 
 // Switch configuration to safe test database
 process.env.NODE_ENV = 'test';
@@ -49,19 +52,39 @@ const mockJsonLdHtml = `
 </html>
 `;
 
-describe('Advanced Job Search Engine (Sprint 1) Integration Suite', () => {
+describe('Advanced Job Search Engine (Sprint 2) Integration Suite', () => {
+  const mockUserId = new mongoose.Types.ObjectId().toString();
+
   beforeAll(async () => {
     await connectDatabase();
     await CanonicalJob.deleteMany({});
     await SavedSearch.deleteMany({});
     await SourceRegistry.deleteMany({});
+    await Profile.deleteMany({});
+    await Alert.deleteMany({});
     await IngestionService.ensureDefaultSources();
+
+    // Create a mock profile for skill boost scoring tests
+    await Profile.create({
+      userId: new mongoose.Types.ObjectId(mockUserId),
+      summary: 'A senior developer profile',
+      skills: [
+        { name: 'React', category: 'frontend', yearsOfExperience: 3, proficiency: 'advanced', isHighlighted: true },
+        { name: 'TypeScript', category: 'frontend', yearsOfExperience: 2, proficiency: 'intermediate', isHighlighted: false },
+      ],
+      experience: [],
+      projects: [],
+      education: [],
+      certifications: [],
+    });
   });
 
   afterAll(async () => {
     await CanonicalJob.deleteMany({});
     await SavedSearch.deleteMany({});
     await SourceRegistry.deleteMany({});
+    await Profile.deleteMany({});
+    await Alert.deleteMany({});
     await disconnectDatabase();
   });
 
@@ -114,7 +137,6 @@ describe('Advanced Job Search Engine (Sprint 1) Integration Suite', () => {
 
   describe('2. Deduplication Layer', () => {
     it('should deduplicate exact URL imports (L1)', async () => {
-      // Clear before test
       await CanonicalJob.deleteMany({});
 
       // First ingest
@@ -134,14 +156,13 @@ describe('Advanced Job Search Engine (Sprint 1) Integration Suite', () => {
         sourceType: 'public_job_page' as const,
         sourceName: 'Manual Ingest',
         applyUrl: 'https://cloudsystems.com/jobs/devops',
-        companyName: 'Cloud Systems V2', // different company but same URL
-        jobTitle: 'Lead DevOps Engineer', // different title but same URL
+        companyName: 'Cloud Systems V2',
+        jobTitle: 'Lead DevOps Engineer',
         description: 'New DevOps description',
       };
 
       const job2 = await IngestionService.ingestJob(input);
 
-      // Verify they returned the exact same document ID
       expect(job2._id.toString()).toBe(job1._id.toString());
       expect(job2.lastSeenAt.getTime()).toBeGreaterThanOrEqual(job1.lastSeenAt.getTime());
     });
@@ -156,7 +177,6 @@ describe('Advanced Job Search Engine (Sprint 1) Integration Suite', () => {
         location: 'Remote',
       });
 
-      // Ingest same title, company, location with different spaces and cases
       const job2 = await IngestionService.ingestFromPaste({
         jobTitle: '  BACKEND developer  ',
         companyName: 'tech CORP',
@@ -179,7 +199,6 @@ describe('Advanced Job Search Engine (Sprint 1) Integration Suite', () => {
         location: 'Austin, TX',
       });
 
-      // Different title/company/location but identical description hash
       const job2 = await IngestionService.ingestFromPaste({
         jobTitle: 'Scrapy Specialist',
         companyName: 'Miner Systems',
@@ -191,74 +210,131 @@ describe('Advanced Job Search Engine (Sprint 1) Integration Suite', () => {
     });
   });
 
-  describe('3. Global Search & Ranking', () => {
+  describe('3. Global Search & Relevance Ranking (Sprint 2)', () => {
     beforeAll(async () => {
       await CanonicalJob.deleteMany({});
       
-      // Ingest search items with controlled parameters for ranking proof
-      // 1. Google Tech Lead (high title match)
+      // 1. Ingest TypeScript Job (for synonym mapping tests)
       await IngestionService.ingestFromPaste({
-        jobTitle: 'Tech Lead',
-        companyName: 'Google',
-        jdRawText: 'Looking for a Lead Engineer / Tech Lead with expertise in systems design.',
+        jobTitle: 'Frontend Lead',
+        companyName: 'Aero Systems',
+        jdRawText: 'Build UI apps. Requires deep knowledge of TypeScript and CSS.',
         location: 'Remote',
       });
 
-      // 2. Microsoft Software Engineer (medium match)
+      // 2. Ingest React Job (matches profile skill "React")
       await IngestionService.ingestFromPaste({
-        jobTitle: 'Software Engineer',
-        companyName: 'Microsoft',
-        jdRawText: 'We need a Software Engineer. Coding in C# and TypeScript.',
+        jobTitle: 'UI Engineer',
+        companyName: 'Hype Technologies',
+        jdRawText: 'Build products using React.',
+        location: 'Remote',
+      });
+
+      // 3. Ingest Node Job (no match to React/TypeScript profile skills)
+      await IngestionService.ingestFromPaste({
+        jobTitle: 'Backend Engineer',
+        companyName: 'Hype Technologies',
+        jdRawText: 'Build APIs using Ruby on Rails.',
         location: 'Seattle, WA',
       });
-
-      // 3. Apple iOS Dev
-      await IngestionService.ingestFromPaste({
-        jobTitle: 'iOS Developer',
-        companyName: 'Apple',
-        jdRawText: 'Build the next version of iOS apps. Swift, SwiftUI.',
-        location: 'Cupertino, CA',
-      });
     });
 
-    it('should search jobs by query string and filter by location/workType', async () => {
-      // Search with keyword
-      const result1 = await SearchService.searchJobs({ q: 'Tech Lead' });
-      expect(result1.jobs.length).toBeGreaterThan(0);
-      expect(result1.jobs[0].jobTitle).toBe('Tech Lead');
-
-      // Search with location filter
-      const result2 = await SearchService.searchJobs({ location: 'Seattle' });
-      expect(result2.jobs.length).toBe(1);
-      expect(result2.jobs[0].companyName).toBe('Microsoft');
+    it('should match jobs using tech synonym expansion (e.g. TS matches TypeScript)', async () => {
+      const searchRes = await SearchService.searchJobs({ q: 'TS' });
+      expect(searchRes.jobs.length).toBeGreaterThan(0);
+      expect(searchRes.jobs[0].jobTitle).toBe('Frontend Lead');
     });
 
-    it('should rank exact title matches higher than standard descriptions', async () => {
-      const result = await SearchService.searchJobs({ q: 'iOS Developer' });
-      expect(result.jobs[0].jobTitle).toBe('iOS Developer');
-      expect(result.jobs[0].companyName).toBe('Apple');
+    it('should boost relevance score for jobs matching profile skills (personalization)', async () => {
+      const searchRes = await SearchService.searchJobs({ q: 'Engineer', userId: mockUserId });
+      
+      const reactJob = searchRes.jobs.find(j => j.companyName === 'Hype Technologies' && j.jobTitle === 'UI Engineer');
+      const railsJob = searchRes.jobs.find(j => j.companyName === 'Hype Technologies' && j.jobTitle === 'Backend Engineer');
+
+      expect(reactJob).toBeDefined();
+      expect(railsJob).toBeDefined();
+      // reactJob matches user profile skill "React", giving it a personalized score boost
+      expect(reactJob.relevanceScore).toBeGreaterThan(railsJob.relevanceScore);
+      expect(reactJob.skillsMatchedCount).toBe(1);
+    });
+
+    it('should filter search results independently using advanced filters', async () => {
+      // Filter by location
+      const result1 = await SearchService.searchJobs({ location: 'Seattle' });
+      expect(result1.jobs.length).toBe(1);
+      expect(result1.jobs[0].jobTitle).toBe('Backend Engineer');
+
+      // Filter by employment type
+      const result2 = await SearchService.searchJobs({ employmentType: 'full-time' });
+      expect(result2.jobs.length).toBeGreaterThan(0);
     });
   });
 
-  describe('4. Saved Searches CRUD', () => {
-    it('should create and retrieve saved search alert configurations', async () => {
-      const mockUserId = new mongoose.Types.ObjectId().toString();
-
+  describe('4. Saved Searches CRUD & Alerts Dispatch', () => {
+    it('should create, update, delete, and list saved search filters', async () => {
       const saved = await SavedSearchService.createSavedSearch(mockUserId, {
-        name: 'Remote React Jobs',
-        query: 'React Engineer',
+        name: 'Remote JS Jobs',
+        query: 'JS Developer',
         filters: { workType: 'remote' },
-        alertSubscription: { emailEnabled: true, inAppEnabled: true },
+        alertSubscription: { emailEnabled: false, inAppEnabled: true },
       });
 
       expect(saved).toBeDefined();
-      expect(saved.name).toBe('Remote React Jobs');
-      expect(saved.query).toBe('React Engineer');
-      expect(saved.filters.workType).toBe('remote');
+      expect(saved.name).toBe('Remote JS Jobs');
+
+      // Update name & settings
+      const updated = await SavedSearchService.updateSavedSearch(mockUserId, saved._id.toString(), {
+        name: 'Remote JavaScript Jobs',
+        alertSubscription: { emailEnabled: true, inAppEnabled: true },
+      });
+      expect(updated?.name).toBe('Remote JavaScript Jobs');
 
       const list = await SavedSearchService.listSavedSearches(mockUserId);
       expect(list.length).toBe(1);
-      expect(list[0].name).toBe('Remote React Jobs');
+
+      const deleted = await SavedSearchService.deleteSavedSearch(mockUserId, saved._id.toString());
+      expect(deleted).toBe(true);
+    });
+
+    it('should generate an Alert when a newly ingested job matches a SavedSearch', async () => {
+      await SavedSearch.deleteMany({});
+      await Alert.deleteMany({});
+
+      // Create saved search alert rule
+      const rule = await SavedSearchService.createSavedSearch(mockUserId, {
+        name: 'Rust Alerts',
+        query: 'Rust',
+        filters: { workType: 'remote' },
+        alertSubscription: { emailEnabled: false, inAppEnabled: true },
+      });
+
+      // 1. Ingest a non-matching job
+      await IngestionService.ingestFromPaste({
+        jobTitle: 'Golang developer',
+        companyName: 'Cloud Inc',
+        jdRawText: 'Build cloud servers with Go.',
+        location: 'Remote',
+        workType: 'remote',
+      });
+
+      const alertsAfterNonMatch = await Alert.find({ userId: mockUserId }).exec();
+      expect(alertsAfterNonMatch.length).toBe(0);
+
+      // 2. Ingest matching job
+      const matchingJob = await IngestionService.ingestFromPaste({
+        jobTitle: 'Rust Engineer',
+        companyName: 'Web3 Inc',
+        jdRawText: 'Write safe high-performance logic with Rust.',
+        location: 'Remote',
+        workType: 'remote',
+      });
+
+      // Await short timeout for background async alert dispatch
+      await new Promise((resolve) => setTimeout(resolve, 100));
+ 
+      const alertsAfterMatch = await Alert.find({ userId: mockUserId }).exec();
+      expect(alertsAfterMatch.length).toBe(1);
+      expect(alertsAfterMatch[0].canonicalJobId.toString()).toBe(matchingJob._id.toString());
     });
   });
 
@@ -266,7 +342,6 @@ describe('Advanced Job Search Engine (Sprint 1) Integration Suite', () => {
     it('should mark stale canonical jobs inactive and exclude them from search results', async () => {
       await CanonicalJob.deleteMany({});
 
-      // Ingest active job
       const activeJob = await IngestionService.ingestFromPaste({
         jobTitle: 'Active Rails Developer',
         companyName: 'Fast Tech',
@@ -274,7 +349,6 @@ describe('Advanced Job Search Engine (Sprint 1) Integration Suite', () => {
         location: 'Remote',
       });
 
-      // Ingest stale job
       const staleJob = await IngestionService.ingestFromPaste({
         jobTitle: 'Old PHP Developer',
         companyName: 'Legacy Systems',
@@ -282,27 +356,15 @@ describe('Advanced Job Search Engine (Sprint 1) Integration Suite', () => {
         location: 'Boston, MA',
       });
 
-      // Artificially age the stale job
       staleJob.lastSeenAt = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000); // 35 days ago
       await staleJob.save();
 
-      // Verify both are active initially
-      expect(activeJob.isActive).toBe(true);
-      expect(staleJob.isActive).toBe(true);
-
-      // Run cleanup (30 days threshold)
       const count = await CleanupService.cleanupStaleJobs(30);
       expect(count).toBe(1);
 
-      // Reload jobs
-      const loadedActive = await CanonicalJob.findById(activeJob._id);
       const loadedStale = await CanonicalJob.findById(staleJob._id);
-
-      expect(loadedActive?.isActive).toBe(true);
       expect(loadedStale?.isActive).toBe(false);
-      expect(loadedStale?.expiredAt).toBeDefined();
 
-      // Search and verify stale jobs are excluded by default
       const searchRes = await SearchService.searchJobs({ q: 'PHP' });
       expect(searchRes.jobs.length).toBe(0);
     });

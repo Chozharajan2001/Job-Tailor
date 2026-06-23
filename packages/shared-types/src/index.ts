@@ -363,4 +363,15 @@ export interface IJobIngestionInput {
   structuredJD?: IParsedJD;
 }
 
+export interface IAlert {
+  _id?: ID;
+  userId: ID;
+  savedSearchId: ID;
+  canonicalJobId: any; // Can be populated with ICanonicalJob or string ID
+  isRead: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+
 

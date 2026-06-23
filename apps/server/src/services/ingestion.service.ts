@@ -1,6 +1,7 @@
 import { SourceRegistry } from '../models/SourceRegistry.model.js';
 import { CanonicalJob, ICanonicalJobDocument } from '../models/CanonicalJob.model.js';
 import { DeduplicationService } from './deduplication.service.js';
+import { AlertDispatcherService } from './alert-dispatcher.service.js';
 import { parseJD } from './jd-parser.service.js';
 import { URL } from 'url';
 import { IJobIngestionInput } from '@jobtailor/shared-types';
@@ -133,6 +134,11 @@ export class IngestionService {
       firstSeenAt: new Date(),
       lastSeenAt: new Date(),
       isActive: true,
+    });
+
+    // 8. Dispatch alerts for new canonical job
+    AlertDispatcherService.dispatchAlertsForJob(canonicalJob).catch((err) => {
+      console.error('Failed to dispatch alerts for job:', err);
     });
 
     return canonicalJob;
