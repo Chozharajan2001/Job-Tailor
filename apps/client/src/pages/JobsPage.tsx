@@ -52,6 +52,25 @@ export default function JobsPage() {
   const [workTypeFilter, setWorkTypeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
 
+  // ─── Tab State ────────────────────────────────────────────────
+  const [activeSearchTab, setActiveSearchTab] = useState<'tracker' | 'global'>('tracker');
+
+  // ─── Global Search States ────────────────────────────────────
+  const [globalSearchInput, setGlobalSearchInput] = useState('');
+  const [globalLocationInput, setGlobalLocationInput] = useState('');
+  const [globalWorkType, setGlobalWorkType] = useState('all');
+  const [globalSortBy, setGlobalSortBy] = useState('relevance');
+  const [globalPage, setGlobalPage] = useState(1);
+  const [submittedQuery, setSubmittedQuery] = useState('');
+  const [submittedLocation, setSubmittedLocation] = useState('');
+
+  const [selectedSearchJob, setSelectedSearchJob] = useState<any | null>(null);
+  const [saveSearchName, setSaveSearchName] = useState('');
+  const [showSaveSearchModal, setShowSaveSearchModal] = useState(false);
+
+  // Ingestion States
+  const [ingestUrlInput, setIngestUrlInput] = useState('');
+
   const quickATSMutation = useMutation({
     mutationFn: async (jobId: string) => {
       const response = await api.post<{
@@ -84,6 +103,72 @@ export default function JobsPage() {
     queryFn: () => api.get<{ resumes: IResume[] }>('/resumes'),
   });
   const resumes = resumesRes?.data?.resumes || [];
+
+  // ─── Global Search Queries ──────────────────────────────────
+  const { data: searchRes, isLoading: isSearching } = useQuery({
+    queryKey: ['global-search', submittedQuery, submittedLocation, globalWorkType, globalSortBy, globalPage],
+    queryFn: () => api.get<{ jobs: any[]; pagination: { total: number; page: number; pages: number; limit: number } }>(
+      `/search?q=${encodeURIComponent(submittedQuery)}&location=${encodeURIComponent(submittedLocation)}&workType=${globalWorkType}&sortBy=${globalSortBy}&page=${globalPage}&limit=10`
+    ),
+    enabled: activeSearchTab === 'global' && (!!submittedQuery || !!submittedLocation),
+  });
+  const searchJobsList = searchRes?.data?.jobs || [];
+  const searchPagination = searchRes?.data?.pagination;
+
+  const { data: savedSearchesRes, refetch: refetchSavedSearches } = useQuery({
+    queryKey: ['saved-searches'],
+    queryFn: () => api.get<{ savedSearches: any[] }>('/search/saved'),
+    enabled: activeSearchTab === 'global',
+  });
+  const savedSearches = savedSearchesRes?.data?.savedSearches || [];
+
+  const { data: sourcesRes } = useQuery({
+    queryKey: ['search-sources'],
+    queryFn: () => api.get<{ sources: any[] }>('/search/sources'),
+    enabled: activeSearchTab === 'global',
+  });
+  const searchSources = sourcesRes?.data?.sources || [];
+
+  // ─── Ingest mutations ───────────────────────────────────────
+  const ingestUrlMutation = useMutation({
+    mutationFn: (url: string) => api.post('/search/ingest/url', { url }),
+    onSuccess: (res: any) => {
+      setIngestUrlInput('');
+      queryClient.invalidateQueries({ queryKey: ['global-search'] });
+      alert(`Job successfully crawled & indexed: "${res.data.job.jobTitle}" at ${res.data.job.companyName}`);
+    },
+    onError: (err: any) => {
+      alert(`Ingestion failed: ${err?.response?.data?.error?.message || err.message}`);
+    },
+  });
+
+  const saveSearchMutation = useMutation({
+    mutationFn: (data: { name: string; query?: string; filters: any }) =>
+      api.post('/search/saved', data),
+    onSuccess: () => {
+      refetchSavedSearches();
+      setShowSaveSearchModal(false);
+      setSaveSearchName('');
+      alert('Search alert saved successfully!');
+    },
+  });
+
+  const importToTrackerMutation = useMutation({
+    mutationFn: (job: any) =>
+      api.post<{ job: IJob }>('/jobs', {
+        companyName: job.companyName,
+        jobTitle: job.jobTitle,
+        location: job.location,
+        workType: job.workType,
+        employmentType: job.employmentType || 'full-time',
+        jdRawText: job.description,
+        jobLink: job.applyUrl || job.sourceUrl,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      alert('Job successfully imported to your tracker!');
+    },
+  });
 
   // ─── Create Job Mutation ─────────────────────────────────────
   const createJobMutation = useMutation({
@@ -149,160 +234,466 @@ export default function JobsPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Jobs</h1>
-          <p className="text-muted-foreground mt-1">
-            {sortedJobs.length === jobs.length 
-              ? `${jobs.length} jobs tracked` 
-              : `${sortedJobs.length} of ${jobs.length} matching`}
-          </p>
-        </div>
-        <div className="flex gap-3">
-          {/* Add Job Button */}
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors cursor-pointer"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
-            Add Job
-          </button>
-        </div>
+      {/* Sliding Tab Selector */}
+      <div className="flex border-b border-gray-200 bg-gray-50/50 p-1.5 rounded-xl">
+        <button
+          onClick={() => setActiveSearchTab('tracker')}
+          className={`flex-1 py-2.5 text-center font-bold transition-all rounded-lg cursor-pointer text-sm ${
+            activeSearchTab === 'tracker'
+              ? 'bg-white text-primary shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          🗂️ My Tracker ({jobs.length})
+        </button>
+        <button
+          onClick={() => setActiveSearchTab('global')}
+          className={`flex-1 py-2.5 text-center font-bold transition-all rounded-lg cursor-pointer text-sm ${
+            activeSearchTab === 'global'
+              ? 'bg-white text-primary shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          🔍 Global Job Search
+        </button>
       </div>
 
-      {/* Search & Filters Controls */}
-      <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
-        <div className="flex flex-col md:flex-row gap-3">
-          <div className="flex-1 relative">
-            <span className="absolute inset-y-0 left-3 flex items-center text-gray-400">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </span>
-            <input
-              type="text"
-              placeholder="Search by title, company, or location..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600 text-sm font-bold"
-              >
-                &times;
-              </button>
-            )}
+      {activeSearchTab === 'global' ? (
+        <div className="space-y-6">
+          {/* Global Search Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold">Global Job Search</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Discover, crawl, and index job postings across public careers web pages.</p>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border rounded-lg text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
-            >
-              <option value="all">All Statuses</option>
-              <option value="saved">Saved</option>
-              <option value="applied">Applied</option>
-              <option value="screening">Screening</option>
-              <option value="interview">Interview</option>
-              <option value="offer">Offer</option>
-              <option value="rejected">Rejected</option>
-            </select>
-            <select
-              value={workTypeFilter}
-              onChange={(e) => setWorkTypeFilter(e.target.value)}
-              className="px-3 py-2 border rounded-lg text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
-            >
-              <option value="all">All Work Types</option>
-              <option value="remote">Remote</option>
-              <option value="hybrid">Hybrid</option>
-              <option value="onsite">Onsite</option>
-            </select>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="px-3 py-2 border rounded-lg text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
-            >
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="company">Company (A-Z)</option>
-              <option value="title">Title (A-Z)</option>
-            </select>
-          </div>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Job List */}
-        <div className="lg:col-span-1 space-y-3 max-h-[calc(100vh-12rem)] overflow-y-auto pr-2">
-          {isLoading ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="animate-pulse border rounded-lg p-4 h-28 bg-gray-100" />
-            ))
-          ) : jobs.length === 0 ? (
-            <div className="text-center py-12 border rounded-lg">
-              <p className="text-muted-foreground mb-3">No jobs yet</p>
-              <button onClick={() => setShowModal(true)} className="px-4 py-2 bg-primary text-white rounded-lg text-sm cursor-pointer hover:bg-primary/90">Add Your First Job</button>
-            </div>
-          ) : sortedJobs.length === 0 ? (
-            <div className="text-center py-12 border border-dashed rounded-lg bg-gray-50/50">
-              <p className="text-muted-foreground text-sm">No matching jobs found</p>
-              <button 
-                onClick={() => { setSearchQuery(''); setStatusFilter('all'); setWorkTypeFilter('all'); }} 
-                className="mt-2 text-xs font-semibold text-primary hover:underline cursor-pointer"
-              >
-                Clear Filters
-              </button>
-            </div>
-          ) : (
-            sortedJobs.map((job) => (
-              <button
-                key={job._id}
-                onClick={() => setSelectedJobId(job._id)}
-                className={`w-full text-left border rounded-lg p-4 transition-all hover:shadow-md cursor-pointer ${
-                  selectedJobId === job._id ? 'border-primary ring-1 ring-primary/20' : 'hover:border-gray-300'
-                }`}
-              >
-                <h3 className="font-semibold text-sm truncate">{job.jobTitle}</h3>
-                <p className="text-sm text-muted-foreground mt-0.5">{job.companyName}</p>
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{job.location}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">{job.workType}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${statusColor(job.status)}`}>{job.status}</span>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column: URL Crawling & Saved Searches */}
+            <div className="space-y-4">
+              {/* Crawler Form */}
+              <div className="bg-white border rounded-xl p-5 shadow-sm space-y-3">
+                <h3 className="font-semibold text-sm">🌐 Index Job via URL</h3>
+                <p className="text-xs text-muted-foreground">Paste a link to any public company job page to crawl, extract meta JSON-LD details, and register.</p>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="https://lever.co/company/job-id..."
+                    value={ingestUrlInput}
+                    onChange={(e) => setIngestUrlInput(e.target.value)}
+                    className="w-full px-3 py-1.5 border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <button
+                    disabled={ingestUrlMutation.isPending || !ingestUrlInput.trim()}
+                    onClick={() => ingestUrlMutation.mutate(ingestUrlInput)}
+                    className="w-full py-2 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary/95 disabled:opacity-50 cursor-pointer block transition-colors text-center"
+                  >
+                    {ingestUrlMutation.isPending ? 'Crawling & Parsing...' : 'Index Job URL'}
+                  </button>
                 </div>
-                {!job.parsedJD && (
-                  <span className="inline-block mt-2 text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded">Not parsed</span>
-                )}
-              </button>
-            ))
-          )}
-        </div>
+              </div>
 
-        {/* Job Detail / Parsed JD Panel */}
-        <div className="lg:col-span-2">
-          {selectedJob ? (
-            <JobDetailPanel
-              job={selectedJob}
-              isParsing={parseJDMutation.isPending}
-              onParse={() => parseJDMutation.mutate(selectedJob._id)}
-              onCreateApplication={() => {
-                setSelectedJobId(selectedJob._id);
-                setShowApplicationModal(true);
-              }}
-              onQuickATSCheck={() => {
-                setShowQuickATSModal(true);
-                quickATSMutation.mutate(selectedJob._id);
-              }}
-            />
-          ) : (
-            <div className="border rounded-xl h-[500px] flex items-center justify-center text-muted-foreground">
-              <p>Select a job to view details</p>
+              {/* Saved Alert criteria */}
+              <div className="bg-white border rounded-xl p-5 shadow-sm space-y-3">
+                <h3 className="font-semibold text-sm">🔔 Saved Search Alerts</h3>
+                {savedSearches.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No saved search alerts found.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {savedSearches.map((s) => (
+                      <button
+                        key={s._id}
+                        onClick={() => {
+                          setGlobalSearchInput(s.query || '');
+                          setGlobalLocationInput(s.filters?.location || '');
+                          setGlobalWorkType(s.filters?.workType || 'all');
+                          setSubmittedQuery(s.query || '');
+                          setSubmittedLocation(s.filters?.location || '');
+                          setGlobalPage(1);
+                        }}
+                        className="w-full text-left p-2.5 border rounded-lg hover:bg-gray-50/50 cursor-pointer block transition-colors text-xs space-y-1"
+                      >
+                        <div className="font-semibold text-gray-700">{s.name}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {s.query && `Query: "${s.query}"`} {s.filters?.location && `• Loc: ${s.filters.location}`} {s.filters?.workType && `• ${s.filters.workType}`}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+
+            {/* Right Column: Keyword Search & Filter results */}
+            <div className="lg:col-span-2 space-y-4">
+              {/* Query filters */}
+              <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
+                <div className="flex flex-col md:flex-row gap-2">
+                  <input
+                    type="text"
+                    placeholder="Search by keywords, title, skills..."
+                    value={globalSearchInput}
+                    onChange={(e) => setGlobalSearchInput(e.target.value)}
+                    className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Location"
+                    value={globalLocationInput}
+                    onChange={(e) => setGlobalLocationInput(e.target.value)}
+                    className="w-full md:w-48 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <button
+                    onClick={() => {
+                      setSubmittedQuery(globalSearchInput);
+                      setSubmittedLocation(globalLocationInput);
+                      setGlobalPage(1);
+                    }}
+                    className="px-5 py-2 bg-primary text-white font-semibold rounded-lg hover:bg-primary/95 text-sm cursor-pointer"
+                  >
+                    Search
+                  </button>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t text-xs">
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-1">
+                      <span>Work Type:</span>
+                      <select
+                        value={globalWorkType}
+                        onChange={(e) => setGlobalWorkType(e.target.value)}
+                        className="border rounded px-1.5 py-0.5 bg-white cursor-pointer"
+                      >
+                        <option value="all">All</option>
+                        <option value="remote">Remote</option>
+                        <option value="hybrid">Hybrid</option>
+                        <option value="onsite">On-site</option>
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-1">
+                      <span>Sort By:</span>
+                      <select
+                        value={globalSortBy}
+                        onChange={(e) => setGlobalSortBy(e.target.value)}
+                        className="border rounded px-1.5 py-0.5 bg-white cursor-pointer"
+                      >
+                        <option value="relevance">Relevance</option>
+                        <option value="date">Date Posted</option>
+                      </select>
+                    </label>
+                  </div>
+                  {(submittedQuery || submittedLocation) && (
+                    <button
+                      onClick={() => setShowSaveSearchModal(true)}
+                      className="text-primary font-semibold hover:underline cursor-pointer"
+                    >
+                      💾 Save Search Alert
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Crawled Results Feed */}
+              <div className="space-y-3">
+                {isSearching ? (
+                  <div className="py-12 flex flex-col items-center justify-center space-y-2 text-muted-foreground text-sm">
+                    <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+                    <span>Searching canonical listings...</span>
+                  </div>
+                ) : !submittedQuery && !submittedLocation ? (
+                  <div className="text-center py-16 border rounded-xl bg-gray-50/50 space-y-2">
+                    <span className="text-2xl">🔎</span>
+                    <p className="text-sm font-medium text-gray-500">Run a search above or paste a job link in the left panel to crawl and query jobs.</p>
+                  </div>
+                ) : searchJobsList.length === 0 ? (
+                  <div className="text-center py-16 border border-dashed rounded-xl bg-gray-50/50">
+                    <p className="text-sm text-muted-foreground">No matching postings in our canonical database.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-xs text-muted-foreground px-1">
+                      Found {searchPagination?.total || 0} matching jobs
+                    </div>
+                    {searchJobsList.map((job) => (
+                      <div key={job._id} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative space-y-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-bold text-sm text-gray-900">{job.jobTitle}</h4>
+                            <p className="text-xs font-semibold text-primary mt-0.5">{job.companyName}</p>
+                          </div>
+                          <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-medium capitalize">
+                            {job.workType} • {job.employmentType || 'full-time'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{job.description}</p>
+                        <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1.5 border-t">
+                          <div>
+                            <span>Source: <strong className="text-gray-600">{job.sourceName}</strong></span>
+                            <span className="mx-2">•</span>
+                            <span>Seen {new Date(job.firstSeenAt).toLocaleDateString()}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setSelectedSearchJob(job)}
+                              className="px-2.5 py-1 border rounded text-gray-600 hover:bg-gray-50 cursor-pointer"
+                            >
+                              View Details
+                            </button>
+                            <button
+                              disabled={importToTrackerMutation.isPending}
+                              onClick={() => importToTrackerMutation.mutate(job)}
+                              className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded font-semibold cursor-pointer"
+                            >
+                              Import to Tracker
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Pagination */}
+                    {searchPagination && searchPagination.pages > 1 && (
+                      <div className="flex justify-center gap-1.5 pt-2">
+                        {Array.from({ length: searchPagination.pages }).map((_, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setGlobalPage(i + 1)}
+                            className={`px-2.5 py-1 border rounded text-xs font-semibold cursor-pointer ${
+                              globalPage === i + 1 ? 'bg-primary text-white border-primary' : 'bg-white hover:bg-gray-50 text-gray-600'
+                            }`}
+                          >
+                            {i + 1}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Search & Filters Controls */}
+          <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex-1 relative">
+                <span className="absolute inset-y-0 left-3 flex items-center text-gray-400">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </span>
+                <input
+                  type="text"
+                  placeholder="Search by title, company, or location..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600 text-sm font-bold"
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="px-3 py-2 border rounded-lg text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="saved">Saved</option>
+                  <option value="applied">Applied</option>
+                  <option value="screening">Screening</option>
+                  <option value="interview">Interview</option>
+                  <option value="offer">Offer</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+                <select
+                  value={workTypeFilter}
+                  onChange={(e) => setWorkTypeFilter(e.target.value)}
+                  className="px-3 py-2 border rounded-lg text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                >
+                  <option value="all">All Work Types</option>
+                  <option value="remote">Remote</option>
+                  <option value="hybrid">Hybrid</option>
+                  <option value="onsite">Onsite</option>
+                </select>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-3 py-2 border rounded-lg text-xs bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                >
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="company">Company (A-Z)</option>
+                  <option value="title">Title (A-Z)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Job List */}
+            <div className="lg:col-span-1 space-y-3 max-h-[calc(100vh-12rem)] overflow-y-auto pr-2">
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="animate-pulse border rounded-lg p-4 h-28 bg-gray-100" />
+                ))
+              ) : jobs.length === 0 ? (
+                <div className="text-center py-12 border rounded-lg">
+                  <p className="text-muted-foreground mb-3">No jobs yet</p>
+                  <button onClick={() => setShowModal(true)} className="px-4 py-2 bg-primary text-white rounded-lg text-sm cursor-pointer hover:bg-primary/90">Add Your First Job</button>
+                </div>
+              ) : sortedJobs.length === 0 ? (
+                <div className="text-center py-12 border border-dashed rounded-lg bg-gray-50/50">
+                  <p className="text-muted-foreground text-sm">No matching jobs found</p>
+                  <button 
+                    onClick={() => { setSearchQuery(''); setStatusFilter('all'); setWorkTypeFilter('all'); }} 
+                    className="mt-2 text-xs font-semibold text-primary hover:underline cursor-pointer"
+                  >
+                    Clear Filters
+                  </button>
+                </div>
+              ) : (
+                sortedJobs.map((job) => (
+                  <button
+                    key={job._id}
+                    onClick={() => setSelectedJobId(job._id)}
+                    className={`w-full text-left border rounded-lg p-4 transition-all hover:shadow-md cursor-pointer ${
+                      selectedJobId === job._id ? 'border-primary ring-1 ring-primary/20' : 'hover:border-gray-300'
+                    }`}
+                  >
+                    <h3 className="font-semibold text-sm truncate">{job.jobTitle}</h3>
+                    <p className="text-sm text-muted-foreground mt-0.5">{job.companyName}</p>
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{job.location}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">{job.workType}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${statusColor(job.status)}`}>{job.status}</span>
+                    </div>
+                    {!job.parsedJD && (
+                      <span className="inline-block mt-2 text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded">Not parsed</span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* Job Detail / Parsed JD Panel */}
+            <div className="lg:col-span-2">
+              {selectedJob ? (
+                <JobDetailPanel
+                  job={selectedJob}
+                  isParsing={parseJDMutation.isPending}
+                  onParse={() => parseJDMutation.mutate(selectedJob._id)}
+                  onCreateApplication={() => {
+                    setSelectedJobId(selectedJob._id);
+                    setShowApplicationModal(true);
+                  }}
+                  onQuickATSCheck={() => {
+                    setShowQuickATSModal(true);
+                    quickATSMutation.mutate(selectedJob._id);
+                  }}
+                />
+              ) : (
+                <div className="border rounded-xl h-[500px] flex items-center justify-center text-muted-foreground">
+                  <p>Select a job to view details</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Canonical Job Details modal */}
+      {selectedSearchJob && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setSelectedSearchJob(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b flex justify-between items-center bg-gray-50">
+              <div>
+                <h3 className="font-bold text-lg text-gray-900">{selectedSearchJob.jobTitle}</h3>
+                <p className="text-sm font-semibold text-primary mt-0.5">{selectedSearchJob.companyName}</p>
+              </div>
+              <button onClick={() => setSelectedSearchJob(null)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">&times;</button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <div className="flex gap-2 flex-wrap text-xs">
+                <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600">Location: {selectedSearchJob.location}</span>
+                <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700">Work Type: {selectedSearchJob.workType}</span>
+                {selectedSearchJob.employmentType && <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700">Type: {selectedSearchJob.employmentType}</span>}
+                {selectedSearchJob.sourceUrl && <a href={selectedSearchJob.sourceUrl} target="_blank" rel="noopener noreferrer" className="px-2 py-0.5 rounded bg-green-50 text-green-700 hover:underline">Source Link ↗</a>}
+              </div>
+              <div className="space-y-2">
+                <h4 className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Job Description</h4>
+                <div className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-4 rounded-lg border max-h-[50vh] overflow-y-auto">
+                  {selectedSearchJob.description}
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t flex justify-end gap-3 bg-gray-50">
+              <button onClick={() => setSelectedSearchJob(null)} className="px-4 py-2 border rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer bg-white">
+                Close
+              </button>
+              <button
+                disabled={importToTrackerMutation.isPending}
+                onClick={() => {
+                  importToTrackerMutation.mutate(selectedSearchJob);
+                  setSelectedSearchJob(null);
+                }}
+                className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg cursor-pointer"
+              >
+                {importToTrackerMutation.isPending ? 'Importing...' : 'Import to Tracker'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Search Modal */}
+      {showSaveSearchModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowSaveSearchModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+              <h3 className="font-bold text-sm">Save Search Alert</h3>
+              <button onClick={() => setShowSaveSearchModal(false)} className="text-gray-400 hover:text-gray-600 text-sm font-bold leading-none">&times;</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <label className="block text-xs font-medium space-y-1">
+                <span>Alert Name (e.g. "Senior React SF")</span>
+                <input
+                  type="text"
+                  placeholder="My search alert..."
+                  value={saveSearchName}
+                  onChange={(e) => setSaveSearchName(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </label>
+              <div className="flex justify-end gap-2 pt-2 text-xs">
+                <button onClick={() => setShowSaveSearchModal(false)} className="px-3 py-1.5 border rounded-lg text-gray-600 hover:bg-gray-50 cursor-pointer bg-white">
+                  Cancel
+                </button>
+                <button
+                  disabled={saveSearchMutation.isPending || !saveSearchName.trim()}
+                  onClick={() =>
+                    saveSearchMutation.mutate({
+                      name: saveSearchName,
+                      query: submittedQuery,
+                      filters: { location: submittedLocation, workType: globalWorkType },
+                    })
+                  }
+                  className="px-4 py-1.5 bg-primary text-white font-semibold rounded-lg hover:bg-primary/95 disabled:opacity-50 cursor-pointer"
+                >
+                  Save Alert
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* JD Paste Modal */}
       {showModal && (
@@ -387,7 +778,7 @@ export default function JobsPage() {
                       <p className="text-xs font-semibold text-primary mt-1">Resume: {quickATSMutation.data.resumeVersionLabel}</p>
                     </div>
                   </div>
-
+ 
                   {/* Skills lists */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Skill Gap Analysis</h4>
