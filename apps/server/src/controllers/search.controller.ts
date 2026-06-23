@@ -169,7 +169,7 @@ export async function cleanupJobs(req: Request, res: Response): Promise<void> {
     const deactivatedCount = await CleanupService.cleanupStaleJobs(thresholdDays);
     res.json({
       success: true,
-      deactivatedCount,
+      data: { deactivatedCount },
       message: 'Stale jobs cleaned up successfully.',
     });
   } catch (error) {
