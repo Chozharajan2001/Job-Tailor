@@ -53,6 +53,7 @@ app.use('/api/v1/jobs', (await import('./routes/job.routes.js')).default);
 app.use('/api/v1/resumes', (await import('./routes/resume.routes.js')).default);
 app.use('/api/v1/applications', (await import('./routes/application.routes.js')).default);
 app.use('/api/v1/analytics', (await import('./routes/analytics.routes.js')).default);
+app.use('/api/v1/search', (await import('./routes/search.routes.js')).default);
 
 // ─── 404 Handler ───────────────────────────────────────────────────
 app.use((_req, res) => {
