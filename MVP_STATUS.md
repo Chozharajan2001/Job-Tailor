@@ -1,6 +1,6 @@
 # JobTailor MVP Status
 
-> Last updated: 2026-06-23
+> Last updated: 2026-06-23 (Sprint 4 complete)
 
 ## Summary
 
@@ -27,7 +27,7 @@ npm run build
 - Application status update, notes, and reminders backend endpoints.
 - Rate limiting, validation, error handling, CORS, Helmet.
 - TypeScript and production build are passing.
-- **Advanced Job Search Engine (Sprint 1 & Sprint 2 Complete)**:
+- **Advanced Job Search Engine (Sprints 1–4 Complete)**:
   - Unified URL ingestion crawler and copy-paste pipeline.
   - Multi-level deduplication (L1 exact URL, L2 company/title, L3 text hash similarity).
   - In-memory deterministic relevance ranking (exact title, company, trust, freshness boosting).
@@ -36,7 +36,15 @@ npm run build
   - Saved-search queries and notification alert dispatcher.
   - Dynamic user-facing alerts inbox and saved alerts management settings.
   - Stale job database cleanup deactivation scheduler.
-- **Test Suite**: Added 27 integration tests covering search engine components, ingestion, ranking, deduplication, cleanup, and alert controllers.
+  - Personalized discover feed (skills + watches) with tracker exclusions.
+  - Custom Keyword Watches (companies and titles) triggering automatic alerts.
+  - Batch "read all" alert lifecycle controls.
+  - Verification state tracking (`unverified | verified | failed | suspicious`) on canonical jobs.
+  - Async URL health pings with source trust decay (−0.05 dead link, −0.10 spam, +0.01 pass).
+  - `SearchQueryLog` and `JobInteractionLog` analytics storage in MongoDB.
+  - Failed and suspicious jobs excluded from search index and curated feeds.
+  - Quality Dashboard UI: source trust audit, verification breakdown, query metrics, manual check trigger.
+- **Test Suite**: 34 integration tests covering ingestion, dedupe, ranking, cleanup, alert controllers, watches, feeds, trust decay, flagging, and analytics aggregation.
 
 ## Partially Done
 
@@ -105,7 +113,7 @@ npm run build
 | Project setup | 90% |
 | Auth | 80% |
 | Profile | 60% |
-| JD Ingestion / Search | 90% |
+| JD Ingestion / Search | 95% |
 | Resume tailoring | 65% |
 | ATS scoring | 60% |
 | Application tracker | 45% |
@@ -113,4 +121,4 @@ npm run build
 | Analytics | 45% |
 | Tests | 50% |
 
-Overall MVP completion: approximately 70-75%.
+Overall MVP completion: approximately 75-80%.

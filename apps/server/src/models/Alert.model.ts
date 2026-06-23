@@ -2,7 +2,8 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IAlertDocument extends Document {
   userId: Types.ObjectId;
-  savedSearchId: Types.ObjectId;
+  savedSearchId?: Types.ObjectId;
+  watchId?: Types.ObjectId;
   canonicalJobId: Types.ObjectId;
   isRead: boolean;
   createdAt: Date;
@@ -12,7 +13,8 @@ export interface IAlertDocument extends Document {
 const alertSchema = new Schema<IAlertDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    savedSearchId: { type: Schema.Types.ObjectId, ref: 'SavedSearch', required: true },
+    savedSearchId: { type: Schema.Types.ObjectId, ref: 'SavedSearch', required: false },
+    watchId: { type: Schema.Types.ObjectId, ref: 'Watch', required: false },
     canonicalJobId: { type: Schema.Types.ObjectId, ref: 'CanonicalJob', required: true },
     isRead: { type: Boolean, required: true, default: false },
   },

@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-import { IParsedJD } from '@jobtailor/shared-types';
+import { IParsedJD, VerificationState } from '@jobtailor/shared-types';
 
 export interface ICanonicalJobDocument extends Document {
   sourceId?: Types.ObjectId;
@@ -23,6 +23,10 @@ export interface ICanonicalJobDocument extends Document {
   lastSeenAt: Date;
   expiredAt?: Date;
   isActive: boolean;
+  verificationState: VerificationState;
+  verificationAttempts: number;
+  lastVerifiedAt?: Date;
+  verificationError?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -81,8 +85,17 @@ const canonicalJobSchema = new Schema<ICanonicalJobDocument>(
     descriptionHash: { type: String, index: true },
     firstSeenAt: { type: Date, required: true, default: Date.now },
     lastSeenAt: { type: Date, required: true, default: Date.now },
-    expiredAt: Date,
     isActive: { type: Boolean, required: true, default: true, index: true },
+    verificationState: {
+      type: String,
+      enum: ['unverified', 'verified', 'failed', 'suspicious'],
+      required: true,
+      default: 'unverified',
+      index: true,
+    },
+    verificationAttempts: { type: Number, default: 0 },
+    lastVerifiedAt: Date,
+    verificationError: String,
   },
   {
     timestamps: true,

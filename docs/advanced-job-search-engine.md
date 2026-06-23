@@ -230,13 +230,24 @@ The advanced search engine should behave like a pipeline with four layers:
 - Expose Alert Inbox API endpoints (list unread match alerts, mark alert read)
 - Build frontend Saved Alerts settings hub, Notifications inbox/bell dropdown, and relevance match badges
 
-### Sprint 3 [PLANNED]
+### Sprint 3 [COMPLETE]
 - **User Feed & Watch Workflows**:
   - Implement "watch company" and "watch title" configuration flows
   - Build user-facing personalized feeds (curated matching feed separate from alerts)
   - Refine alert lifecycle tracking and cleanup of old alerts
   - Polish saved-search management and subscription rules
   - Improve cleanup and validation checking for stale/dead canonical links
+
+### Sprint 4 [COMPLETE]
+- **Trust, Verification & Analytics**:
+  - Add `verificationState` (`unverified | verified | failed | suspicious`) to `CanonicalJob` model and shared types
+  - Create `SearchQueryLog` and `JobInteractionLog` MongoDB models for analytics storage
+  - Extend `CleanupService` with async URL health pings: marks 404s as `failed`, decays source trust (`−0.05` dead link, `+0.01` pass, `−0.10` spam report)
+  - Build `AnalyticsService` for query logging, click tracking, and dashboard aggregation
+  - Expose `flag_expired` and `flag_spam` feedback endpoints that update job state and source trust
+  - Hard-filter `failed` and `suspicious` jobs from `SearchService` and `FeedService` result sets
+  - Add Quality Dashboard tab in `JobsPage.tsx`: source trust audit, verification state breakdown, top query metrics, and manual link-check trigger
+  - Add 3 Sprint 4 integration tests covering trust decay, flagging, feed/search exclusions, and analytics aggregation (34 total tests passing)
 
 ## Existing Repo Fit
 

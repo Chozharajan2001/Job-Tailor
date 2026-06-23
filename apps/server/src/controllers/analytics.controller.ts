@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { Application, IApplication } from '../models/Application.model.js';
 import { Resume, IResume } from '../models/Resume.model.js';
 import { Job, IJob } from '../models/Job.model.js';
+import { AnalyticsService } from '../services/analytics.service.js';
+import { SourceRegistry } from '../models/SourceRegistry.model.js';
 
 /**
  * GET /api/v1/analytics/overview
@@ -230,4 +232,115 @@ export async function getSkillGapReport(req: Request, res: Response): Promise<vo
         .map(([skill, data]) => ({ skill, demand: data.count, companies: data.companies })),
     },
   });
+}
+
+export async function trackSearchClick(req: Request, res: Response): Promise<any> {
+  try {
+    const { canonicalJobId } = req.body;
+    const userId = (req as any).user.userId;
+
+    if (!canonicalJobId) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'canonicalJobId is required' },
+      });
+    }
+
+    await AnalyticsService.logInteraction(userId, canonicalJobId, 'click');
+
+    return res.status(200).json({
+      success: true,
+    });
+  } catch (err: any) {
+    console.error('❌ trackSearchClick error:', err);
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err.message },
+    });
+  }
+}
+
+export async function submitFeedback(req: Request, res: Response): Promise<any> {
+  try {
+    const { canonicalJobId, interactionType, feedbackComment } = req.body;
+    const userId = (req as any).user.userId;
+
+    if (!canonicalJobId || !interactionType) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'canonicalJobId and interactionType are required' },
+      });
+    }
+
+    if (!['flag_expired', 'flag_spam'].includes(interactionType)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'interactionType must be flag_expired or flag_spam' },
+      });
+    }
+
+    await AnalyticsService.logInteraction(userId, canonicalJobId, interactionType, feedbackComment);
+
+    return res.status(200).json({
+      success: true,
+    });
+  } catch (err: any) {
+    console.error('❌ submitFeedback error:', err);
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err.message },
+    });
+  }
+}
+
+export async function getDashboardStats(req: Request, res: Response): Promise<any> {
+  try {
+    const metrics = await AnalyticsService.getAnalyticsDashboard();
+    return res.status(200).json({
+      success: true,
+      data: metrics,
+    });
+  } catch (err: any) {
+    console.error('❌ getDashboardStats error:', err);
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err.message },
+    });
+  }
+}
+
+export async function updateSourceTrustManual(req: Request, res: Response): Promise<any> {
+  try {
+    const { id } = req.params;
+    const { trustScore } = req.body;
+
+    if (trustScore === undefined || typeof trustScore !== 'number' || trustScore < 0 || trustScore > 1) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'trustScore must be a number between 0 and 1' },
+      });
+    }
+
+    const source = await SourceRegistry.findById(id);
+    if (!source) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Source not found' },
+      });
+    }
+
+    source.trustScore = parseFloat(trustScore.toFixed(4));
+    await source.save();
+
+    return res.status(200).json({
+      success: true,
+      data: source,
+    });
+  } catch (err: any) {
+    console.error('❌ updateSourceTrustManual error:', err);
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: err.message },
+    });
+  }
 }

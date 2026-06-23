@@ -67,6 +67,13 @@ export default function JobsPage() {
   const [submittedLocation, setSubmittedLocation] = useState('');
 
   const [selectedSearchJob, setSelectedSearchJob] = useState<any | null>(null);
+  const handleViewSearchJob = (job: any) => {
+    if (!job) return;
+    setSelectedSearchJob(job);
+    api.post('/search/analytics/click', { canonicalJobId: job._id }).catch((err) => {
+      console.error('Failed to log search query click:', err);
+    });
+  };
   const [saveSearchName, setSaveSearchName] = useState('');
   const [showSaveSearchModal, setShowSaveSearchModal] = useState(false);
 
@@ -107,7 +114,7 @@ export default function JobsPage() {
   const resumes = resumesRes?.data?.resumes || [];
 
   // ─── Global Search Queries ──────────────────────────────────
-  const { data: searchRes, isLoading: isSearching } = useQuery({
+  const { data: searchRes, isLoading: isSearchPending, refetch: refetchSearch } = useQuery({
     queryKey: [
       'global-search',
       submittedQuery,
@@ -126,8 +133,32 @@ export default function JobsPage() {
       ),
     enabled: activeSearchTab === 'global',
   });
-  const searchJobsList = searchRes?.data?.jobs || [];
+  const isSearching = isSearchPending;
   const searchPagination = searchRes?.data?.pagination;
+  const searchJobsList = searchRes?.data?.jobs || [];
+
+  // ─── Curated Feed & Watches states ────────────────────────────
+  const [globalSubTab, setGlobalSubTab] = useState<'search' | 'feed' | 'quality'>('search');
+  const [newWatchValue, setNewWatchValue] = useState('');
+  const [newWatchType, setNewWatchType] = useState<'company' | 'title'>('company');
+
+  // Watches query
+  const { data: watchesRes, refetch: refetchWatches } = useQuery({
+    queryKey: ['watches'],
+    queryFn: () => api.get<{ watches: any[] }>('/search/watches'),
+    enabled: activeSearchTab === 'global',
+  });
+  const watches = watchesRes?.data?.watches || [];
+
+  // Feed query
+  const [feedPage, setFeedPage] = useState(1);
+  const { data: feedRes, refetch: refetchFeed, isPending: isFeedPending } = useQuery({
+    queryKey: ['job-feed', feedPage],
+    queryFn: () => api.get<{ feed: any[]; pagination: any }>(`/search/feed?page=${feedPage}&limit=15`),
+    enabled: activeSearchTab === 'global' && globalSubTab === 'feed',
+  });
+  const feedJobs = feedRes?.data?.feed || [];
+  const feedPagination = feedRes?.data?.pagination;
 
   const { data: savedSearchesRes, refetch: refetchSavedSearches } = useQuery({
     queryKey: ['saved-searches'],
@@ -144,8 +175,23 @@ export default function JobsPage() {
   });
   const alerts = alertsRes?.data?.alerts || [];
 
+  // Quality Dashboard Query
+  const { data: analyticsRes, refetch: refetchAnalytics } = useQuery({
+    queryKey: ['search-analytics-dashboard'],
+    queryFn: () => api.get<any>('/search/analytics/dashboard'),
+    enabled: activeSearchTab === 'global' && globalSubTab === 'quality',
+  });
+  const analyticsData = analyticsRes?.data?.data;
+
   const markAlertReadMutation = useMutation({
     mutationFn: (alertId: string) => api.patch(`/search/alerts/${alertId}/read`),
+    onSuccess: () => {
+      refetchAlerts();
+    },
+  });
+
+  const dismissAllAlertsMutation = useMutation({
+    mutationFn: () => api.patch('/search/alerts/read-all'),
     onSuccess: () => {
       refetchAlerts();
     },
@@ -165,6 +211,77 @@ export default function JobsPage() {
       }),
     onSuccess: () => {
       refetchSavedSearches();
+    },
+  });
+
+  // Watch Mutations
+  const createWatchMutation = useMutation({
+    mutationFn: (params: { type: 'company' | 'title'; value: string }) =>
+      api.post('/search/watches', params),
+    onSuccess: () => {
+      refetchWatches();
+      if (globalSubTab === 'feed') refetchFeed();
+      setNewWatchValue('');
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error?.message || 'Failed to add watch keyword.');
+    },
+  });
+
+  const toggleWatchMutation = useMutation({
+    mutationFn: (params: { id: string; isEnabled: boolean }) =>
+      api.patch(`/search/watches/${params.id}`, { isEnabled: params.isEnabled }),
+    onSuccess: () => {
+      refetchWatches();
+      if (globalSubTab === 'feed') refetchFeed();
+    },
+  });
+
+  const deleteWatchMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/search/watches/${id}`),
+    onSuccess: () => {
+      refetchWatches();
+      if (globalSubTab === 'feed') refetchFeed();
+    },
+  });
+
+  const submitFeedbackMutation = useMutation({
+    mutationFn: (params: { canonicalJobId: string; interactionType: 'flag_expired' | 'flag_spam'; feedbackComment?: string }) =>
+      api.post('/search/feedback', params),
+    onSuccess: () => {
+      alert('Feedback submitted. Thank you for keeping search quality high!');
+      setSelectedSearchJob(null);
+      refetchSearch();
+      if (globalSubTab === 'feed') refetchFeed();
+      if (globalSubTab === 'quality') refetchAnalytics();
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error?.message || 'Failed to submit feedback.');
+    },
+  });
+
+  const runCleanupMutation = useMutation({
+    mutationFn: () => api.post('/search/cleanup', {}),
+    onSuccess: () => {
+      alert('Verification scanner completed successfully!');
+      refetchSearch();
+      if (globalSubTab === 'feed') refetchFeed();
+      if (globalSubTab === 'quality') refetchAnalytics();
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error?.message || 'Failed to run verification scanner.');
+    },
+  });
+
+  const updateTrustMutation = useMutation({
+    mutationFn: (params: { id: string; trustScore: number }) =>
+      api.post(`/search/sources/${params.id}/trust`, { trustScore: params.trustScore }),
+    onSuccess: () => {
+      alert('Source trust score updated!');
+      refetchAnalytics();
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error?.message || 'Failed to update trust score.');
     },
   });
 
@@ -319,14 +436,23 @@ export default function JobsPage() {
             <div className="space-y-4">
               {/* Job Match Alerts (Notification Inbox) */}
               <div className="bg-white border rounded-xl p-5 shadow-sm space-y-3">
-                <h3 className="font-semibold text-sm flex justify-between items-center">
-                  <span className="flex items-center gap-1">🔔 Match Alerts</span>
+                <div className="flex justify-between items-center">
+                  <h3 className="font-semibold text-sm flex items-center gap-1">🔔 Match Alerts</h3>
                   {alerts.length > 0 && (
-                    <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-bold">
-                      {alerts.length} new
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => dismissAllAlertsMutation.mutate()}
+                        disabled={dismissAllAlertsMutation.isPending}
+                        className="text-[10px] text-primary hover:underline font-semibold cursor-pointer disabled:opacity-50"
+                      >
+                        Dismiss All
+                      </button>
+                      <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-bold">
+                        {alerts.length} new
+                      </span>
+                    </div>
                   )}
-                </h3>
+                </div>
                 {alerts.length === 0 ? (
                   <p className="text-xs text-muted-foreground">No new job matches.</p>
                 ) : (
@@ -343,7 +469,7 @@ export default function JobsPage() {
                         </div>
                         <div className="flex justify-between items-center pt-1.5 border-t">
                           <button
-                            onClick={() => setSelectedSearchJob(a.canonicalJobId)}
+                            onClick={() => handleViewSearchJob(a.canonicalJobId)}
                             className="text-[9px] text-gray-600 hover:text-gray-900 font-semibold cursor-pointer"
                           >
                             View
@@ -457,189 +583,600 @@ export default function JobsPage() {
                   </div>
                 )}
               </div>
+
+              {/* Keyword Watches Panel */}
+              <div className="bg-white border rounded-xl p-5 shadow-sm space-y-3">
+                <h3 className="font-semibold text-sm flex items-center gap-1">👀 Keyword Watches</h3>
+                <p className="text-xs text-muted-foreground">Monitor specific companies or titles to alert you when matching new jobs are indexed.</p>
+                
+                {/* Watch Form */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. Google, SRE..."
+                    value={newWatchValue}
+                    onChange={(e) => setNewWatchValue(e.target.value)}
+                    className="flex-1 px-2.5 py-1.5 border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <select
+                    value={newWatchType}
+                    onChange={(e) => setNewWatchType(e.target.value as any)}
+                    className="border rounded-lg px-1.5 py-1.5 bg-white text-xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="company">Company</option>
+                    <option value="title">Title</option>
+                  </select>
+                  <button
+                    disabled={createWatchMutation.isPending || !newWatchValue.trim()}
+                    onClick={() => createWatchMutation.mutate({ type: newWatchType, value: newWatchValue })}
+                    className="px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary/95 disabled:opacity-50 cursor-pointer"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {/* Watch list */}
+                {watches.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground pt-1">No watches configured yet.</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-[25vh] overflow-y-auto pr-1 pt-1 border-t mt-2">
+                    {watches.map((w) => (
+                      <div key={w._id} className="flex justify-between items-center p-2 border rounded-lg text-xs bg-gray-50/40">
+                        <div className="truncate pr-2">
+                          <span className="font-semibold text-gray-800">{w.value}</span>
+                          <span className="ml-1.5 text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.2 rounded capitalize border">
+                            {w.type}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={w.isEnabled}
+                            onChange={(e) => toggleWatchMutation.mutate({ id: w._id, isEnabled: e.target.checked })}
+                            className="w-3 h-3 rounded text-primary focus:ring-primary cursor-pointer"
+                          />
+                          <button
+                            onClick={() => deleteWatchMutation.mutate(w._id)}
+                            className="text-gray-400 hover:text-red-500 text-xs font-bold px-1 cursor-pointer"
+                            title="Delete watch"
+                          >
+                            &times;
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Right Column: Keyword Search & Filter results */}
             <div className="lg:col-span-2 space-y-4">
-              {/* Query filters */}
-              <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
-                <div className="flex flex-col md:flex-row gap-2">
-                  <input
-                    type="text"
-                    placeholder="Search by keywords, title, skills..."
-                    value={globalSearchInput}
-                    onChange={(e) => setGlobalSearchInput(e.target.value)}
-                    className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Location"
-                    value={globalLocationInput}
-                    onChange={(e) => setGlobalLocationInput(e.target.value)}
-                    className="w-full md:w-48 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <button
-                    onClick={() => {
-                      setSubmittedQuery(globalSearchInput);
-                      setSubmittedLocation(globalLocationInput);
-                      setGlobalPage(1);
-                    }}
-                    className="px-5 py-2 bg-primary text-white font-semibold rounded-lg hover:bg-primary/95 text-sm cursor-pointer"
-                  >
-                    Search
-                  </button>
-                </div>
-                <div className="flex justify-between items-center pt-2 border-t text-xs">
-                  <div className="flex gap-3">
-                     <label className="flex items-center gap-1">
-                       <span>Work Type:</span>
-                       <select
-                         value={globalWorkType}
-                         onChange={(e) => setGlobalWorkType(e.target.value)}
-                         className="border rounded px-1.5 py-0.5 bg-white cursor-pointer text-[11px]"
-                       >
-                         <option value="all">All</option>
-                         <option value="remote">Remote</option>
-                         <option value="hybrid">Hybrid</option>
-                         <option value="onsite">On-site</option>
-                       </select>
-                     </label>
-                     <label className="flex items-center gap-1">
-                       <span>Job Type:</span>
-                       <select
-                         value={globalEmploymentType}
-                         onChange={(e) => setGlobalEmploymentType(e.target.value)}
-                         className="border rounded px-1.5 py-0.5 bg-white cursor-pointer text-[11px]"
-                       >
-                         <option value="all">All Types</option>
-                         <option value="full-time">Full-time</option>
-                         <option value="part-time">Part-time</option>
-                         <option value="contract">Contract</option>
-                         <option value="internship">Internship</option>
-                       </select>
-                     </label>
-                     <label className="flex items-center gap-1">
-                       <span>Min Salary ($):</span>
-                       <input
-                         type="number"
-                         placeholder="Min pay"
-                         value={globalSalaryMin}
-                         onChange={(e) => setGlobalSalaryMin(e.target.value)}
-                         className="border rounded px-1.5 py-0.5 bg-white text-[11px] w-20 focus:outline-none"
-                       />
-                     </label>
-                     <label className="flex items-center gap-1">
-                       <span>Sort By:</span>
-                       <select
-                         value={globalSortBy}
-                         onChange={(e) => setGlobalSortBy(e.target.value)}
-                         className="border rounded px-1.5 py-0.5 bg-white cursor-pointer text-[11px]"
-                       >
-                         <option value="relevance">Relevance</option>
-                         <option value="date">Date Posted</option>
-                       </select>
-                     </label>
-                   </div>
-                  {(submittedQuery || submittedLocation) && (
-                    <button
-                      onClick={() => setShowSaveSearchModal(true)}
-                      className="text-primary font-semibold hover:underline cursor-pointer"
-                    >
-                      💾 Save Search Alert
-                    </button>
+              {/* Discover Feed vs Search Index Sub-tabs */}
+              <div className="flex border-b border-gray-150 bg-gray-100/60 p-1 rounded-lg">
+                <button
+                  onClick={() => setGlobalSubTab('search')}
+                  className={`flex-1 py-1.5 text-center font-semibold transition-all rounded-md cursor-pointer text-xs ${
+                    globalSubTab === 'search'
+                      ? 'bg-white text-primary shadow-xs font-bold'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  🔍 Search Index
+                </button>
+                <button
+                  onClick={() => setGlobalSubTab('feed')}
+                  className={`flex-1 py-1.5 text-center font-semibold transition-all rounded-md cursor-pointer text-xs ${
+                    globalSubTab === 'feed'
+                      ? 'bg-white text-primary shadow-xs font-bold'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  📰 Curated Feed
+                </button>
+                <button
+                  onClick={() => setGlobalSubTab('quality')}
+                  className={`flex-1 py-1.5 text-center font-semibold transition-all rounded-md cursor-pointer text-xs ${
+                    globalSubTab === 'quality'
+                      ? 'bg-white text-primary shadow-xs font-bold'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  📊 Quality Dashboard
+                </button>
+              </div>
+
+              {globalSubTab === 'search' && (
+                <>
+                  {/* Query filters */}
+                  <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
+                    <div className="flex flex-col md:flex-row gap-2">
+                      <input
+                        type="text"
+                        placeholder="Search by keywords, title, skills..."
+                        value={globalSearchInput}
+                        onChange={(e) => setGlobalSearchInput(e.target.value)}
+                        className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Location"
+                        value={globalLocationInput}
+                        onChange={(e) => setGlobalLocationInput(e.target.value)}
+                        className="w-full md:w-48 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                      <button
+                        onClick={() => {
+                          setSubmittedQuery(globalSearchInput);
+                          setSubmittedLocation(globalLocationInput);
+                          setGlobalPage(1);
+                        }}
+                        className="px-5 py-2 bg-primary text-white font-semibold rounded-lg hover:bg-primary/95 text-sm cursor-pointer"
+                      >
+                        Search
+                      </button>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t text-xs">
+                      <div className="flex gap-3">
+                         <label className="flex items-center gap-1">
+                           <span>Work Type:</span>
+                           <select
+                             value={globalWorkType}
+                             onChange={(e) => setGlobalWorkType(e.target.value)}
+                             className="border rounded px-1.5 py-0.5 bg-white cursor-pointer text-[11px]"
+                           >
+                             <option value="all">All</option>
+                             <option value="remote">Remote</option>
+                             <option value="hybrid">Hybrid</option>
+                             <option value="onsite">On-site</option>
+                           </select>
+                         </label>
+                         <label className="flex items-center gap-1">
+                           <span>Job Type:</span>
+                           <select
+                             value={globalEmploymentType}
+                             onChange={(e) => setGlobalEmploymentType(e.target.value)}
+                             className="border rounded px-1.5 py-0.5 bg-white cursor-pointer text-[11px]"
+                           >
+                             <option value="all">All Types</option>
+                             <option value="full-time">Full-time</option>
+                             <option value="part-time">Part-time</option>
+                             <option value="contract">Contract</option>
+                             <option value="internship">Internship</option>
+                           </select>
+                         </label>
+                         <label className="flex items-center gap-1">
+                           <span>Min Salary ($):</span>
+                           <input
+                             type="number"
+                             placeholder="Min pay"
+                             value={globalSalaryMin}
+                             onChange={(e) => setGlobalSalaryMin(e.target.value)}
+                             className="border rounded px-1.5 py-0.5 bg-white text-[11px] w-20 focus:outline-none"
+                           />
+                         </label>
+                         <label className="flex items-center gap-1">
+                           <span>Sort By:</span>
+                           <select
+                             value={globalSortBy}
+                             onChange={(e) => setGlobalSortBy(e.target.value)}
+                             className="border rounded px-1.5 py-0.5 bg-white cursor-pointer text-[11px]"
+                           >
+                             <option value="relevance">Relevance</option>
+                             <option value="date">Date Posted</option>
+                           </select>
+                         </label>
+                       </div>
+                      {(submittedQuery || submittedLocation) && (
+                        <button
+                          onClick={() => setShowSaveSearchModal(true)}
+                          className="text-primary font-semibold hover:underline cursor-pointer"
+                        >
+                          💾 Save Search Alert
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Crawled Results Feed */}
+                  <div className="space-y-3">
+                    {isSearching ? (
+                      <div className="py-12 flex flex-col items-center justify-center space-y-2 text-muted-foreground text-sm">
+                        <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+                        <span>Searching canonical listings...</span>
+                      </div>
+                    ) : !submittedQuery && !submittedLocation ? (
+                      <div className="text-center py-16 border rounded-xl bg-gray-50/50 space-y-2">
+                        <span className="text-2xl">🔎</span>
+                        <p className="text-sm font-medium text-gray-500">Run a search above or paste a job link in the left panel to crawl and query jobs.</p>
+                      </div>
+                    ) : searchJobsList.length === 0 ? (
+                      <div className="text-center py-16 border border-dashed rounded-xl bg-gray-50/50">
+                        <p className="text-sm text-muted-foreground">No matching postings in our canonical database.</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-xs text-muted-foreground px-1">
+                          Found {searchPagination?.total || 0} matching jobs
+                        </div>
+                        {searchJobsList.map((job) => (
+                          <div key={job._id} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative space-y-3">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="font-bold text-sm text-gray-900">{job.jobTitle}</h4>
+                                  {job.relevanceScore !== undefined && job.relevanceScore > 0 && (
+                                    <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-1.5 py-0.5 rounded-full font-bold">
+                                      {Math.min(100, Math.round((job.relevanceScore / 130) * 100))}% Match
+                                    </span>
+                                  )}
+                                  {job.skillsMatchedCount > 0 && (
+                                    <span className="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200/60 px-1.5 py-0.5 rounded-full font-bold">
+                                      {job.skillsMatchedCount} skills matched
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs font-semibold text-primary mt-0.5">{job.companyName}</p>
+                              </div>
+                              <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-medium capitalize shrink-0">
+                                {job.workType} • {job.employmentType || 'full-time'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{job.description}</p>
+                            <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1.5 border-t">
+                              <div>
+                                <span>Source: <strong className="text-gray-600">{job.sourceName}</strong></span>
+                                <span className="mx-2">•</span>
+                                <span>Seen {new Date(job.firstSeenAt).toLocaleDateString()}</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleViewSearchJob(job)}
+                                  className="px-2.5 py-1 border rounded text-gray-600 hover:bg-gray-50 cursor-pointer"
+                                >
+                                  View Details
+                                </button>
+                                <button
+                                  disabled={importToTrackerMutation.isPending}
+                                  onClick={() => importToTrackerMutation.mutate(job)}
+                                  className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded font-semibold cursor-pointer"
+                                >
+                                  Import to Tracker
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+    
+                        {/* Pagination */}
+                        {searchPagination && searchPagination.pages > 1 && (
+                          <div className="flex justify-center gap-1.5 pt-2">
+                            {Array.from({ length: searchPagination.pages }).map((_, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setGlobalPage(i + 1)}
+                                className={`px-2.5 py-1 border rounded text-xs font-semibold cursor-pointer ${
+                                  globalPage === i + 1 ? 'bg-primary text-white border-primary' : 'bg-white hover:bg-gray-50 text-gray-600'
+                                }`}
+                              >
+                                {i + 1}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {globalSubTab === 'feed' && (
+                /* Curated Discover Feed view */
+                <div className="space-y-3">
+                  <div className="bg-white border rounded-xl p-4 shadow-sm space-y-2">
+                    <h3 className="font-semibold text-sm">📰 Personalized Job Discovery Feed</h3>
+                    <p className="text-xs text-muted-foreground">
+                      This feed is automatically compiled from your master profile skills and active company/title watches. It excludes any jobs you have already imported to your tracker.
+                    </p>
+                  </div>
+
+                  {isFeedPending ? (
+                    <div className="py-12 flex flex-col items-center justify-center space-y-2 text-muted-foreground text-sm">
+                      <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+                      <span>Compiling feed...</span>
+                    </div>
+                  ) : feedJobs.length === 0 ? (
+                    <div className="text-center py-16 border border-dashed rounded-xl bg-gray-50/50 space-y-2">
+                      <span className="text-2xl">📭</span>
+                      <p className="text-sm font-medium text-gray-500">Your feed is empty.</p>
+                      <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                        Add skills to your master profile or configure title/company keywords in the "Keyword Watches" panel to populate your feed!
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-xs text-muted-foreground px-1">
+                        Curated {feedPagination?.total || 0} matching jobs
+                      </div>
+                      {feedJobs.map((job: any) => (
+                        <div key={job._id} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative space-y-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="font-bold text-sm text-gray-900">{job.jobTitle}</h4>
+                                {job.isWatchMatch && (
+                                  <span className="text-[9px] bg-red-50 text-red-700 border border-red-200/60 px-1.5 py-0.5 rounded-full font-bold">
+                                    🎯 Watched
+                                  </span>
+                                )}
+                                {job.relevanceScore !== undefined && job.relevanceScore > 0 && (
+                                  <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-1.5 py-0.5 rounded-full font-bold">
+                                    {Math.min(100, Math.round((job.relevanceScore / 130) * 100))}% Match
+                                  </span>
+                                )}
+                                {job.skillsMatchedCount > 0 && (
+                                  <span className="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200/60 px-1.5 py-0.5 rounded-full font-bold">
+                                    {job.skillsMatchedCount} skills matched
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs font-semibold text-primary mt-0.5">{job.companyName}</p>
+                            </div>
+                            <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-medium capitalize shrink-0">
+                              {job.workType} • {job.employmentType || 'full-time'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{job.description}</p>
+                          <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1.5 border-t">
+                            <div>
+                              <span>Source: <strong className="text-gray-600">{job.sourceName}</strong></span>
+                              <span className="mx-2">•</span>
+                              <span>Seen {new Date(job.firstSeenAt).toLocaleDateString()}</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleViewSearchJob(job)}
+                                className="px-2.5 py-1 border rounded text-gray-600 hover:bg-gray-50 cursor-pointer"
+                              >
+                                View Details
+                              </button>
+                              <button
+                                disabled={importToTrackerMutation.isPending}
+                                onClick={() => {
+                                  importToTrackerMutation.mutate(job);
+                                  // Mark related alert as read if it is in alerts list
+                                  const matchingAlert = alerts.find((a: any) => a.canonicalJobId?._id === job._id);
+                                  if (matchingAlert) {
+                                    markAlertReadMutation.mutate(matchingAlert._id);
+                                  }
+                                }}
+                                className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded font-semibold cursor-pointer"
+                              >
+                                Import to Tracker
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+    
+                      {/* Feed Pagination */}
+                      {feedPagination && feedPagination.pages > 1 && (
+                        <div className="flex justify-center gap-1.5 pt-2">
+                          {Array.from({ length: feedPagination.pages }).map((_, i) => (
+                            <button
+                              key={i}
+                              onClick={() => setFeedPage(i + 1)}
+                              className={`px-2.5 py-1 border rounded text-xs font-semibold cursor-pointer ${
+                                feedPage === i + 1 ? 'bg-primary text-white border-primary' : 'bg-white hover:bg-gray-50 text-gray-600'
+                              }`}
+                            >
+                              {i + 1}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
-              </div>
+              )}
 
-              {/* Crawled Results Feed */}
-              <div className="space-y-3">
-                {isSearching ? (
-                  <div className="py-12 flex flex-col items-center justify-center space-y-2 text-muted-foreground text-sm">
-                    <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
-                    <span>Searching canonical listings...</span>
-                  </div>
-                ) : !submittedQuery && !submittedLocation ? (
-                  <div className="text-center py-16 border rounded-xl bg-gray-50/50 space-y-2">
-                    <span className="text-2xl">🔎</span>
-                    <p className="text-sm font-medium text-gray-500">Run a search above or paste a job link in the left panel to crawl and query jobs.</p>
-                  </div>
-                ) : searchJobsList.length === 0 ? (
-                  <div className="text-center py-16 border border-dashed rounded-xl bg-gray-50/50">
-                    <p className="text-sm text-muted-foreground">No matching postings in our canonical database.</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-xs text-muted-foreground px-1">
-                      Found {searchPagination?.total || 0} matching jobs
+              {globalSubTab === 'quality' && (
+                <div className="space-y-4">
+                  {/* Quality Dashboard Header */}
+                  <div className="bg-white border rounded-xl p-5 shadow-sm flex justify-between items-center">
+                    <div>
+                      <h3 className="font-bold text-base text-gray-900">📊 Search Quality & Ingestion Dashboard</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Monitor source trust scores, URL verification states, and user search engagement analytics.
+                      </p>
                     </div>
-                    {searchJobsList.map((job) => (
-                      <div key={job._id} className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative space-y-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="font-bold text-sm text-gray-900">{job.jobTitle}</h4>
-                              {job.relevanceScore !== undefined && job.relevanceScore > 0 && (
-                                <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-1.5 py-0.5 rounded-full font-bold">
-                                  {Math.min(100, Math.round((job.relevanceScore / 130) * 100))}% Match
-                                </span>
-                              )}
-                              {job.skillsMatchedCount > 0 && (
-                                <span className="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200/60 px-1.5 py-0.5 rounded-full font-bold">
-                                  {job.skillsMatchedCount} skills matched
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs font-semibold text-primary mt-0.5">{job.companyName}</p>
-                          </div>
-                          <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-medium capitalize shrink-0">
-                            {job.workType} • {job.employmentType || 'full-time'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{job.description}</p>
-                        <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1.5 border-t">
-                          <div>
-                            <span>Source: <strong className="text-gray-600">{job.sourceName}</strong></span>
-                            <span className="mx-2">•</span>
-                            <span>Seen {new Date(job.firstSeenAt).toLocaleDateString()}</span>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setSelectedSearchJob(job)}
-                              className="px-2.5 py-1 border rounded text-gray-600 hover:bg-gray-50 cursor-pointer"
-                            >
-                              View Details
-                            </button>
-                            <button
-                              disabled={importToTrackerMutation.isPending}
-                              onClick={() => importToTrackerMutation.mutate(job)}
-                              className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded font-semibold cursor-pointer"
-                            >
-                              Import to Tracker
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                    <button
+                      disabled={runCleanupMutation.isPending}
+                      onClick={() => runCleanupMutation.mutate()}
+                      className="px-3.5 py-2 bg-primary text-white hover:bg-primary-dark text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      🔄 {runCleanupMutation.isPending ? 'Verifying Links...' : 'Verify Links Now'}
+                    </button>
+                  </div>
 
-                    {/* Pagination */}
-                    {searchPagination && searchPagination.pages > 1 && (
-                      <div className="flex justify-center gap-1.5 pt-2">
-                        {Array.from({ length: searchPagination.pages }).map((_, i) => (
-                          <button
-                            key={i}
-                            onClick={() => setGlobalPage(i + 1)}
-                            className={`px-2.5 py-1 border rounded text-xs font-semibold cursor-pointer ${
-                              globalPage === i + 1 ? 'bg-primary text-white border-primary' : 'bg-white hover:bg-gray-50 text-gray-600'
-                            }`}
-                          >
-                            {i + 1}
-                          </button>
-                        ))}
+                  {!analyticsData ? (
+                    <div className="py-12 bg-white border rounded-xl shadow-sm flex flex-col items-center justify-center space-y-2 text-muted-foreground text-sm">
+                      <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+                      <span>Loading analytics metrics...</span>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Metrics Summary Cards */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="bg-white border rounded-xl p-4 shadow-sm">
+                          <span className="text-xs text-muted-foreground font-semibold">Total Queries Logged</span>
+                          <div className="text-2xl font-bold text-gray-900 mt-1">{analyticsData.totalQueries}</div>
+                        </div>
+                        <div className="bg-white border rounded-xl p-4 shadow-sm">
+                          <span className="text-xs text-muted-foreground font-semibold">Click-Through Rate (CTR)</span>
+                          <div className="text-2xl font-bold text-gray-900 mt-1">{(analyticsData.ctr * 100).toFixed(1)}%</div>
+                          <span className="text-[10px] text-muted-foreground">({analyticsData.clicks} clicks)</span>
+                        </div>
+                        <div className="bg-white border rounded-xl p-4 shadow-sm">
+                          <span className="text-xs text-muted-foreground font-semibold">Import Conversion Rate</span>
+                          <div className="text-2xl font-bold text-gray-900 mt-1">{(analyticsData.importRate * 100).toFixed(1)}%</div>
+                          <span className="text-[10px] text-muted-foreground">({analyticsData.imports} imports)</span>
+                        </div>
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
+
+                      {/* State Breakdown & Top Queries */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Verification States breakdown */}
+                        <div className="bg-white border rounded-xl p-5 shadow-sm space-y-3">
+                          <h4 className="font-bold text-sm text-gray-900 border-b pb-2">📋 Ingestion Verification Breakdown</h4>
+                          <div className="space-y-3 text-xs">
+                            <div>
+                              <div className="flex justify-between font-semibold mb-1">
+                                <span className="text-emerald-700">Verified Active Links</span>
+                                <span>{analyticsData.verificationStates?.verified || 0}</span>
+                              </div>
+                              <div className="w-full bg-gray-150 h-2 rounded-full overflow-hidden">
+                                <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${(analyticsData.verificationStates?.verified / (Math.max(1, analyticsData.verificationStates?.verified + analyticsData.verificationStates?.unverified + analyticsData.verificationStates?.failed + analyticsData.verificationStates?.suspicious))) * 100}%` }}></div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between font-semibold mb-1">
+                                <span className="text-gray-600">Unverified / New Ingestion</span>
+                                <span>{analyticsData.verificationStates?.unverified || 0}</span>
+                              </div>
+                              <div className="w-full bg-gray-150 h-2 rounded-full overflow-hidden">
+                                <div className="bg-gray-400 h-full rounded-full" style={{ width: `${(analyticsData.verificationStates?.unverified / (Math.max(1, analyticsData.verificationStates?.verified + analyticsData.verificationStates?.unverified + analyticsData.verificationStates?.failed + analyticsData.verificationStates?.suspicious))) * 100}%` }}></div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between font-semibold mb-1">
+                                <span className="text-red-700">Failed / Dead Links (404/Redirect)</span>
+                                <span>{analyticsData.verificationStates?.failed || 0}</span>
+                              </div>
+                              <div className="w-full bg-gray-150 h-2 rounded-full overflow-hidden">
+                                <div className="bg-red-500 h-full rounded-full" style={{ width: `${(analyticsData.verificationStates?.failed / (Math.max(1, analyticsData.verificationStates?.verified + analyticsData.verificationStates?.unverified + analyticsData.verificationStates?.failed + analyticsData.verificationStates?.suspicious))) * 100}%` }}></div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between font-semibold mb-1">
+                                <span className="text-amber-700">Suspicious / User Spam Reports</span>
+                                <span>{analyticsData.verificationStates?.suspicious || 0}</span>
+                              </div>
+                              <div className="w-full bg-gray-150 h-2 rounded-full overflow-hidden">
+                                <div className="bg-amber-500 h-full rounded-full" style={{ width: `${(analyticsData.verificationStates?.suspicious / (Math.max(1, analyticsData.verificationStates?.verified + analyticsData.verificationStates?.unverified + analyticsData.verificationStates?.failed + analyticsData.verificationStates?.suspicious))) * 100}%` }}></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Top search terms */}
+                        <div className="bg-white border rounded-xl p-5 shadow-sm space-y-3">
+                          <h4 className="font-bold text-sm text-gray-900 border-b pb-2">🔥 Top Search Queries</h4>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs text-gray-700">
+                              <thead>
+                                <tr className="border-b text-gray-400 font-semibold">
+                                  <th className="py-2">Search Query</th>
+                                  <th className="py-2 text-right">Query Frequency</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {analyticsData.topQueries?.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={2} className="py-4 text-center text-muted-foreground">No search query logs recorded yet.</td>
+                                  </tr>
+                                ) : (
+                                  analyticsData.topQueries?.map((q: any, i: number) => (
+                                    <tr key={i} className="border-b hover:bg-gray-50/50">
+                                      <td className="py-2 font-mono text-gray-900">"{q.query}"</td>
+                                      <td className="py-2 text-right font-bold text-primary">{q.count}</td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Source Registries Health Audit */}
+                      <div className="bg-white border rounded-xl p-5 shadow-sm space-y-4">
+                        <h4 className="font-bold text-sm text-gray-900 border-b pb-2">🔌 Job Source Health & Trust Matrix</h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs text-gray-700 min-w-[600px]">
+                            <thead>
+                              <tr className="border-b text-gray-400 font-semibold bg-gray-50/30">
+                                <th className="py-3 px-3">Source Name</th>
+                                <th className="py-3 px-3">Type</th>
+                                <th className="py-3 px-3">Dynamic Trust Score</th>
+                                <th className="py-3 px-3">Verified / Failed / Suspicious</th>
+                                <th className="py-3 px-3 text-right">Manual Trust Override</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {analyticsData.sourceHealth?.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} className="py-4 text-center text-muted-foreground">No ingestion sources registered.</td>
+                                </tr>
+                              ) : (
+                                analyticsData.sourceHealth?.map((src: any) => (
+                                  <tr key={src._id} className="border-b hover:bg-gray-50/50">
+                                    <td className="py-3 px-3">
+                                      <div className="font-bold text-gray-900">{src.name}</div>
+                                      <div className="text-[10px] text-muted-foreground font-mono">{src.baseUrl}</div>
+                                    </td>
+                                    <td className="py-3 px-3">
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${src.sourceType === 'manual_paste' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-sky-50 text-sky-700 border border-sky-200'}`}>
+                                        {src.sourceType === 'manual_paste' ? 'Paste' : 'Crawler'}
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-3">
+                                      <div className="flex items-center gap-1.5">
+                                        <div className="font-mono font-bold text-sm">{src.trustScore.toFixed(2)}</div>
+                                        <div className="w-12 bg-gray-150 h-1.5 rounded-full overflow-hidden">
+                                          <div className={`h-full rounded-full ${src.trustScore >= 0.7 ? 'bg-emerald-500' : src.trustScore >= 0.4 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${src.trustScore * 100}%` }}></div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-3">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-emerald-700 font-bold" title="Verified">{src.states?.verified || 0}V</span>
+                                        <span className="text-gray-400 font-medium">/</span>
+                                        <span className="text-red-700 font-bold" title="Failed">{src.states?.failed || 0}F</span>
+                                        <span className="text-gray-400 font-medium">/</span>
+                                        <span className="text-amber-700 font-bold" title="Suspicious">{src.states?.suspicious || 0}S</span>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-3 text-right">
+                                      <div className="inline-flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          step="0.05"
+                                          min="0"
+                                          max="1"
+                                          placeholder={src.trustScore.toFixed(2)}
+                                          defaultValue={src.trustScore.toFixed(2)}
+                                          onBlur={(e) => {
+                                            const score = parseFloat(e.target.value);
+                                            if (!isNaN(score) && score >= 0 && score <= 1 && Math.abs(score - src.trustScore) > 0.001) {
+                                              updateTrustMutation.mutate({ id: src._id, trustScore: score });
+                                            }
+                                          }}
+                                          className="w-14 px-1.5 py-1 border rounded text-right text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                                        />
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -805,20 +1342,38 @@ export default function JobsPage() {
                 </div>
               </div>
             </div>
-            <div className="p-4 border-t flex justify-end gap-3 bg-gray-50">
-              <button onClick={() => setSelectedSearchJob(null)} className="px-4 py-2 border rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer bg-white">
-                Close
-              </button>
-              <button
-                disabled={importToTrackerMutation.isPending}
-                onClick={() => {
-                  importToTrackerMutation.mutate(selectedSearchJob);
-                  setSelectedSearchJob(null);
-                }}
-                className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg cursor-pointer"
-              >
-                {importToTrackerMutation.isPending ? 'Importing...' : 'Import to Tracker'}
-              </button>
+            <div className="p-4 border-t flex justify-between items-center bg-gray-50">
+              <div className="flex gap-2">
+                <button
+                  disabled={submitFeedbackMutation.isPending}
+                  onClick={() => submitFeedbackMutation.mutate({ canonicalJobId: selectedSearchJob._id, interactionType: 'flag_expired' })}
+                  className="px-2.5 py-1.5 border border-amber-200 hover:bg-amber-50 text-amber-700 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer bg-white"
+                >
+                  ⚠️ Report Dead Link
+                </button>
+                <button
+                  disabled={submitFeedbackMutation.isPending}
+                  onClick={() => submitFeedbackMutation.mutate({ canonicalJobId: selectedSearchJob._id, interactionType: 'flag_spam' })}
+                  className="px-2.5 py-1.5 border border-red-200 hover:bg-red-50 text-red-700 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer bg-white"
+                >
+                  🚫 Report Spam
+                </button>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setSelectedSearchJob(null)} className="px-4 py-2 border rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer bg-white">
+                  Close
+                </button>
+                <button
+                  disabled={importToTrackerMutation.isPending}
+                  onClick={() => {
+                    importToTrackerMutation.mutate(selectedSearchJob);
+                    setSelectedSearchJob(null);
+                  }}
+                  className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg cursor-pointer"
+                >
+                  {importToTrackerMutation.isPending ? 'Importing...' : 'Import to Tracker'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

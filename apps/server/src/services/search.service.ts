@@ -60,7 +60,10 @@ export class SearchService {
     const employmentType = params.employmentType;
     const salaryMin = params.salaryMin;
 
-    const query: Record<string, any> = { isActive };
+    const query: Record<string, any> = {
+      isActive,
+      verificationState: { $nin: ['failed', 'suspicious'] }
+    };
 
     // Apply location regex filter
     if (location) {

@@ -309,6 +309,8 @@ export interface ISourceRegistry {
   updatedAt: Date;
 }
 
+export type VerificationState = 'unverified' | 'verified' | 'failed' | 'suspicious';
+
 export interface ICanonicalJob {
   _id?: ID;
   sourceId?: ID;
@@ -331,8 +333,31 @@ export interface ICanonicalJob {
   lastSeenAt: Date;
   expiredAt?: Date;
   isActive: boolean;
+  verificationState: VerificationState;
+  verificationAttempts: number;
+  lastVerifiedAt?: Date;
+  verificationError?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ISearchQueryLog {
+  _id?: ID;
+  userId: ID;
+  query: string;
+  filters: Record<string, any>;
+  resultsCount: number;
+  clickedJobIds: ID[];
+  createdAt: Date;
+}
+
+export interface IJobInteractionLog {
+  _id?: ID;
+  userId: ID;
+  canonicalJobId: ID;
+  interactionType: 'click' | 'import' | 'flag_expired' | 'flag_spam' | 'dismiss';
+  feedbackComment?: string;
+  createdAt: Date;
 }
 
 export interface ISavedSearch {
@@ -366,7 +391,8 @@ export interface IJobIngestionInput {
 export interface IAlert {
   _id?: ID;
   userId: ID;
-  savedSearchId: ID;
+  savedSearchId?: ID;
+  watchId?: ID;
   canonicalJobId: ID;
   isRead: boolean;
   createdAt: Date;
@@ -375,6 +401,16 @@ export interface IAlert {
 
 export interface IPopulatedAlert extends Omit<IAlert, 'canonicalJobId'> {
   canonicalJobId: ICanonicalJob;
+}
+
+export interface IWatch {
+  _id?: ID;
+  userId: ID;
+  type: 'company' | 'title';
+  value: string;
+  isEnabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 

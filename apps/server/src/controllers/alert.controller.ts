@@ -62,3 +62,29 @@ export async function markAlertAsRead(req: Request, res: Response): Promise<void
     });
   }
 }
+
+/**
+ * PATCH /api/v1/search/alerts/read-all — Mark all alerts as read for the logged-in user.
+ */
+export async function markAllAsRead(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+
+  try {
+    const result = await Alert.updateMany(
+      { userId, isRead: false },
+      { $set: { isRead: true } }
+    ).exec();
+
+    res.json({
+      success: true,
+      data: { modifiedCount: result.modifiedCount },
+      message: 'All alerts marked as read.',
+    });
+  } catch (error) {
+    console.error('Mark all alerts read error:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'ALERTS_UPDATE_FAILED', message: 'Failed to mark all alerts as read.' },
+    });
+  }
+}

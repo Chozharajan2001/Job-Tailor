@@ -12,6 +12,9 @@ import { SavedSearch } from '../models/SavedSearch.model.js';
 import { SourceRegistry } from '../models/SourceRegistry.model.js';
 import { Profile } from '../models/Profile.model.js';
 import { Alert } from '../models/Alert.model.js';
+import { Watch } from '../models/Watch.model.js';
+import { SearchQueryLog } from '../models/SearchQueryLog.model.js';
+import { JobInteractionLog } from '../models/JobInteractionLog.model.js';
 
 // Switch configuration to safe test database
 process.env.NODE_ENV = 'test';
@@ -62,6 +65,9 @@ describe('Advanced Job Search Engine (Sprint 2) Integration Suite', () => {
     await SourceRegistry.deleteMany({});
     await Profile.deleteMany({});
     await Alert.deleteMany({});
+    await Watch.deleteMany({});
+    await SearchQueryLog.deleteMany({});
+    await JobInteractionLog.deleteMany({});
     await IngestionService.ensureDefaultSources();
 
     // Create a mock profile for skill boost scoring tests
@@ -85,6 +91,9 @@ describe('Advanced Job Search Engine (Sprint 2) Integration Suite', () => {
     await SourceRegistry.deleteMany({});
     await Profile.deleteMany({});
     await Alert.deleteMany({});
+    await Watch.deleteMany({});
+    await SearchQueryLog.deleteMany({});
+    await JobInteractionLog.deleteMany({});
     await disconnectDatabase();
   });
 
@@ -330,7 +339,7 @@ describe('Advanced Job Search Engine (Sprint 2) Integration Suite', () => {
       });
 
       // Await short timeout for background async alert dispatch
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 300));
  
       const alertsAfterMatch = await Alert.find({ userId: mockUserId }).exec();
       expect(alertsAfterMatch.length).toBe(1);
@@ -410,6 +419,323 @@ describe('Advanced Job Search Engine (Sprint 2) Integration Suite', () => {
 
       const searchRes = await SearchService.searchJobs({ q: 'PHP' });
       expect(searchRes.jobs.length).toBe(0);
+    });
+  });
+
+  describe('6. Watches, Curated Feeds & Link Verification (Sprint 3)', () => {
+    it('should support Watch CRUD and trigger alerts for matching watches on ingestion', async () => {
+      await Watch.deleteMany({});
+      await Alert.deleteMany({});
+
+      // 1. Create a watch
+      const companyWatch = await Watch.create({
+        userId: new mongoose.Types.ObjectId(mockUserId),
+        type: 'company',
+        value: 'Netflix',
+        isEnabled: true,
+      });
+
+      expect(companyWatch).toBeDefined();
+      expect(companyWatch.type).toBe('company');
+      expect(companyWatch.value).toBe('Netflix');
+
+      // 2. Ingest matching job
+      const matchingJob = await IngestionService.ingestFromPaste({
+        jobTitle: 'Senior UI Developer',
+        companyName: 'Netflix Inc',
+        jdRawText: 'Build UI for Netflix streaming apps using React.',
+        location: 'Los Gatos, CA',
+      });
+
+      // Wait for async alert dispatch
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const alerts = await Alert.find({ userId: mockUserId }).exec();
+      expect(alerts.length).toBe(1);
+      expect(alerts[0].watchId?.toString()).toBe(companyWatch._id.toString());
+      expect(alerts[0].canonicalJobId.toString()).toBe(matchingJob._id.toString());
+
+      // 3. Disable watch, ingest another and verify no new alert
+      companyWatch.isEnabled = false;
+      await companyWatch.save();
+
+      await IngestionService.ingestFromPaste({
+        jobTitle: 'Staff Backend Engineer',
+        companyName: 'Netflix Inc',
+        jdRawText: 'Build high-performance streaming backend services.',
+        location: 'Los Gatos, CA',
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const alertsAfterDisable = await Alert.find({ userId: mockUserId }).exec();
+      expect(alertsAfterDisable.length).toBe(1);
+    });
+
+    it('should generate curated feeds and exclude imported jobs', async () => {
+      await CanonicalJob.deleteMany({});
+      await Watch.deleteMany({});
+      await Alert.deleteMany({});
+      const { Job } = await import('../models/Job.model.js');
+      await Job.deleteMany({});
+
+      // Create a watch for title "Staff"
+      await Watch.create({
+        userId: new mongoose.Types.ObjectId(mockUserId),
+        type: 'title',
+        value: 'Staff',
+        isEnabled: true,
+      });
+
+      // Ingest Job A (matches watch title "Staff")
+      const jobA = await IngestionService.ingestFromPaste({
+        jobTitle: 'Staff Engineer',
+        companyName: 'Linear',
+        jdRawText: 'Build linear products.',
+        location: 'Remote',
+      });
+
+      // Ingest Job B (matches profile skill "React")
+      const jobB = await IngestionService.ingestFromPaste({
+        jobTitle: 'UI Specialist',
+        companyName: 'Vercel',
+        jdRawText: 'Build frontend pages using React framework.',
+        location: 'Remote',
+      });
+
+      // Ingest Job C (matches neither watch nor profile skill)
+      await IngestionService.ingestFromPaste({
+        jobTitle: 'C++ Systems Programmer',
+        companyName: 'Intel',
+        jdRawText: 'Optimizing compiler backend pipelines.',
+        location: 'Santa Clara, CA',
+      });
+
+      const { FeedService } = await import('../services/feed.service.js');
+      const feedResult = await FeedService.getPersonalizedFeed(mockUserId);
+      expect(feedResult.feed.length).toBeGreaterThan(0);
+
+      // Staff (Job A) has watch boost (150+freshness+trust), should rank first
+      expect(feedResult.feed[0].jobTitle).toBe('Staff Engineer');
+
+      // Import Job B to tracker
+      await Job.create({
+        userId: new mongoose.Types.ObjectId(mockUserId),
+        companyName: 'Vercel',
+        jobTitle: 'UI Specialist',
+        jobLink: jobB.applyUrl || jobB.sourceUrl || 'https://vercel.com',
+        location: 'Remote',
+        jdRawText: 'Frontend React desc',
+        status: 'saved',
+      });
+
+      // Fetch feed again, Job B should be excluded
+      const feedResultAfterImport = await FeedService.getPersonalizedFeed(mockUserId);
+      const containsVercel = feedResultAfterImport.feed.some(item => item.companyName === 'Vercel');
+      expect(containsVercel).toBe(false);
+    });
+
+    it('should support batch read mark-all-read behavior', async () => {
+      await Alert.deleteMany({});
+      await Alert.create([
+        { userId: mockUserId, canonicalJobId: new mongoose.Types.ObjectId(), isRead: false },
+        { userId: mockUserId, canonicalJobId: new mongoose.Types.ObjectId(), isRead: false },
+      ]);
+
+      const req = { user: { userId: mockUserId } } as any;
+      let responseData: any = null;
+      const res = {
+        json: (data: any) => {
+          responseData = data;
+        },
+        status: (code: number) => res,
+      } as any;
+
+      const { markAllAsRead } = await import('../controllers/alert.controller.js');
+      await markAllAsRead(req, res);
+
+      expect(responseData.success).toBe(true);
+      const unread = await Alert.countDocuments({ userId: mockUserId, isRead: false });
+      expect(unread).toBe(0);
+    });
+  });
+
+  describe('7. Ingestion Quality, Trust Decay & Search Analytics (Sprint 4)', () => {
+    it('should support verificationState defaults and update states on link checks', async () => {
+      await CanonicalJob.deleteMany({});
+      await SourceRegistry.deleteMany({});
+
+      const source = await SourceRegistry.create({
+        name: 'Ping Source',
+        sourceType: 'public_job_page',
+        baseUrl: 'https://example-test-source.com',
+        crawlFrequency: 1440,
+        extractionStrategy: 'json_ld',
+        trustScore: 0.8,
+        isEnabled: true,
+      });
+
+      const job = await CanonicalJob.create({
+        sourceId: source._id,
+        sourceName: source.name,
+        companyName: 'Example Inc',
+        jobTitle: 'Example Engineer',
+        location: 'Remote',
+        workType: 'remote',
+        description: 'Mock job description.',
+        applyUrl: 'https://example-test-source.com/jobs/404-check',
+        dedupeKey: 'example_404_key',
+        isActive: true,
+      });
+
+      job.lastSeenAt = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+      await job.save();
+
+      expect(job.verificationState).toBe('unverified');
+
+      // Mock global fetch returning 404
+      const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation((): Promise<any> => {
+        return Promise.resolve({
+          status: 404,
+          url: 'https://example-test-source.com/jobs/404-check',
+        });
+      });
+
+      // Run cleanup URL checks
+      const count = await CleanupService.cleanupStaleJobs(30);
+      expect(count).toBe(1);
+
+      const updatedJob = await CanonicalJob.findById(job._id);
+      expect(updatedJob?.isActive).toBe(false);
+      expect(updatedJob?.verificationState).toBe('failed');
+      expect(updatedJob?.verificationError).toBe('HTTP 404');
+
+      // Verify source trust score decreased (0.8 -> 0.75)
+      const updatedSource = await SourceRegistry.findById(source._id);
+      expect(updatedSource?.trustScore).toBeLessThan(0.8);
+      expect(updatedSource?.trustScore).toBe(0.75);
+
+      fetchSpy.mockRestore();
+    });
+
+    it('should log user click interactions and handle flagging feedback to update states/trust', async () => {
+      await CanonicalJob.deleteMany({});
+      await SourceRegistry.deleteMany({});
+      await JobInteractionLog.deleteMany({});
+
+      const source = await SourceRegistry.create({
+        name: 'Feedback Source',
+        sourceType: 'public_job_page',
+        baseUrl: 'https://feedback-test.com',
+        crawlFrequency: 1440,
+        extractionStrategy: 'json_ld',
+        trustScore: 0.9,
+        isEnabled: true,
+      });
+
+      const job = await CanonicalJob.create({
+        sourceId: source._id,
+        sourceName: source.name,
+        companyName: 'Feedback Inc',
+        jobTitle: 'Feedback Engineer',
+        location: 'Remote',
+        workType: 'remote',
+        description: 'Mock feedback job.',
+        applyUrl: 'https://feedback-test.com/jobs/1',
+        dedupeKey: 'feedback_key',
+        isActive: true,
+      });
+
+      const { AnalyticsService } = await import('../services/analytics.service.js');
+
+      // 1. Log a details click
+      await AnalyticsService.logInteraction(mockUserId, job._id.toString(), 'click');
+      const clickLogs = await JobInteractionLog.find({ interactionType: 'click' });
+      expect(clickLogs.length).toBe(1);
+      expect(clickLogs[0].canonicalJobId.toString()).toBe(job._id.toString());
+
+      // 2. Submit a spam flag
+      await AnalyticsService.logInteraction(mockUserId, job._id.toString(), 'flag_spam', 'This is scam spam');
+      const spamLogs = await JobInteractionLog.find({ interactionType: 'flag_spam' });
+      expect(spamLogs.length).toBe(1);
+
+      const updatedJob = await CanonicalJob.findById(job._id);
+      expect(updatedJob?.verificationState).toBe('suspicious');
+      expect(updatedJob?.isActive).toBe(false);
+
+      // Verify trust score decayed by 0.10 (0.9 -> 0.8)
+      const updatedSource = await SourceRegistry.findById(source._id);
+      expect(updatedSource?.trustScore).toBe(0.8);
+    });
+
+    it('should exclude failed and suspicious jobs from search and feeds', async () => {
+      await CanonicalJob.deleteMany({});
+
+      // Create a verified job
+      await CanonicalJob.create({
+        sourceName: 'Search Source',
+        companyName: 'Good Company',
+        jobTitle: 'React Developer',
+        location: 'Remote',
+        workType: 'remote',
+        description: 'React developer job description.',
+        dedupeKey: 'good_react_key',
+        isActive: true,
+        verificationState: 'verified',
+      });
+
+      // Create a failed job
+      await CanonicalJob.create({
+        sourceName: 'Search Source',
+        companyName: 'Bad Company',
+        jobTitle: 'React Engineer',
+        location: 'Remote',
+        workType: 'remote',
+        description: 'React engineer job description.',
+        dedupeKey: 'bad_react_key',
+        isActive: true,
+        verificationState: 'failed',
+      });
+
+      // Create a suspicious job
+      await CanonicalJob.create({
+        sourceName: 'Search Source',
+        companyName: 'Spam Company',
+        jobTitle: 'React Specialist',
+        location: 'Remote',
+        workType: 'remote',
+        description: 'React specialist job description.',
+        dedupeKey: 'spam_react_key',
+        isActive: true,
+        verificationState: 'suspicious',
+      });
+
+      const searchRes = await SearchService.searchJobs({ q: 'React' });
+      expect(searchRes.jobs.length).toBe(1);
+      expect(searchRes.jobs[0].companyName).toBe('Good Company');
+
+      // Verify personalized feed also excludes them
+      const { FeedService } = await import('../services/feed.service.js');
+      const feedRes = await FeedService.getPersonalizedFeed(mockUserId);
+      const feedNames = feedRes.feed.map(j => j.companyName);
+      expect(feedNames).toContain('Good Company');
+      expect(feedNames).not.toContain('Bad Company');
+      expect(feedNames).not.toContain('Spam Company');
+    });
+
+    it('should return aggregated quality and search logs in the dashboard', async () => {
+      await SearchQueryLog.deleteMany({});
+      const { AnalyticsService } = await import('../services/analytics.service.js');
+
+      // Log mock searches
+      await AnalyticsService.logSearchQuery(mockUserId, 'Python', {}, 5);
+      await AnalyticsService.logSearchQuery(mockUserId, 'Python', {}, 5);
+      await AnalyticsService.logSearchQuery(mockUserId, 'TypeScript', {}, 12);
+
+      const dashboard = await AnalyticsService.getAnalyticsDashboard();
+      expect(dashboard.totalQueries).toBe(3);
+      expect(dashboard.topQueries.length).toBe(2);
+      expect(dashboard.topQueries[0].query).toBe('Python');
+      expect(dashboard.topQueries[0].count).toBe(2);
     });
   });
 });

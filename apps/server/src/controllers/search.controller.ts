@@ -4,6 +4,7 @@ import { SearchService } from '../services/search.service.js';
 import { SavedSearchService } from '../services/saved-search.service.js';
 import { CleanupService } from '../services/cleanup.service.js';
 import { SourceRegistry } from '../models/SourceRegistry.model.js';
+import { AnalyticsService } from '../services/analytics.service.js';
 
 /**
  * POST /api/v1/search/ingest/url — Ingest job details from a public URL.
@@ -99,6 +100,15 @@ export async function searchJobs(req: Request, res: Response): Promise<void> {
       salaryMin,
       userId,
     });
+
+    if (userId) {
+      AnalyticsService.logSearchQuery(
+        userId,
+        q || '',
+        { location, workType, sourceId, sortBy, freshnessDays, employmentType, salaryMin },
+        result.pagination.total
+      ).catch(err => console.error('Failed to log search query analytics:', err));
+    }
 
     res.json({
       success: true,

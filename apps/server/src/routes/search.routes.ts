@@ -14,7 +14,15 @@ import {
   updateSavedSearch,
   deleteSavedSearch,
 } from '../controllers/search.controller.js';
-import { listAlerts, markAlertAsRead } from '../controllers/alert.controller.js';
+import { listAlerts, markAlertAsRead, markAllAsRead } from '../controllers/alert.controller.js';
+import { createWatch, listWatches, toggleWatch, deleteWatch } from '../controllers/watch.controller.js';
+import { getUserFeed } from '../controllers/feed.controller.js';
+import {
+  trackSearchClick,
+  submitFeedback,
+  getDashboardStats,
+  updateSourceTrustManual,
+} from '../controllers/analytics.controller.js';
 
 const router = Router();
 router.use(authenticate);
@@ -92,6 +100,29 @@ const cleanupSchema = z.object({
   thresholdDays: z.number().int().min(0).optional(),
 });
 
+const createWatchSchema = z.object({
+  type: z.enum(['company', 'title']),
+  value: z.string().trim().min(1, 'Watch value is required'),
+});
+
+const toggleWatchSchema = z.object({
+  isEnabled: z.boolean(),
+});
+
+const feedbackSchema = z.object({
+  canonicalJobId: z.string().min(1, 'canonicalJobId is required'),
+  interactionType: z.enum(['flag_expired', 'flag_spam']),
+  feedbackComment: z.string().optional(),
+});
+
+const clickTrackSchema = z.object({
+  canonicalJobId: z.string().min(1, 'canonicalJobId is required'),
+});
+
+const manualTrustSchema = z.object({
+  trustScore: z.number().min(0).max(1),
+});
+
 // ─── Routes ────────────────────────────────────────────────────
 // Ingestion
 router.post('/ingest/url', validateBody(ingestUrlSchema), ingestUrl);
@@ -100,6 +131,9 @@ router.post('/ingest/paste', validateBody(ingestPasteSchema), ingestPaste);
 // Search Query
 router.get('/', validateQuery(searchJobsQuerySchema), searchJobs);
 
+// Curated Personalized Feed
+router.get('/feed', getUserFeed);
+
 // Saved Searches alerts management
 router.post('/saved', validateBody(createSavedSearchSchema), createSavedSearch);
 router.get('/saved', listSavedSearches);
@@ -107,12 +141,25 @@ router.patch('/saved/:id', validateBody(updateSavedSearchSchema), updateSavedSea
 router.delete('/saved/:id', deleteSavedSearch);
 
 // Alerts Inbox Delivery
+router.patch('/alerts/read-all', markAllAsRead); // Placed before parameterized read endpoint to prevent route clashes
 router.get('/alerts', listAlerts);
 router.patch('/alerts/:id/read', markAlertAsRead);
+
+// Keyword Watches (Companies & Job Titles)
+router.post('/watches', validateBody(createWatchSchema), createWatch);
+router.get('/watches', listWatches);
+router.patch('/watches/:id', validateBody(toggleWatchSchema), toggleWatch);
+router.delete('/watches/:id', deleteWatch);
 
 // Source Registry Config & Maintenance
 router.post('/cleanup', validateBody(cleanupSchema), cleanupJobs);
 router.get('/sources', listSources);
 router.post('/sources', validateBody(createSourceSchema), createSource);
+router.post('/sources/:id/trust', validateBody(manualTrustSchema), updateSourceTrustManual);
+
+// Search Analytics & Feedback Quality
+router.post('/feedback', validateBody(feedbackSchema), submitFeedback);
+router.post('/analytics/click', validateBody(clickTrackSchema), trackSearchClick);
+router.get('/analytics/dashboard', getDashboardStats);
 
 export default router;
