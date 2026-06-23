@@ -367,10 +367,14 @@ export interface IAlert {
   _id?: ID;
   userId: ID;
   savedSearchId: ID;
-  canonicalJobId: any; // Can be populated with ICanonicalJob or string ID
+  canonicalJobId: ID;
   isRead: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface IPopulatedAlert extends Omit<IAlert, 'canonicalJobId'> {
+  canonicalJobId: ICanonicalJob;
 }
 
 
