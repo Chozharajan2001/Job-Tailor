@@ -80,6 +80,11 @@ npm run build
    - Application status/history tests
    - Client smoke tests for major pages
 
+8. Build advanced job search engine.
+   - See `docs/advanced-job-search-engine.md` for the low-cost implementation plan.
+   - Prioritize crawlable/public sources, own ranking, saved searches, alerts, deduplication, and verification.
+   - Defer paid aggregator APIs unless a source proves necessary.
+
 ## Out Of Scope For MVP
 
 - Auto-apply bots

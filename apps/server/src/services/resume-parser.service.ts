@@ -1,17 +1,4 @@
-import OpenAI from 'openai';
-import { config } from '../config/index.js';
-
-let openaiClient: OpenAI | null = null;
-
-function getOpenAIClient(): OpenAI {
-  if (!openaiClient) {
-    if (!config.openaiApiKey) {
-      throw new Error('OPENAI_API_KEY is not configured');
-    }
-    openaiClient = new OpenAI({ apiKey: config.openaiApiKey });
-  }
-  return openaiClient;
-}
+import { aiProviderManager } from './ai-provider/provider-manager.js';
 
 export interface ParsedProfile {
   summary: string;
@@ -73,14 +60,7 @@ export interface ParsedProfile {
  * Parse raw resume text into structured profile JSON using OpenAI.
  */
 export async function parseResumeText(resumeRawText: string): Promise<ParsedProfile> {
-  const client = getOpenAIClient();
-
-  const response = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'system',
-        content: `You are an expert resume parser for JobTailor.
+  const systemPrompt = `You are an expert resume parser for JobTailor.
 Your task is to analyze raw resume text and extract all relevant candidate information into a strictly structured JSON profile.
 
 Rules:
@@ -149,29 +129,14 @@ JSON Structure:
     "portfolio": "",
     "website": ""
   }
-}`,
-      },
-      {
-        role: 'user',
-        content: `Parse this resume text:\n\n${resumeRawText}`,
-      },
-    ],
-    temperature: 0.1,
-    response_format: { type: 'json_object' },
-    max_tokens: 3500,
-  });
+}`;
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error('Empty response from OpenAI API during resume parsing');
-  }
-
-  let parsed: ParsedProfile;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    throw new Error('Failed to parse JSON from OpenAI response');
-  }
+  const parsed = await aiProviderManager.generateStructuredOutput<ParsedProfile>(
+    `Parse this resume text:\n\n${resumeRawText}`,
+    systemPrompt,
+    undefined,
+    { temperature: 0.1, maxTokens: 3500 }
+  );
 
   return parsed;
 }

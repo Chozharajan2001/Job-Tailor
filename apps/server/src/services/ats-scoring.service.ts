@@ -1,5 +1,4 @@
-import OpenAI from 'openai';
-import { config } from '../config/index.js';
+import { aiProviderManager } from './ai-provider/provider-manager.js';
 import { IParsedJD } from '../models/Job.model.js';
 import type { IATSScore, IMatchedSkill, IMissingSkill, IWeakSkill } from '../models/Resume.model.js';
 
@@ -158,30 +157,27 @@ async function semanticScore(
   jd: IParsedJD
 ): Promise<{ score: number; reasoning?: string }> {
   try {
-    if (!config.openaiApiKey) return { score: 75 }; // Fallback if no API key configured
-    const client = new OpenAI({ apiKey: config.openaiApiKey });
+    const prompt = `JOB DESCRIPTION:\n${JSON.stringify(jd)}\n\nRESUME:\n${JSON.stringify(resume)}`;
+    const systemPrompt = `You are an ATS (Applicant Tracking System) evaluator. Score resumes against job descriptions on a scale of 0-100.
 
-    const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an ATS (Applicant Tracking System) evaluator. Score resumes against job descriptions on a scale of 0-100.
+Respond ONLY with JSON: {"score": 0-100, "reasoning": "brief explanation"}`;
 
-Respond ONLY with JSON: {"score": 0-100, "reasoning": "brief explanation"}`,
-        },
-        {
-          role: 'user',
-          content: `JOB DESCRIPTION:\n${JSON.stringify(jd)}\n\nRESUME:\n${JSON.stringify(resume)}`,
-        },
-      ],
-      temperature: 0.1,
-      response_format: { type: 'json_object' },
-      max_tokens: 300,
-    });
+    interface SemanticScoreResponse {
+      score: number;
+      reasoning?: string;
+    }
 
-    const result = JSON.parse(response.choices[0]?.message?.content || '{"score": 75}');
-    return { score: Math.min(100, Math.max(0, result.score || 75)), reasoning: result.reasoning };
+    const result = await aiProviderManager.generateStructuredOutput<SemanticScoreResponse>(
+      prompt,
+      systemPrompt,
+      undefined,
+      { temperature: 0.1, maxTokens: 300 }
+    );
+
+    return {
+      score: Math.min(100, Math.max(0, result.score || 75)),
+      reasoning: result.reasoning
+    };
   } catch {
     return { score: 75 }; // Fallback on LLM failure
   }

@@ -22,6 +22,10 @@ export const config = {
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
 
   openaiApiKey: process.env.OPENAI_API_KEY || '',
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
+  nvidiaNimApiKey: process.env.NVIDIA_NIM_API_KEY || '',
+  nvidiaNimBaseUrl: process.env.NVIDIA_NIM_BASE_URL || '',
+  preferredProvider: (process.env.PREFERRED_AI_PROVIDER || 'openai') as 'openai' | 'gemini' | 'nvidia',
   
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
@@ -37,6 +41,11 @@ export function validateConfig(): void {
     console.warn('⚠️  Using default JWT secret — set JWT_SECRET in production');
   }
   if (config.nodeEnv === 'production') {
-    if (!config.openaiApiKey) throw new Error('OPENAI_API_KEY is required in production');
+    const hasOpenAI = !!config.openaiApiKey;
+    const hasGemini = !!config.geminiApiKey;
+    const hasNvidia = !!config.nvidiaNimApiKey && !!config.nvidiaNimBaseUrl;
+    if (!hasOpenAI && !hasGemini && !hasNvidia) {
+      throw new Error('At least one AI provider (OpenAI, Gemini, or NVIDIA NIM) must be fully configured in production');
+    }
   }
 }

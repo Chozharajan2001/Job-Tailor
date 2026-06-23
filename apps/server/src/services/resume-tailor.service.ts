@@ -1,5 +1,4 @@
-import OpenAI from 'openai';
-import { config } from '../config/index.js';
+import { aiProviderManager } from './ai-provider/provider-manager.js';
 import { IParsedJD } from '../models/Job.model.js';
 import { IProfile } from '../models/Profile.model.js';
 import type { IATSScore } from '../models/Resume.model.js';
@@ -115,27 +114,7 @@ async function rewriteSummary(
   jd: IParsedJD
 ): Promise<string> {
   try {
-    const client = new OpenAI({ apiKey: config.openaiApiKey });
-    if (!config.openaiApiKey) return currentSummary; // Fallback
-
-    const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert resume writer. Rewrite professional summaries to match job descriptions.
-
-Rules:
-- Keep it to 2-3 sentences maximum
-- Naturally incorporate keywords from the target JD
-- Match the tone of the JD (${jd.tone})
-- Highlight relevant skills from the candidate's profile
-- Do NOT fabricate skills or experience
-- Respond with ONLY the rewritten summary text, no quotes or explanation`,
-        },
-        {
-          role: 'user',
-          content: `CURRENT SUMMARY: ${currentSummary || '(none provided)'}
+    const prompt = `CURRENT SUMMARY: ${currentSummary || '(none provided)'}
 
 CANDIDATE PROFILE:
 - Skills: ${(profile.skills || []).map((s) => s.name).join(', ')}
@@ -147,14 +126,25 @@ TARGET JOB DESCRIPTION:
 - Required Skills: ${jd.requiredSkills.join(', ')}
 - Focus: Backend ${jd.focusWeights.backend}%, Frontend ${jd.focusWeights.frontend}%, DevOps ${jd.focusWeights.devops}%, AI ${jd.focusWeights.ai}%
 
-Rewrite the summary for this specific job.`,
-        },
-      ],
-      temperature: 0.5,
-      max_tokens: 200,
-    });
+Rewrite the summary for this specific job.`;
 
-    return response.choices[0]?.message?.content?.trim() || currentSummary;
+    const systemPrompt = `You are an expert resume writer. Rewrite professional summaries to match job descriptions.
+
+Rules:
+- Keep it to 2-3 sentences maximum
+- Naturally incorporate keywords from the target JD
+- Match the tone of the JD (${jd.tone})
+- Highlight relevant skills from the candidate's profile
+- Do NOT fabricate skills or experience
+- Respond with ONLY the rewritten summary text, no quotes or explanation`;
+
+    const completion = await aiProviderManager.generateCompletion(
+      prompt,
+      systemPrompt,
+      { temperature: 0.5, maxTokens: 200 }
+    );
+
+    return completion.content.trim() || currentSummary;
   } catch {
     return currentSummary; // Fallback on error
   }
