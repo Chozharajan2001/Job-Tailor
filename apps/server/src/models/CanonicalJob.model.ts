@@ -18,6 +18,7 @@ export interface ICanonicalJobDocument extends Document {
   rawHtmlSnapshot?: string;
   extractionConfidence: number;
   dedupeKey: string;
+  descriptionHash?: string;
   firstSeenAt: Date;
   lastSeenAt: Date;
   expiredAt?: Date;
@@ -77,6 +78,7 @@ const canonicalJobSchema = new Schema<ICanonicalJobDocument>(
     rawHtmlSnapshot: { type: String },
     extractionConfidence: { type: Number, default: 1.0 },
     dedupeKey: { type: String, required: true, unique: true, index: true },
+    descriptionHash: { type: String, index: true },
     firstSeenAt: { type: Date, required: true, default: Date.now },
     lastSeenAt: { type: Date, required: true, default: Date.now },
     expiredAt: Date,
