@@ -290,3 +290,60 @@ export interface IDashboardOverview {
     callbackRate: number;
   }>;
 }
+
+// ─── Search Engine Types ─────────────────────────────────────
+export type SearchSourceType = 'manual_paste' | 'public_job_page';
+export type SearchExtractionStrategy = 'html_metadata' | 'json_ld' | 'manual_input';
+
+export interface ISourceRegistry {
+  _id?: ID;
+  name: string;
+  sourceType: SearchSourceType;
+  baseUrl: string;
+  crawlFrequency: number; // in minutes
+  extractionStrategy: SearchExtractionStrategy;
+  robotsPolicy?: { allowCrawl: boolean; crawlDelay?: number };
+  trustScore: number; // 0 to 1
+  isEnabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ICanonicalJob {
+  _id?: ID;
+  sourceId?: ID;
+  sourceName: string;
+  sourceUrl?: string;
+  companyName: string;
+  jobTitle: string;
+  location: string;
+  workType: 'remote' | 'hybrid' | 'onsite';
+  employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
+  salaryRange?: { min: number; max: number; currency: string };
+  postedDate?: Date;
+  applyUrl?: string;
+  description: string;
+  structuredJD?: IParsedJD;
+  rawHtmlSnapshot?: string;
+  extractionConfidence: number;
+  dedupeKey: string;
+  firstSeenAt: Date;
+  lastSeenAt: Date;
+  expiredAt?: Date;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ISavedSearch {
+  _id?: ID;
+  userId: ID;
+  name: string;
+  query?: string;
+  filters: { location?: string; workType?: string; companyName?: string };
+  alertSubscription: { emailEnabled: boolean; inAppEnabled: boolean };
+  lastRunAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
