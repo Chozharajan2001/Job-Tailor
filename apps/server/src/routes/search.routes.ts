@@ -10,6 +10,7 @@ import {
   listSavedSearches,
   listSources,
   createSource,
+  cleanupJobs,
 } from '../controllers/search.controller.js';
 
 const router = Router();
@@ -38,6 +39,7 @@ const searchJobsQuerySchema = z.object({
   sortBy: z.enum(['relevance', 'date']).default('relevance'),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  freshnessDays: z.coerce.number().int().min(1).optional(),
 });
 
 const createSavedSearchSchema = z.object({
@@ -67,12 +69,17 @@ const createSourceSchema = z.object({
   trustScore: z.number().min(0).max(1).optional(),
 });
 
+const cleanupSchema = z.object({
+  thresholdDays: z.number().int().min(0).optional(),
+});
+
 // ─── Routes ────────────────────────────────────────────────────
 router.post('/ingest/url', validateBody(ingestUrlSchema), ingestUrl);
 router.post('/ingest/paste', validateBody(ingestPasteSchema), ingestPaste);
 router.get('/', validateQuery(searchJobsQuerySchema), searchJobs);
 router.post('/saved', validateBody(createSavedSearchSchema), createSavedSearch);
 router.get('/saved', listSavedSearches);
+router.post('/cleanup', validateBody(cleanupSchema), cleanupJobs);
 router.get('/sources', listSources);
 router.post('/sources', validateBody(createSourceSchema), createSource);
 

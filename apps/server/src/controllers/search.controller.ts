@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { IngestionService } from '../services/ingestion.service.js';
-import { CanonicalJob } from '../models/CanonicalJob.model.js';
-import { SavedSearch } from '../models/SavedSearch.model.js';
+import { SearchService } from '../services/search.service.js';
+import { SavedSearchService } from '../services/saved-search.service.js';
+import { CleanupService } from '../services/cleanup.service.js';
 import { SourceRegistry } from '../models/SourceRegistry.model.js';
 
 /**
@@ -74,68 +75,28 @@ export async function ingestPaste(req: Request, res: Response): Promise<void> {
 export async function searchJobs(req: Request, res: Response): Promise<void> {
   const q = (req.query.q as string)?.trim();
   const location = (req.query.location as string)?.trim();
-  const workType = req.query.workType as string;
+  const workType = req.query.workType as any;
   const sourceId = req.query.sourceId as string;
-  const sortBy = req.query.sortBy as string; // 'relevance' | 'date'
+  const sortBy = req.query.sortBy as any; // 'relevance' | 'date'
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 20;
-
-  const query: Record<string, any> = { isActive: true };
-
-  // Text search
-  if (q) {
-    query.$text = { $search: q };
-  }
-
-  // Location filter
-  if (location) {
-    query.location = { $regex: location, $options: 'i' };
-  }
-
-  // Work type filter
-  if (workType && workType !== 'all') {
-    query.workType = workType;
-  }
-
-  // Source registry filter
-  if (sourceId && sourceId !== 'all') {
-    query.sourceId = sourceId;
-  }
-
-  // Define projection and sorting
-  let projection: Record<string, any> = {};
-  let sort: Record<string, any> = { lastSeenAt: -1 };
-
-  if (q && sortBy !== 'date') {
-    projection = { score: { $meta: 'textScore' } };
-    sort = { score: { $meta: 'textScore' } };
-  } else if (sortBy === 'date') {
-    sort = { lastSeenAt: -1 };
-  }
+  const freshnessDays = req.query.freshnessDays ? parseInt(req.query.freshnessDays as string) : undefined;
 
   try {
-    const [jobs, total] = await Promise.all([
-      CanonicalJob.find(query, projection)
-        .sort(sort)
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .populate('sourceId', 'name sourceType')
-        .lean()
-        .exec(),
-      CanonicalJob.countDocuments(query),
-    ]);
+    const result = await SearchService.searchJobs({
+      q,
+      location,
+      workType,
+      sourceId,
+      sortBy,
+      page,
+      limit,
+      freshnessDays,
+    });
 
     res.json({
       success: true,
-      data: {
-        jobs,
-        pagination: {
-          total,
-          page,
-          pages: Math.ceil(total / limit),
-          limit,
-        },
-      },
+      data: result,
     });
   } catch (error) {
     console.error('Search jobs error:', error);
@@ -159,12 +120,11 @@ export async function createSavedSearch(req: Request, res: Response): Promise<vo
   }
 
   try {
-    const saved = await SavedSearch.create({
-      userId,
+    const saved = await SavedSearchService.createSavedSearch(userId, {
       name,
       query,
-      filters: filters || {},
-      alertSubscription: alertSubscription || { emailEnabled: false, inAppEnabled: true },
+      filters,
+      alertSubscription,
     });
 
     res.status(201).json({
@@ -188,13 +148,35 @@ export async function listSavedSearches(req: Request, res: Response): Promise<vo
   const userId = req.user!.userId;
 
   try {
-    const savedSearches = await SavedSearch.find({ userId }).sort({ createdAt: -1 }).lean().exec();
+    const savedSearches = await SavedSearchService.listSavedSearches(userId);
     res.json({ success: true, data: { savedSearches } });
   } catch (error) {
     console.error('List saved searches error:', error);
     res.status(500).json({
       success: false,
       error: { code: 'SAVED_SEARCH_LIST_FAILED', message: 'Failed to retrieve saved searches.' },
+    });
+  }
+}
+
+/**
+ * POST /api/v1/search/cleanup — Run the stale-job deactivation maintenance task.
+ */
+export async function cleanupJobs(req: Request, res: Response): Promise<void> {
+  const thresholdDays = req.body.thresholdDays !== undefined ? parseInt(req.body.thresholdDays) : 30;
+
+  try {
+    const deactivatedCount = await CleanupService.cleanupStaleJobs(thresholdDays);
+    res.json({
+      success: true,
+      deactivatedCount,
+      message: 'Stale jobs cleaned up successfully.',
+    });
+  } catch (error) {
+    console.error('Cleanup jobs error:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'CLEANUP_FAILED', message: 'Failed to run stale jobs cleanup.' },
     });
   }
 }
