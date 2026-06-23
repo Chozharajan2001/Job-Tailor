@@ -1,8 +1,9 @@
 import { SourceRegistry } from '../models/SourceRegistry.model.js';
 import { CanonicalJob, ICanonicalJobDocument } from '../models/CanonicalJob.model.js';
 import { DeduplicationService } from './deduplication.service.js';
-import { parseJD } from './jd-parser.service.js'; // Use existing parser for IParsedJD structure if needed or mock it
+import { parseJD } from './jd-parser.service.js';
 import { URL } from 'url';
+import { IJobIngestionInput } from '@jobtailor/shared-types';
 
 export class IngestionService {
   /**
@@ -37,62 +38,96 @@ export class IngestionService {
   }
 
   /**
-   * Ingest a job from a manual copy-paste description
+   * Main unified ingestion pipeline.
+   * All imports (paste, crawl, etc.) call this method after assembling the IJobIngestionInput object.
    */
-  static async ingestFromPaste(params: {
-    jobTitle: string;
-    companyName: string;
-    jdRawText: string;
-    location?: string;
-    workType?: 'remote' | 'hybrid' | 'onsite';
-    employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
-    salaryRange?: { min: number; max: number; currency: string };
-  }): Promise<ICanonicalJobDocument> {
+  static async ingestJob(input: IJobIngestionInput): Promise<ICanonicalJobDocument> {
     await this.ensureDefaultSources();
-    const source = await SourceRegistry.findOne({ sourceType: 'manual_paste' });
 
-    const company = params.companyName.trim();
-    const title = params.jobTitle.trim();
-    const loc = params.location?.trim() || 'remote';
-    const work = params.workType || 'remote';
-    const description = params.jdRawText.trim();
+    // 1. Normalize input
+    const companyName = input.companyName.trim();
+    const jobTitle = input.jobTitle.trim();
+    const description = input.description.trim();
+    const location = input.location?.trim() || 'remote';
+    const applyUrl = input.applyUrl?.trim();
+    const sourceUrl = input.sourceUrl?.trim();
+    
+    // Determine workType from location/description text if not specified
+    let workType = input.workType;
+    if (!workType) {
+      const locationLower = location.toLowerCase();
+      const descLower = description.toLowerCase();
+      const titleLower = jobTitle.toLowerCase();
 
-    // Layer 2 & 3 dedupe keys
-    const dedupeKey = DeduplicationService.generateDedupeKey(company, title, loc);
+      if (locationLower.includes('hybrid') || descLower.includes('hybrid')) {
+        workType = 'hybrid';
+      } else if (locationLower.includes('onsite') || locationLower.includes('on-site') || 
+                 descLower.includes('office only') || descLower.includes('work from office')) {
+        workType = 'onsite';
+      } else {
+        workType = 'remote';
+      }
+    }
+
+    const employmentType = input.employmentType || 'full-time';
+
+    // 2. Resolve the source registry document
+    let source = null;
+    if (input.sourceType === 'manual_paste') {
+      source = await SourceRegistry.findOne({ sourceType: 'manual_paste' });
+    } else {
+      if (sourceUrl) {
+        try {
+          const parsedUrl = new URL(sourceUrl);
+          const host = parsedUrl.hostname;
+          source = await SourceRegistry.findOne({ baseUrl: { $regex: host, $options: 'i' }, isEnabled: true });
+        } catch (e) {
+          // Ignored URL parsing error
+        }
+      }
+      if (!source) {
+        source = await SourceRegistry.findOne({ sourceType: 'public_job_page' });
+      }
+    }
+
+    // 3. Derive dedupe key
+    const dedupeKey = DeduplicationService.generateDedupeKey(companyName, jobTitle, location);
+
+    // 4. Derive description hash
     const descriptionHash = DeduplicationService.generateDescriptionHash(description);
 
-    // Look for duplicates
-    const duplicate = await DeduplicationService.findDuplicate(undefined, dedupeKey, descriptionHash);
+    // 5. Call deduplication service
+    const duplicate = await DeduplicationService.findDuplicate(applyUrl || sourceUrl, dedupeKey, descriptionHash);
+
     if (duplicate) {
+      // 6. Re-activate / update existing canonical job
       duplicate.lastSeenAt = new Date();
-      duplicate.isActive = true; // reactivate if expired
+      duplicate.isActive = true;
+      if (input.rawHtmlSnapshot) {
+        duplicate.rawHtmlSnapshot = input.rawHtmlSnapshot;
+      }
       await duplicate.save();
       return duplicate;
     }
 
-    // Attempt to extract structured fields using the AI JD Parser service (if available and text is long enough)
-    let structuredJD;
-    try {
-      if (description.length > 50) {
-        structuredJD = await parseJD(description);
-      }
-    } catch (e) {
-      console.warn('AI structured parse failed, falling back to simple mapping:', e);
-    }
-
-    // Save canonical record
+    // 7. Persist new canonical job
+    const confidence = input.sourceType === 'manual_paste' ? 1.0 : (input.rawHtmlSnapshot ? 0.8 : 0.4);
     const canonicalJob = await CanonicalJob.create({
       sourceId: source?._id,
-      sourceName: source?.name || 'Manual Paste Ingest',
-      companyName: company,
-      jobTitle: title,
-      location: loc,
-      workType: work,
-      employmentType: params.employmentType || 'full-time',
-      salaryRange: params.salaryRange,
+      sourceName: source?.name || (input.sourceType === 'manual_paste' ? 'Manual Paste Ingest' : 'Public URL Ingest'),
+      sourceUrl,
+      companyName,
+      jobTitle,
+      location,
+      workType,
+      employmentType,
+      salaryRange: undefined,
+      postedDate: input.postedDate || new Date(),
+      applyUrl,
       description,
-      structuredJD,
-      extractionConfidence: 1.0,
+      structuredJD: input.structuredJD,
+      rawHtmlSnapshot: input.rawHtmlSnapshot,
+      extractionConfidence: confidence,
       dedupeKey,
       descriptionHash,
       firstSeenAt: new Date(),
@@ -104,18 +139,50 @@ export class IngestionService {
   }
 
   /**
+   * Ingest a job from a manual copy-paste description
+   */
+  static async ingestFromPaste(params: {
+    jobTitle: string;
+    companyName: string;
+    jdRawText: string;
+    location?: string;
+    workType?: 'remote' | 'hybrid' | 'onsite';
+    employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
+    salaryRange?: { min: number; max: number; currency: string };
+  }): Promise<ICanonicalJobDocument> {
+    const description = params.jdRawText.trim();
+
+    // Attempt to extract structured fields using the AI JD Parser service (if available and text is long enough)
+    let structuredJD;
+    try {
+      if (description.length > 50) {
+        structuredJD = await parseJD(description);
+      }
+    } catch (e) {
+      console.warn('AI structured parse failed, falling back to simple mapping:', e);
+    }
+
+    const input: IJobIngestionInput = {
+      sourceType: 'manual_paste',
+      sourceName: 'Manual Paste Ingest',
+      companyName: params.companyName,
+      jobTitle: params.jobTitle,
+      location: params.location,
+      workType: params.workType,
+      employmentType: params.employmentType,
+      description,
+      structuredJD,
+    };
+
+    return this.ingestJob(input);
+  }
+
+  /**
    * Ingest a job by fetching and parsing a public URL
    */
   static async ingestFromUrl(urlStr: string): Promise<ICanonicalJobDocument> {
-    await this.ensureDefaultSources();
     const parsedUrl = new URL(urlStr);
     const host = parsedUrl.hostname;
-
-    // Check if the source is registered or find the public board type
-    let source = await SourceRegistry.findOne({ baseUrl: { $regex: host, $options: 'i' }, isEnabled: true });
-    if (!source) {
-      source = await SourceRegistry.findOne({ sourceType: 'public_job_page' });
-    }
 
     // Fetch raw HTML
     const response = await fetch(urlStr, {
@@ -172,10 +239,8 @@ export class IngestionService {
     let applyUrl = urlStr;
     let postedDate: Date | undefined;
     let employmentType: 'full-time' | 'part-time' | 'contract' | 'internship' = 'full-time';
-    let confidence = 0.5;
 
     if (jobPosting) {
-      confidence = 1.0;
       jobTitle = jobPosting.title || '';
       companyName = jobPosting.hiringOrganization?.name || 
                     (typeof jobPosting.hiringOrganization === 'string' ? jobPosting.hiringOrganization : '');
@@ -223,46 +288,14 @@ export class IngestionService {
 
       const metaSiteName = extractMeta(/<meta[^>]*property=["']og:site_name["'][^>]*content=["']([^"']+)["']/i, html);
 
-      // Clean title and try to extract company name
-      // Title tags are often "Job Title at Company" or "Company - Job Title"
       jobTitle = metaTitle.split(/ at | - | \| /)[0]?.trim() || 'Job Opening';
       companyName = metaSiteName || metaTitle.split(/ at /)[1]?.trim() || host.replace('www.', '').split('.')[0] || 'Unknown Company';
-      description = metaDesc || html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1000); // extreme raw fallback
-      confidence = 0.4;
+      description = metaDesc || html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1000);
     }
 
-    // Cleanup HTML tags from description string for database safety
     const cleanDesc = description.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
     if (!jobTitle || !companyName || !cleanDesc) {
       throw new Error('Failed to extract minimum job details (title, company, description) from URL.');
-    }
-
-    // Work type heuristics
-    let workType: 'remote' | 'hybrid' | 'onsite' = 'remote';
-    const locationLower = location.toLowerCase();
-    const descLower = cleanDesc.toLowerCase();
-    const titleLower = jobTitle.toLowerCase();
-
-    if (locationLower.includes('hybrid') || descLower.includes('hybrid')) {
-      workType = 'hybrid';
-    } else if (locationLower.includes('onsite') || locationLower.includes('on-site') || 
-               descLower.includes('office only') || descLower.includes('work from office')) {
-      workType = 'onsite';
-    } else if (locationLower.includes('remote') || descLower.includes('remote friendly') || titleLower.includes('remote')) {
-      workType = 'remote';
-    }
-
-    // Generate dedupe keys
-    const dedupeKey = DeduplicationService.generateDedupeKey(companyName, jobTitle, location);
-    const descriptionHash = DeduplicationService.generateDescriptionHash(cleanDesc);
-
-    // Look for duplicate canonical job
-    const duplicate = await DeduplicationService.findDuplicate(applyUrl, dedupeKey, descriptionHash);
-    if (duplicate) {
-      duplicate.lastSeenAt = new Date();
-      duplicate.isActive = true; // reactivate if expired
-      await duplicate.save();
-      return duplicate;
     }
 
     // Extract structured JD using existing AI Parser (if applicable and description is robust)
@@ -275,29 +308,21 @@ export class IngestionService {
       console.warn('AI structured parse failed during URL ingestion:', e);
     }
 
-    // Create the CanonicalJob record
-    const canonicalJob = await CanonicalJob.create({
-      sourceId: source?._id,
-      sourceName: source?.name || 'Public URL Ingest',
+    const input: IJobIngestionInput = {
+      sourceType: 'public_job_page',
+      sourceName: 'Public URL Ingest',
       sourceUrl: urlStr,
+      applyUrl,
       companyName,
       jobTitle,
       location,
-      workType,
       employmentType,
       postedDate,
-      applyUrl,
       description: cleanDesc,
-      structuredJD,
       rawHtmlSnapshot: html,
-      extractionConfidence: confidence,
-      dedupeKey,
-      descriptionHash,
-      firstSeenAt: new Date(),
-      lastSeenAt: new Date(),
-      isActive: true,
-    });
+      structuredJD,
+    };
 
-    return canonicalJob;
+    return this.ingestJob(input);
   }
 }
