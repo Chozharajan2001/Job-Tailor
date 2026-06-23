@@ -336,6 +336,49 @@ describe('Advanced Job Search Engine (Sprint 2) Integration Suite', () => {
       expect(alertsAfterMatch.length).toBe(1);
       expect(alertsAfterMatch[0].canonicalJobId.toString()).toBe(matchingJob._id.toString());
     });
+
+    it('should list alerts and mark an alert as read via controller functions', async () => {
+      await Alert.deleteMany({});
+      const alert = await Alert.create({
+        userId: new mongoose.Types.ObjectId(mockUserId),
+        savedSearchId: new mongoose.Types.ObjectId(),
+        canonicalJobId: new mongoose.Types.ObjectId(),
+        isRead: false,
+      });
+
+      const reqList = { user: { userId: mockUserId } } as any;
+      let responseData: any = null;
+      const resList = {
+        json: (data: any) => {
+          responseData = data;
+        },
+        status: (code: number) => resList,
+      } as any;
+
+      const { listAlerts, markAlertAsRead } = await import('../controllers/alert.controller.js');
+      await listAlerts(reqList, resList);
+
+      expect(responseData).toBeDefined();
+      expect(responseData.success).toBe(true);
+      expect(responseData.data.alerts.length).toBe(1);
+
+      const reqRead = { user: { userId: mockUserId }, params: { id: alert._id.toString() } } as any;
+      let readResponseData: any = null;
+      const resRead = {
+        json: (data: any) => {
+          readResponseData = data;
+        },
+        status: (code: number) => resRead,
+      } as any;
+
+      await markAlertAsRead(reqRead, resRead);
+      expect(readResponseData).toBeDefined();
+      expect(readResponseData.success).toBe(true);
+      expect(readResponseData.data.alert.isRead).toBe(true);
+
+      const updatedAlert = await Alert.findById(alert._id);
+      expect(updatedAlert?.isRead).toBe(true);
+    });
   });
 
   describe('5. Stale Job Cleanup Job', () => {
