@@ -347,3 +347,20 @@ export interface ISavedSearch {
   updatedAt: Date;
 }
 
+export interface IJobIngestionInput {
+  sourceType: 'manual_paste' | 'public_job_page';
+  sourceName: string;
+  sourceUrl?: string;
+  applyUrl?: string;
+  companyName: string;
+  jobTitle: string;
+  location?: string;
+  workType?: 'remote' | 'hybrid' | 'onsite';
+  employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
+  description: string;
+  rawHtmlSnapshot?: string;
+  postedDate?: Date;
+  structuredJD?: IParsedJD;
+}
+
+
