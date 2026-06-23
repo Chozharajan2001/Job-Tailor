@@ -275,3 +275,151 @@ The best low-cost first version is:
 - Only add paid APIs later if coverage or freshness really demands it
 
 That gives us a useful search engine without turning the project into an API bill.
+
+## Sprint 1 Execution Order
+
+Do these in order. Do not jump to UI work before the ingestion and storage layer is stable.
+
+### Step 1: lock the data model
+
+Create shared types and server models for:
+
+- `ISourceRegistry`
+- `ICanonicalJob`
+- `ISavedSearch`
+
+Minimum fields to support Sprint 1:
+
+- source name and source URL
+- canonical title, company, and location
+- raw text and normalized text
+- `applyUrl`
+- `firstSeenAt`, `lastSeenAt`, `isActive`
+- dedupe key
+- source trust score
+- alert criteria for saved searches
+
+### Step 2: add one source registry path
+
+Support only two source types in Sprint 1:
+
+- `manual_paste`
+- `public_job_page`
+
+Do not add more source types yet.
+
+### Step 3: build ingestion service
+
+Implement ingestion as a pure pipeline:
+
+1. validate input
+2. fetch or accept pasted text
+3. extract fields
+4. normalize fields
+5. dedupe
+6. persist canonical job
+
+Extraction order:
+
+1. JSON-LD `JobPosting`
+2. visible page metadata
+3. pasted/raw text fallback
+
+### Step 4: add deduplication
+
+Use this order of checks:
+
+1. exact `applyUrl`
+2. exact normalized `companyName + jobTitle + location`
+3. normalized description hash
+
+Keep the dedupe key on the canonical record so future imports resolve quickly.
+
+### Step 5: add search endpoint
+
+Expose one search endpoint that can query the canonical jobs collection.
+
+Sprint 1 filters:
+
+- query text
+- location
+- work type
+- source
+- freshness
+- page and limit
+
+Sprint 1 ranking:
+
+- exact title match
+- company match
+- keyword overlap
+- recent posting boost
+- source trust boost
+
+### Step 6: add saved searches
+
+Implement only:
+
+- create saved search
+- list saved searches
+
+Do not build alerts delivery yet unless the data model is already stable.
+
+### Step 7: wire a minimal UI entry point
+
+Keep UI changes small for Sprint 1:
+
+- add a search tab or section
+- add an import-from-URL form
+- show search results
+- show save-search action
+- show import-to-tracker action
+
+Do not redesign the entire Jobs page in this sprint.
+
+### Step 8: add a background cleanup job
+
+Add one scheduled maintenance task:
+
+- mark stale jobs inactive after a freshness threshold
+
+This is enough for Sprint 1. Source health dashboards can wait.
+
+## Sprint 1 Acceptance Criteria
+
+You are done only when all of these are true:
+
+- A job can be ingested from a URL or pasted text
+- JSON-LD `JobPosting` is extracted when present
+- Duplicate imports collapse into one canonical job
+- Canonical jobs can be searched and filtered
+- Saved searches can be created and listed
+- Results can be imported into the existing tracker flow
+- Stale jobs can be marked inactive by a cleanup job
+
+## Recommended Verification Sequence
+
+Run verification in this order:
+
+1. `npm run typecheck`
+2. ingest one job from a public page with `JobPosting`
+3. ingest the same job again and confirm dedupe
+4. ingest one pasted job description
+5. search by title and location
+6. create a saved search
+7. import one search result into the tracker
+8. run the cleanup job and confirm stale status changes
+
+## What To Leave Out Of Sprint 1
+
+Do not spend time on these yet:
+
+- LinkedIn or Indeed scraping
+- LLM-based ranking
+- advanced alerts delivery
+- company follow graphs
+- source health dashboards
+- user feedback loops
+- multi-source normalization rules for every ATS
+
+Those belong in later sprints after the pipeline is trustworthy.
