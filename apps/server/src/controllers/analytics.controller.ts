@@ -27,14 +27,18 @@ export async function getOverview(_req: Request, res: Response): Promise<void> {
       createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
       status: 'applied',
     }),
-    Application.countDocuments({ userId, callbackReceived: true }),
+    // Count applications that reached interview or offer stage
+    Application.countDocuments({ userId, status: { $in: ['interview', 'offer'] } }),
     Application.countDocuments({ userId, status: 'offer' }),
     Application.find({ userId }).populate('resumeId').lean(),
     Resume.find({ userId }).sort({ createdAt: -1 }).limit(50).populate('jobId').lean(),
   ]);
 
   const total = totalApplications || 0;
+  // interviewRate = applications that reached interview or offer / total
   const interviewRate = total > 0 ? Math.round((interviewCount / total) * 100) / 100 : 0;
+  // offerRate = applications that reached offer / total
+  const offerRate = total > 0 ? Math.round((offerCount / total) * 100) / 100 : 0;
 
   // Calculate average ATS score from recent resumes
   const avgATSScore =
@@ -87,24 +91,24 @@ export async function getOverview(_req: Request, res: Response): Promise<void> {
     .slice(0, 6)
     .map(([skill, count]) => ({ skill, count }));
 
-  // Resume performance by version pattern
-  const resumePerfMap: Record<string, { usageCount: number; callbackCount: number }> = {};
+  // Resume performance: count applications in interview/offer per resume version
+  const resumePerfMap: Record<string, { usageCount: number; successCount: number }> = {};
   allApplications.forEach((app) => {
     const application = app as unknown as IApplication;
     const label = (application.resumeId as unknown as { versionLabel?: string })?.versionLabel || 'unknown';
     if (!resumePerfMap[label]) {
-      resumePerfMap[label] = { usageCount: 0, callbackCount: 0 };
+      resumePerfMap[label] = { usageCount: 0, successCount: 0 };
     }
     resumePerfMap[label].usageCount++;
-    if (application.callbackReceived) {
-      resumePerfMap[label].callbackCount++;
+    if (['interview', 'offer'].includes(application.status)) {
+      resumePerfMap[label].successCount++;
     }
   });
 
   const resumePerformance = Object.entries(resumePerfMap).map(([versionLabel, data]) => ({
     versionLabel,
     usageCount: data.usageCount,
-    callbackRate: data.usageCount > 0 ? Math.round((data.callbackCount / data.usageCount) * 100) / 100 : 0,
+    callbackRate: data.usageCount > 0 ? Math.round((data.successCount / data.usageCount) * 100) / 100 : 0,
   }));
 
   res.json({
@@ -113,6 +117,7 @@ export async function getOverview(_req: Request, res: Response): Promise<void> {
       totalApplications: total,
       thisWeekApplied,
       interviewRate,
+      offerRate,
       averageATSScore: avgATSScore,
       topMatchingSkills,
       commonGaps,

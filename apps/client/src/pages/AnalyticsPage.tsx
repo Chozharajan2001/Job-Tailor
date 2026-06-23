@@ -11,6 +11,7 @@ interface DashboardData {
   totalApplications: number;
   thisWeekApplied: number;
   interviewRate: number;
+  offerRate: number;
   averageATSScore: number;
   topMatchingSkills: Array<string | SkillCount>;
   commonGaps: Array<string | SkillCount>;
@@ -60,10 +61,11 @@ export default function AnalyticsPage() {
       </div>
 
       {/* KPI Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {[
           { label: 'Total Applications', value: d?.totalApplications ?? 0, sub: 'all time' },
-          { label: 'Interview Rate', value: `${Math.round(((d?.interviewRate) || 0) * 100)}%`, sub: `${Math.round(((d?.interviewRate) || 0) * (d?.totalApplications ?? 0))} of ${d?.totalApplications}` },
+          { label: 'Interview/Offer Rate', value: `${Math.round(((d?.interviewRate) || 0) * 100)}%`, sub: `${Math.round(((d?.interviewRate) || 0) * (d?.totalApplications ?? 0))} reached interview` },
+          { label: 'Offer Rate', value: `${Math.round(((d?.offerRate) || 0) * 100)}%`, sub: `${Math.round(((d?.offerRate) || 0) * (d?.totalApplications ?? 0))} offers received` },
           { label: 'Avg ATS Score', value: `${d?.averageATSScore ?? 0}/100`, sub: 'across all resumes' },
           { label: 'This Week', value: d?.thisWeekApplied ?? 0, sub: 'applications sent' },
         ].map((kpi) => (

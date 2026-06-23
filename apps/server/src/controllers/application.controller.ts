@@ -46,10 +46,10 @@ export async function createApplication(req: Request, res: Response): Promise<vo
   if (existingApplication) {
     res.status(409).json({
       success: false,
-      error: { 
-        code: 'APPLICATION_EXISTS', 
+      error: {
+        code: 'APPLICATION_EXISTS',
         message: 'An application for this job already exists.',
-        data: { applicationId: existingApplication._id }
+        data: { applicationId: existingApplication._id },
       },
     });
     return;
@@ -302,3 +302,127 @@ export async function deleteApplication(req: Request, res: Response): Promise<vo
   res.json({ success: true, data: { message: 'Application deleted successfully.' } });
 }
 
+/**
+ * PATCH /api/v1/applications/:id/outcome — Record outcome fields.
+ * Accepts any combination of: callbackReceived (bool), rejectedReason (string), offerAmount (string).
+ */
+export async function recordOutcome(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { callbackReceived, rejectedReason, offerAmount } = req.body;
+
+  const existing = await Application.findOne({ _id: req.params.id, userId })
+    .select('callbackReceived')
+    .exec();
+
+  if (!existing) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
+    });
+    return;
+  }
+
+  const updateFields: Record<string, unknown> = {};
+  const newEvents: Array<{ event: string; description: string; eventDate: Date; type: string }> = [];
+
+  if (typeof callbackReceived === 'boolean') {
+    updateFields.callbackReceived = callbackReceived;
+    if (callbackReceived && !existing.callbackReceived) {
+      newEvents.push({
+        event: 'Callback received',
+        description: 'Recruiter or employer made contact.',
+        eventDate: new Date(),
+        type: 'status_change',
+      });
+    }
+  }
+
+  if (typeof rejectedReason === 'string' && rejectedReason.trim()) {
+    updateFields.rejectedReason = rejectedReason.trim();
+    newEvents.push({
+      event: 'Rejection reason recorded',
+      description: rejectedReason.trim(),
+      eventDate: new Date(),
+      type: 'note',
+    });
+  }
+
+  if (typeof offerAmount === 'string' && offerAmount.trim()) {
+    updateFields.offerAmount = offerAmount.trim();
+    newEvents.push({
+      event: 'Offer details recorded',
+      description: offerAmount.trim(),
+      eventDate: new Date(),
+      type: 'note',
+    });
+  }
+
+  if (Object.keys(updateFields).length === 0) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'NO_UPDATE_FIELDS', message: 'Provide at least one of: callbackReceived, rejectedReason, offerAmount.' },
+    });
+    return;
+  }
+
+  const application = await Application.findOneAndUpdate(
+    { _id: req.params.id, userId },
+    {
+      $set: updateFields,
+      ...(newEvents.length > 0 ? { $push: { timelineEvents: { $each: newEvents } } } : {}),
+    },
+    { new: true }
+  ).lean().exec();
+
+  res.json({ success: true, data: { application } });
+}
+
+/**
+ * PATCH /api/v1/applications/:id/reminders/:rid/complete — Mark a reminder done.
+ * Keeps the reminder visible in the list (strikethrough in UI) rather than deleting it.
+ */
+export async function completeReminder(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const { id, rid } = req.params;
+
+  const application = await Application.findOne({ _id: id, userId }).exec();
+
+  if (!application) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found.' },
+    });
+    return;
+  }
+
+  const reminder = application.reminders.find((r) => r._id.toString() === rid);
+  if (!reminder) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'REMINDER_NOT_FOUND', message: 'Reminder not found.' },
+    });
+    return;
+  }
+
+  if (reminder.isCompleted) {
+    res.status(409).json({
+      success: false,
+      error: { code: 'ALREADY_COMPLETED', message: 'Reminder is already marked complete.' },
+    });
+    return;
+  }
+
+  reminder.isCompleted = true;
+  reminder.completedAt = new Date();
+
+  application.timelineEvents.push({
+    event: 'Reminder completed',
+    description: reminder.message,
+    eventDate: new Date(),
+    type: 'reminder',
+  });
+
+  await application.save();
+
+  res.json({ success: true, data: { application: application.toObject() } });
+}

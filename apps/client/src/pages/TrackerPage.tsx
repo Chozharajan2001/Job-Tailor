@@ -11,6 +11,10 @@ interface IApplication {
   jobId: { _id: string; companyName: string; jobTitle: string; location?: string; workType?: string };
   resumeId?: { _id: string; versionLabel?: string; atsScore?: { overallScore: number }; pdfUrl?: string };
   status: string;
+  callbackReceived: boolean;
+  rejectedReason?: string;
+  offerAmount?: string;
+  reminders: Array<{ _id: string; message: string; dueDate: string; isCompleted: boolean; completedAt?: string }>;
   timelineEvents: Array<{ event: string; description: string; eventDate: string; type: string }>;
   createdAt: string;
 }
@@ -105,6 +109,20 @@ export default function TrackerPage() {
   const addNoteMutation = useMutation({
     mutationFn: ({ appId, content }: { appId: string; content: string }) =>
       api.post(`/applications/${appId}/notes`, { content }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['applications'] }); },
+  });
+
+  // ─── Record Outcome Mutation ─────────────────────────────────
+  const recordOutcomeMutation = useMutation({
+    mutationFn: ({ appId, ...fields }: { appId: string; callbackReceived?: boolean; rejectedReason?: string; offerAmount?: string }) =>
+      api.patch(`/applications/${appId}/outcome`, fields),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['applications'] }); },
+  });
+
+  // ─── Complete Reminder Mutation ──────────────────────────────
+  const completeReminderMutation = useMutation({
+    mutationFn: ({ appId, rid }: { appId: string; rid: string }) =>
+      api.patch(`/applications/${appId}/reminders/${rid}/complete`, {}),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['applications'] }); },
   });
 
@@ -240,6 +258,12 @@ export default function TrackerPage() {
           }}
           onAddNote={(content) => {
             addNoteMutation.mutate({ appId: selectedApp._id, content });
+          }}
+          onRecordOutcome={(fields) => {
+            recordOutcomeMutation.mutate({ appId: selectedApp._id, ...fields });
+          }}
+          onCompleteReminder={(rid) => {
+            completeReminderMutation.mutate({ appId: selectedApp._id, rid });
           }}
           onDownloadPDF={() => {
             if (selectedApp.resumeId?._id) {
@@ -413,6 +437,8 @@ function ApplicationDetailModal({
   onClose,
   onStatusChange,
   onAddNote,
+  onRecordOutcome,
+  onCompleteReminder,
   onDownloadPDF,
   isDownloadingPDF,
   onDelete,
@@ -422,13 +448,17 @@ function ApplicationDetailModal({
   onClose: () => void;
   onStatusChange: (status: string) => void;
   onAddNote: (content: string) => void;
+  onRecordOutcome: (fields: { callbackReceived?: boolean; rejectedReason?: string; offerAmount?: string }) => void;
+  onCompleteReminder: (rid: string) => void;
   onDownloadPDF?: () => void;
   isDownloadingPDF?: boolean;
   onDelete?: () => void;
   isDeleting?: boolean;
 }) {
   const [noteText, setNoteText] = useState('');
-  const [activeTab, setActiveTab] = useState<'details' | 'timeline' | 'notes'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'timeline' | 'notes' | 'outcomes'>('details');
+  const [rejectionText, setRejectionText] = useState(application.rejectedReason || '');
+  const [offerText, setOfferText] = useState(application.offerAmount || '');
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -468,9 +498,14 @@ function ApplicationDetailModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 p-3 bg-gray-50 border-b">
-          {[{key: 'details', label: 'Details'}, {key: 'timeline', label: `Timeline (${application.timelineEvents?.length || 0})`}, {key: 'notes', label: '+ Note'}].map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key as typeof activeTab)} className={`px-3 py-1.5 text-sm rounded-md cursor-pointer ${activeTab === tab.key ? 'bg-white shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}>
+        <div className="flex gap-1 p-3 bg-gray-50 border-b overflow-x-auto">
+          {[
+            {key: 'details', label: 'Details'},
+            {key: 'timeline', label: `Timeline (${application.timelineEvents?.length || 0})`},
+            {key: 'notes', label: '+ Note'},
+            {key: 'outcomes', label: '🏁 Outcomes'},
+          ].map(tab => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key as typeof activeTab)} className={`px-3 py-1.5 text-sm rounded-md cursor-pointer whitespace-nowrap ${activeTab === tab.key ? 'bg-white shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}>
               {tab.label}
             </button>
           ))}
@@ -544,6 +579,102 @@ function ApplicationDetailModal({
               >
                 Add Note
               </button>
+            </div>
+          )}
+
+          {activeTab === 'outcomes' && (
+            <div className="space-y-5">
+              {/* Callback received */}
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <p className="text-sm font-medium">Callback received</p>
+                  <p className="text-xs text-muted-foreground">Recruiter or employer made contact</p>
+                </div>
+                <button
+                  onClick={() => onRecordOutcome({ callbackReceived: !application.callbackReceived })}
+                  className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${
+                    application.callbackReceived ? 'bg-green-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    application.callbackReceived ? 'translate-x-5' : ''
+                  }`} />
+                </button>
+              </div>
+
+              {/* Rejection reason */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium">Rejection reason</label>
+                <input
+                  type="text"
+                  placeholder="e.g. overqualified, salary mismatch, role filled internally"
+                  value={rejectionText}
+                  onChange={(e) => setRejectionText(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+                <button
+                  onClick={() => { if (rejectionText.trim()) onRecordOutcome({ rejectedReason: rejectionText.trim() }); }}
+                  disabled={!rejectionText.trim() || rejectionText.trim() === application.rejectedReason}
+                  className="px-4 py-1.5 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 disabled:opacity-40 cursor-pointer"
+                >
+                  Save Reason
+                </button>
+              </div>
+
+              {/* Offer details */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium">Offer details</label>
+                <input
+                  type="text"
+                  placeholder="e.g. £85k + 10% bonus + equity"
+                  value={offerText}
+                  onChange={(e) => setOfferText(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+                <button
+                  onClick={() => { if (offerText.trim()) onRecordOutcome({ offerAmount: offerText.trim() }); }}
+                  disabled={!offerText.trim() || offerText.trim() === application.offerAmount}
+                  className="px-4 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-40 cursor-pointer"
+                >
+                  Save Offer
+                </button>
+              </div>
+
+              {/* Reminders */}
+              {(application.reminders || []).length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Reminders</p>
+                  {application.reminders.map((r) => (
+                    <div key={r._id} className={`flex items-start justify-between gap-2 p-3 rounded-lg border ${
+                      r.isCompleted ? 'bg-gray-50 border-gray-100' : 'bg-orange-50 border-orange-100'
+                    }`}>
+                      <div className="min-w-0">
+                        <p className={`text-sm ${r.isCompleted ? 'line-through text-muted-foreground' : 'font-medium'}`}>
+                          {r.message}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Due: {new Date(r.dueDate).toLocaleDateString()}
+                          {r.isCompleted && r.completedAt && ` · Done: ${new Date(r.completedAt).toLocaleDateString()}`}
+                        </p>
+                      </div>
+                      {!r.isCompleted && (
+                        <button
+                          onClick={() => onCompleteReminder(r._id)}
+                          className="shrink-0 px-2.5 py-1 text-xs bg-white border border-orange-300 text-orange-700 rounded-md hover:bg-orange-100 cursor-pointer"
+                        >
+                          ✓ Done
+                        </button>
+                      )}
+                      {r.isCompleted && (
+                        <span className="shrink-0 text-xs text-green-600 font-medium">✓ Completed</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(application.reminders || []).length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No reminders set. Add one from the timeline.</p>
+              )}
             </div>
           )}
         </div>

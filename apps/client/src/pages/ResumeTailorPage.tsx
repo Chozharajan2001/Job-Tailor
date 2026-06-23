@@ -130,14 +130,28 @@ export default function ResumeTailorPage() {
               </div>
             )}
 
-            {/* Quick Apply Button - Shows after successful generation */}
             {latestResume && !generateMutation.isPending && (
-              <Link
-                to={`/tracker?jobId=${selectedJobId}&resumeId=${latestResume._id}`}
-                className="w-full py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-colors cursor-pointer flex items-center justify-center gap-2"
-              >
-                ✓ Create Application & Track Progress
-              </Link>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Link
+                  to={`/tracker?jobId=${selectedJobId}&resumeId=${latestResume._id}`}
+                  className="flex-1 py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-colors cursor-pointer flex items-center justify-center gap-2"
+                >
+                  ✓ Create Application & Track Progress
+                </Link>
+                <button
+                  onClick={() => downloadPDFMutation.mutate(latestResume._id)}
+                  disabled={downloadPDFMutation.isPending}
+                  className="sm:w-auto py-3 px-5 bg-white border-2 border-primary text-primary font-semibold rounded-xl hover:bg-primary/5 transition-colors disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                  title="Export the latest version as PDF"
+                >
+                  {downloadPDFMutation.isPending ? (
+                    <div className="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  Export PDF
+                </button>
+              </div>
             )}
 
             {/* Existing Resume Versions */}

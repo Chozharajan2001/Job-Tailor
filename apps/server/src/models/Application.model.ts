@@ -25,6 +25,7 @@ export interface IApplication extends Document {
   reminders: IReminder[];
   callbackReceived: boolean;
   rejectedReason?: string;
+  offerAmount?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -75,6 +76,7 @@ const applicationSchema = new Schema<IApplication>(
     // Outcomes
     callbackReceived: { type: Boolean, default: false },
     rejectedReason: String,
+    offerAmount: String,
   },
   {
     timestamps: true,
