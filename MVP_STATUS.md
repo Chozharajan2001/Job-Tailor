@@ -1,6 +1,6 @@
 # JobTailor MVP Status
 
-> Last updated: 2026-05-14
+> Last updated: 2026-06-23
 
 ## Summary
 
@@ -27,6 +27,16 @@ npm run build
 - Application status update, notes, and reminders backend endpoints.
 - Rate limiting, validation, error handling, CORS, Helmet.
 - TypeScript and production build are passing.
+- **Advanced Job Search Engine (Sprint 1 & Sprint 2 Complete)**:
+  - Unified URL ingestion crawler and copy-paste pipeline.
+  - Multi-level deduplication (L1 exact URL, L2 company/title, L3 text hash similarity).
+  - In-memory deterministic relevance ranking (exact title, company, trust, freshness boosting).
+  - Personalized profile skills match boosts.
+  - Synonym expansion matching with word boundary protection.
+  - Saved-search queries and notification alert dispatcher.
+  - Dynamic user-facing alerts inbox and saved alerts management settings.
+  - Stale job database cleanup deactivation scheduler.
+- **Test Suite**: Added 27 integration tests covering search engine components, ingestion, ranking, deduplication, cleanup, and alert controllers.
 
 ## Partially Done
 
@@ -80,11 +90,6 @@ npm run build
    - Application status/history tests
    - Client smoke tests for major pages
 
-8. Build advanced job search engine.
-   - See `docs/advanced-job-search-engine.md` for the low-cost implementation plan.
-   - Prioritize crawlable/public sources, own ranking, saved searches, alerts, deduplication, and verification.
-   - Defer paid aggregator APIs unless a source proves necessary.
-
 ## Out Of Scope For MVP
 
 - Auto-apply bots
@@ -100,12 +105,12 @@ npm run build
 | Project setup | 90% |
 | Auth | 80% |
 | Profile | 60% |
-| JD ingestion | 65% |
+| JD Ingestion / Search | 90% |
 | Resume tailoring | 65% |
 | ATS scoring | 60% |
 | Application tracker | 45% |
 | PDF export | 25% |
 | Analytics | 45% |
-| Tests | 0% |
+| Tests | 50% |
 
-Overall MVP completion: approximately 55-65%.
+Overall MVP completion: approximately 70-75%.

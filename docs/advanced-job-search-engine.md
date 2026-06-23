@@ -214,34 +214,29 @@ The advanced search engine should behave like a pipeline with four layers:
 
 ## Suggested Sprint Breakdown
 
-### Sprint 1
+### Sprint 1 [COMPLETE]
+- Define the job ingestion schema & contract (`IJobIngestionInput`)
+- Add a source registry model & deduplication layer (L1, L2, L3 check flow)
+- Build a public crawler for HTML & JSON-LD `JobPosting` parsing
+- Implement full-text indexing, pagination, filters, and trust/freshness boosting
+- Expose saved-search creation and stale job cleanup deactivations
 
-- Define the job ingestion schema
-- Add a source registry model
-- Build one public crawler for company career pages
-- Parse `JobPosting` structured data when available
-- Store normalized jobs in MongoDB
+### Sprint 2 [COMPLETE]
+- Implement user-aware personalized relevance boosts (profile skill overlap scoring)
+- Support advanced minimum salary, employmentType, and location query filters
+- Integrate regex synonym expansion with word boundaries `\b` to prevent substring collisions
+- Expose update and delete saved search endpoints
+- Add background Alert Dispatching on ingestion of brand new canonical jobs
+- Expose Alert Inbox API endpoints (list unread match alerts, mark alert read)
+- Build frontend Saved Alerts settings hub, Notifications inbox/bell dropdown, and relevance match badges
 
-### Sprint 2
-
-- Add search endpoints with filters
-- Add full-text and fuzzy ranking
-- Add deduplication
-- Add sorting by freshness and relevance
-
-### Sprint 3
-
-- Add saved searches
-- Add alert jobs
-- Add user-facing job feed
-- Add “watch company” and “watch title” flows
-
-### Sprint 4
-
-- Add source trust scoring
-- Add verification state
-- Add cleanup jobs for stale listings
-- Add analytics for search quality
+### Sprint 3 [PLANNED]
+- **User Feed & Watch Workflows**:
+  - Implement "watch company" and "watch title" configuration flows
+  - Build user-facing personalized feeds (curated matching feed separate from alerts)
+  - Refine alert lifecycle tracking and cleanup of old alerts
+  - Polish saved-search management and subscription rules
+  - Improve cleanup and validation checking for stale/dead canonical links
 
 ## Existing Repo Fit
 
