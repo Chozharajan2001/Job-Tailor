@@ -54,20 +54,26 @@ export async function updateProfile(userId: string, updates: Record<string, unkn
 // ─── Skill CRUD ───────────────────────────────────────────────
 
 export async function addSkill(userId: string, skillData: Record<string, unknown>): Promise<IProfile> {
-  const profile = await Profile.findOne({ userId });
+  const profile = await Profile.findOneAndUpdate(
+    { userId },
+    { $push: { skills: skillData } },
+    { new: true, runValidators: true }
+  ).lean<IProfile>().exec();
 
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.skills.push(skillData as unknown as Parameters<typeof profile.skills.push>[0]);
-  await profile.save();
-
-  return profile.toJSON() as unknown as IProfile;
+  return profile;
 }
 
 export async function updateSkill(userId: string, skillId: string, updates: Record<string, unknown>): Promise<IProfile | null> {
+  const setObj = Object.fromEntries(
+    Object.entries(updates)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => [`skills.$.${k}`, v])
+  );
   const result = await Profile.findOneAndUpdate(
     { userId, 'skills._id': skillId },
-    { $set: Object.fromEntries(Object.entries(updates).map(([k]) => [`skills.$.${k}`, (updates as Record<string, unknown>)[k]])) },
+    { $set: setObj },
     { new: true }
   ).lean<IProfile>().exec();
 
@@ -75,89 +81,97 @@ export async function updateSkill(userId: string, skillId: string, updates: Reco
 }
 
 export async function deleteSkill(userId: string, skillId: string): Promise<IProfile> {
-  const profile = await Profile.findOne({ userId });
+  const profile = await Profile.findOneAndUpdate(
+    { userId },
+    { $pull: { skills: { _id: skillId } } },
+    { new: true }
+  ).lean<IProfile>().exec();
 
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.skills = profile.skills.filter((s) => s._id?.toString() !== skillId);
-  await profile.save();
-
-  return profile.toJSON() as unknown as IProfile;
+  return profile;
 }
 
 // ─── Experience CRUD ──────────────────────────────────────────
 
 export async function addExperience(userId: string, expData: Record<string, unknown>): Promise<IProfile> {
-  const profile = await Profile.findOne({ userId });
+  const profile = await Profile.findOneAndUpdate(
+    { userId },
+    { $push: { experience: expData } },
+    { new: true, runValidators: true }
+  ).lean<IProfile>().exec();
 
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.experience.push(expData as unknown as Parameters<typeof profile.experience.push>[0]);
-  await profile.save();
-
-  return profile.toJSON() as unknown as IProfile;
+  return profile;
 }
 
 export async function updateExperience(userId: string, expId: string, updates: Record<string, unknown>): Promise<IProfile | null> {
-  // For nested object updates, we need to be more careful
-  const profile = await Profile.findOne({ userId });
-  if (!profile) return null;
+  const setObj = Object.fromEntries(
+    Object.entries(updates)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => [`experience.$.${k}`, v])
+  );
+  const result = await Profile.findOneAndUpdate(
+    { userId, 'experience._id': expId },
+    { $set: setObj },
+    { new: true, runValidators: true }
+  ).lean<IProfile>().exec();
 
-  const expIdx = profile.experience.findIndex((e) => e._id?.toString() === expId);
-  if (expIdx === -1) return null;
-
-  Object.assign(profile.experience[expIdx], updates);
-  await profile.save();
-
-  return profile.toJSON() as unknown as IProfile;
+  return result;
 }
 
 export async function deleteExperience(userId: string, expId: string): Promise<IProfile> {
-  const profile = await Profile.findOne({ userId });
+  const profile = await Profile.findOneAndUpdate(
+    { userId },
+    { $pull: { experience: { _id: expId } } },
+    { new: true }
+  ).lean<IProfile>().exec();
 
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.experience = profile.experience.filter((e) => e._id?.toString() !== expId);
-  await profile.save();
-
-  return profile.toJSON() as unknown as IProfile;
+  return profile;
 }
 
 // ─── Project CRUD ─────────────────────────────────────────────
 
 export async function addProject(userId: string, projectData: Record<string, unknown>): Promise<IProfile> {
-  const profile = await Profile.findOne({ userId });
+  const profile = await Profile.findOneAndUpdate(
+    { userId },
+    { $push: { projects: projectData } },
+    { new: true, runValidators: true }
+  ).lean<IProfile>().exec();
 
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.projects.push(projectData as unknown as Parameters<typeof profile.projects.push>[0]);
-  await profile.save();
-
-  return profile.toJSON() as unknown as IProfile;
+  return profile;
 }
 
 export async function updateProject(userId: string, projectId: string, updates: Record<string, unknown>): Promise<IProfile | null> {
-  const profile = await Profile.findOne({ userId });
-  if (!profile) return null;
+  const setObj = Object.fromEntries(
+    Object.entries(updates)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => [`projects.$.${k}`, v])
+  );
+  const result = await Profile.findOneAndUpdate(
+    { userId, 'projects._id': projectId },
+    { $set: setObj },
+    { new: true, runValidators: true }
+  ).lean<IProfile>().exec();
 
-  const projIdx = profile.projects.findIndex((p) => p._id?.toString() === projectId);
-  if (projIdx === -1) return null;
-
-  Object.assign(profile.projects[projIdx], updates);
-  await profile.save();
-
-  return profile.toJSON() as unknown as IProfile;
+  return result;
 }
 
 export async function deleteProject(userId: string, projectId: string): Promise<IProfile> {
-  const profile = await Profile.findOne({ userId });
+  const profile = await Profile.findOneAndUpdate(
+    { userId },
+    { $pull: { projects: { _id: projectId } } },
+    { new: true }
+  ).lean<IProfile>().exec();
 
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.projects = profile.projects.filter((p) => p._id?.toString() !== projectId);
-  await profile.save();
-
-  return profile.toJSON() as unknown as IProfile;
+  return profile;
 }
 
 /**
@@ -207,63 +221,81 @@ export async function uploadAndPopulateProfile(
 // ─── Education CRUD ───────────────────────────────────────────
 
 export async function addEducation(userId: string, eduData: Record<string, unknown>): Promise<IProfile> {
-  const profile = await Profile.findOne({ userId });
+  const profile = await Profile.findOneAndUpdate(
+    { userId },
+    { $push: { education: eduData } },
+    { new: true, runValidators: true }
+  ).lean<IProfile>().exec();
+
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.education.push(eduData as any);
-  await profile.save();
-  return profile.toJSON() as unknown as IProfile;
+  return profile;
 }
 
 export async function updateEducation(userId: string, eduId: string, updates: Record<string, unknown>): Promise<IProfile | null> {
-  const profile = await Profile.findOne({ userId });
-  if (!profile) return null;
+  const setObj = Object.fromEntries(
+    Object.entries(updates)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => [`education.$.${k}`, v])
+  );
+  const result = await Profile.findOneAndUpdate(
+    { userId, 'education._id': eduId },
+    { $set: setObj },
+    { new: true, runValidators: true }
+  ).lean<IProfile>().exec();
 
-  const idx = profile.education.findIndex((e) => e._id?.toString() === eduId);
-  if (idx === -1) return null;
-
-  Object.assign(profile.education[idx], updates);
-  await profile.save();
-  return profile.toJSON() as unknown as IProfile;
+  return result;
 }
 
 export async function deleteEducation(userId: string, eduId: string): Promise<IProfile> {
-  const profile = await Profile.findOne({ userId });
+  const profile = await Profile.findOneAndUpdate(
+    { userId },
+    { $pull: { education: { _id: eduId } } },
+    { new: true }
+  ).lean<IProfile>().exec();
+
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.education = profile.education.filter((e) => e._id?.toString() !== eduId);
-  await profile.save();
-  return profile.toJSON() as unknown as IProfile;
+  return profile;
 }
 
 // ─── Certification CRUD ───────────────────────────────────────
 
 export async function addCertification(userId: string, certData: Record<string, unknown>): Promise<IProfile> {
-  const profile = await Profile.findOne({ userId });
+  const profile = await Profile.findOneAndUpdate(
+    { userId },
+    { $push: { certifications: certData } },
+    { new: true, runValidators: true }
+  ).lean<IProfile>().exec();
+
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.certifications.push(certData as any);
-  await profile.save();
-  return profile.toJSON() as unknown as IProfile;
+  return profile;
 }
 
 export async function updateCertification(userId: string, certId: string, updates: Record<string, unknown>): Promise<IProfile | null> {
-  const profile = await Profile.findOne({ userId });
-  if (!profile) return null;
+  const setObj = Object.fromEntries(
+    Object.entries(updates)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => [`certifications.$.${k}`, v])
+  );
+  const result = await Profile.findOneAndUpdate(
+    { userId, 'certifications._id': certId },
+    { $set: setObj },
+    { new: true, runValidators: true }
+  ).lean<IProfile>().exec();
 
-  const idx = profile.certifications.findIndex((c) => c._id?.toString() === certId);
-  if (idx === -1) return null;
-
-  Object.assign(profile.certifications[idx], updates);
-  await profile.save();
-  return profile.toJSON() as unknown as IProfile;
+  return result;
 }
 
 export async function deleteCertification(userId: string, certId: string): Promise<IProfile> {
-  const profile = await Profile.findOne({ userId });
+  const profile = await Profile.findOneAndUpdate(
+    { userId },
+    { $pull: { certifications: { _id: certId } } },
+    { new: true }
+  ).lean<IProfile>().exec();
+
   if (!profile) throw new ApiError(404, 'PROFILE_NOT_FOUND', 'Master profile not found.');
 
-  profile.certifications = profile.certifications.filter((c) => c._id?.toString() !== certId);
-  await profile.save();
-  return profile.toJSON() as unknown as IProfile;
+  return profile;
 }

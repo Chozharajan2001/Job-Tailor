@@ -64,5 +64,5 @@ This checklist is the durable execution record for Sprint 5.
 | PDF export accessible from the tailor page | ✅ |
 | Tracker UI exposes outcome workflow cleanly in a dedicated tab | ✅ |
 | Repo passes typecheck | ✅ |
-| Repo passes tests | ⏳ |
-| Repo passes build | ⏳ |
+| Repo passes tests (41/41) | ✅ |
+| Repo passes build | ✅ |

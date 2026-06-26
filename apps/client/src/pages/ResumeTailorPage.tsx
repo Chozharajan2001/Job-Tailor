@@ -56,8 +56,18 @@ export default function ResumeTailorPage() {
   const downloadPDFMutation = useMutation({
     mutationFn: (resumeId: string) => api.post<{ pdfUrl: string }>(`/resumes/${resumeId}/pdf`),
     onSuccess: (response) => {
-      // Open PDF in new tab or trigger download
-      window.open(response.data.pdfUrl, '_blank');
+      const url = response.data.pdfUrl;
+      if (url.startsWith('data:')) {
+        const link = document.createElement('a');
+        link.href = url;
+        const isHtml = url.includes('text/html');
+        link.download = isHtml ? 'resume.html' : 'resume.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        window.open(url, '_blank');
+      }
     },
     onError: (error: any) => {
       console.error('PDF download failed:', error);

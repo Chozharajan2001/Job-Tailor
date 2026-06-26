@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { AIProvider, CompletionOptions, AICompletion } from './types.js';
+import { extractAndParseJson } from './utils.js';
 
 export class NvidiaNimAdapter implements AIProvider {
   private client: OpenAI;
@@ -22,7 +23,7 @@ export class NvidiaNimAdapter implements AIProvider {
     ];
 
     const response = await this.client.chat.completions.create({
-      model: options?.model || 'meta/llama3-70b',
+      model: options?.model || 'meta/llama-3.1-70b-instruct',
       messages,
       temperature: options?.temperature ?? 0.2,
       max_tokens: options?.maxTokens,
@@ -53,6 +54,6 @@ export class NvidiaNimAdapter implements AIProvider {
       ...options,
       jsonResponse: true
     });
-    return JSON.parse(completion.content) as T;
+    return extractAndParseJson<T>(completion.content);
   }
 }

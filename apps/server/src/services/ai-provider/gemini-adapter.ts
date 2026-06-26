@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AIProvider, CompletionOptions, AICompletion } from './types.js';
+import { extractAndParseJson } from './utils.js';
 
 export class GeminiAdapter implements AIProvider {
   private client: GoogleGenerativeAI;
@@ -54,6 +55,6 @@ export class GeminiAdapter implements AIProvider {
       ...options,
       jsonResponse: true
     });
-    return JSON.parse(completion.content) as T;
+    return extractAndParseJson<T>(completion.content);
   }
 }

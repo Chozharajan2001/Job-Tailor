@@ -10,6 +10,22 @@ interface ApiResponse<T> {
   error?: { code: string; message: string };
 }
 
+export class ApiError extends Error {
+  response?: {
+    status: number;
+    data: any;
+  };
+
+  constructor(status: number, data: any, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.response = {
+      status,
+      data
+    };
+  }
+}
+
 /**
  * Typed API client for JobTailor backend.
  * Auto-injects JWT tokens, handles errors consistently.
@@ -54,7 +70,7 @@ class ApiClient {
     // Handle errors
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ error: { message: 'Request failed' } }));
-      throw new Error(errorBody.error?.message || `API Error: ${response.status}`);
+      throw new ApiError(response.status, errorBody, errorBody.error?.message || `API Error: ${response.status}`);
     }
 
     return response.json();

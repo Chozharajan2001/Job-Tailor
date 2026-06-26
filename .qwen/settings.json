@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Agent(Explore)"
+      "Agent(Explore)",
+      "WebFetch(docs.api.nvidia.com)"
     ]
   },
   "$version": 4

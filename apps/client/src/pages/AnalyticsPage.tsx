@@ -269,7 +269,10 @@ function generateInsights(data?: DashboardData): Array<{ icon: string; title: st
 
   if ((data.thisWeekApplied || 0) < 3) insights.push({ icon: '📝', title: 'Apply More This Week', detail: `Only ${data.thisWeekApplied} applications this week. Target 5+ per week to increase your chances.` });
 
-  if (data.commonGaps && data.commonGaps.length > 0) insights.push({ icon: '💪', title: 'Close Your Skill Gaps', detail: `Focus on learning: ${data.commonGaps.slice(0, 3).join(', ')}. These appear in multiple JDs.` });
+  if (data.commonGaps && data.commonGaps.length > 0) {
+    const gapNames = data.commonGaps.slice(0, 3).map(g => typeof g === 'string' ? g : g.skill);
+    insights.push({ icon: '💪', title: 'Close Your Skill Gaps', detail: `Focus on learning: ${gapNames.join(', ')}. These appear in multiple JDs.` });
+  }
 
   if (insights.length === 0) insights.push({ icon: '✨', title: 'Looking Good!', detail: 'Your metrics are healthy. Keep applying consistently and track results.' });
 

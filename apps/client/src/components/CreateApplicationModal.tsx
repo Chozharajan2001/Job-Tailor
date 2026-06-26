@@ -63,10 +63,13 @@ export default function CreateApplicationModal({
       onClose();
     },
     onError: (error: any) => {
-      if (error.response?.status === 409) {
-        alert('You have already created an application for this job!');
+      if (
+        error.response?.status === 409 || 
+        error.response?.data?.error?.code === 'APPLICATION_EXISTS'
+      ) {
+        alert('An application for this job already exists in your tracker.');
       } else {
-        alert('Failed to create application. Please try again.');
+        alert(error.response?.data?.error?.message || error.message || 'Failed to create application. Please try again.');
       }
     },
   });

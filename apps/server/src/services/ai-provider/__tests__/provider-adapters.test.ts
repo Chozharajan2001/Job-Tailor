@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OpenAIAdapter } from '../openai-adapter.js';
 import { GeminiAdapter } from '../gemini-adapter.js';
 import { NvidiaNimAdapter } from '../nvidia-nim-adapter.js';
+import { extractAndParseJson } from '../utils.js';
 
 // Setup Mock for OpenAI client
 const mockCreate = vi.fn();
@@ -184,7 +185,7 @@ describe('AI Provider Adapters', () => {
     it('should call OpenAI endpoint with custom base URL', async () => {
       mockCreate.mockResolvedValueOnce({
         choices: [{ message: { content: 'Nvidia NIM Response' } }],
-        model: 'meta/llama3-70b',
+        model: 'meta/llama-3.1-70b-instruct',
       });
 
       const adapter = new NvidiaNimAdapter('test-api-key', 'https://nim.nvidia.com/v1');
@@ -192,10 +193,24 @@ describe('AI Provider Adapters', () => {
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'meta/llama3-70b',
+          model: 'meta/llama-3.1-70b-instruct',
         })
       );
       expect(result.content).toBe('Nvidia NIM Response');
+    });
+  });
+
+  describe('extractAndParseJson', () => {
+    it('parses json wrapped in markdown code fences', () => {
+      const result = extractAndParseJson<{ status: string }>('```json\n{"status":"ok"}\n```');
+      expect(result).toEqual({ status: 'ok' });
+    });
+
+    it('parses json surrounded by conversational text', () => {
+      const result = extractAndParseJson<{ status: string }>(
+        'Sure, here is your requested object: {"status":"ok"} Let me know if you need anything else.'
+      );
+      expect(result).toEqual({ status: 'ok' });
     });
   });
 });

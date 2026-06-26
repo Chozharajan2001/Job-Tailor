@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { AIProvider, CompletionOptions, AICompletion } from './types.js';
+import { extractAndParseJson } from './utils.js';
 
 export class OpenAIAdapter implements AIProvider {
   private client: OpenAI;
@@ -50,6 +51,6 @@ export class OpenAIAdapter implements AIProvider {
       ...options,
       jsonResponse: true
     });
-    return JSON.parse(completion.content) as T;
+    return extractAndParseJson<T>(completion.content);
   }
 }
