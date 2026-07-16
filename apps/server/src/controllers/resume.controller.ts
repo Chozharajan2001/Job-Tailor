@@ -4,7 +4,8 @@ import { Job, IJob } from '../models/Job.model.js';
 import { Profile, IProfile } from '../models/Profile.model.js';
 import { tailorResume } from '../services/resume-tailor.service.js';
 import { scoreATS } from '../services/ats-scoring.service.js';
-import { generatePDF } from '../services/pdf-generator.service.js';
+import { generatePDF, uploadToCloudinary } from '../services/pdf-generator.service.js';
+import { config } from '../config/index.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -219,7 +220,7 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
     return;
   }
 
-  const pdfUrl = `/uploads/resumes/${req.file.filename}`;
+  let pdfUrl = `/uploads/resumes/${req.file.filename}`;
 
   try {
     const existingResumes = await Resume.countDocuments({ userId });
@@ -230,6 +231,20 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
       .replace(/\.[^/.]+$/, "")
       .replace(/[^a-zA-Z0-9_\-\s]/g, "");
     const versionLabel = `${originalNameClean}_v${nextVersion}`;
+
+    // Upload to Cloudinary if configured
+    if (config.cloudinary.cloudName && config.cloudinary.apiKey) {
+      try {
+        const buffer = fs.readFileSync(req.file.path);
+        const cloudinaryUrl = await uploadToCloudinary(buffer, versionLabel);
+        pdfUrl = cloudinaryUrl;
+
+        // Clean up the local temp file saved by multer
+        fs.unlinkSync(req.file.path);
+      } catch (cloudErr) {
+        console.error('Cloudinary upload failed for resume, falling back to local storage:', cloudErr);
+      }
+    }
 
     const resume = await Resume.create({
       userId,
@@ -267,6 +282,16 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
     });
   } catch (error) {
     console.error('Failed to create resume entry on upload:', error);
+    
+    // Attempt local file cleanup
+    if (req.file && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (e) {
+        // ignore
+      }
+    }
+
     res.status(500).json({
       success: false,
       error: { code: 'UPLOAD_REGISTRATION_FAILED', message: 'Failed to record resume upload.' },

@@ -179,7 +179,7 @@ export async function generatePDF(resume: IResume): Promise<{ pdfUrl: string; pd
 
 // ─── Cloudinary Upload ───────────────────────────────────────
 
-async function uploadToCloudinary(buffer: Buffer, publicId: string): Promise<string> {
+export async function uploadToCloudinary(buffer: Buffer, publicId: string): Promise<string> {
   cloudinary.config({
     cloud_name: config.cloudinary.cloudName,
     api_key: config.cloudinary.apiKey,
