@@ -220,7 +220,21 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
     return;
   }
 
-  let pdfUrl = `/uploads/resumes/${req.file.filename}`;
+  // Ensure Cloudinary is configured
+  if (!config.cloudinary.cloudName || !config.cloudinary.apiKey) {
+    if (fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (e) {
+        // ignore
+      }
+    }
+    res.status(500).json({
+      success: false,
+      error: { code: 'CLOUDINARY_NOT_CONFIGURED', message: 'Cloudinary storage is not configured on the server.' },
+    });
+    return;
+  }
 
   try {
     const existingResumes = await Resume.countDocuments({ userId });
@@ -232,17 +246,16 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
       .replace(/[^a-zA-Z0-9_\-\s]/g, "");
     const versionLabel = `${originalNameClean}_v${nextVersion}`;
 
-    // Upload to Cloudinary if configured
-    if (config.cloudinary.cloudName && config.cloudinary.apiKey) {
-      try {
-        const buffer = fs.readFileSync(req.file.path);
-        const cloudinaryUrl = await uploadToCloudinary(buffer, versionLabel);
-        pdfUrl = cloudinaryUrl;
+    // Read the temp file buffer and upload to Cloudinary
+    const buffer = fs.readFileSync(req.file.path);
+    const pdfUrl = await uploadToCloudinary(buffer, versionLabel);
 
-        // Clean up the local temp file saved by multer
+    // Clean up the local temp file saved by multer
+    if (fs.existsSync(req.file.path)) {
+      try {
         fs.unlinkSync(req.file.path);
-      } catch (cloudErr) {
-        console.error('Cloudinary upload failed for resume, falling back to local storage:', cloudErr);
+      } catch (e) {
+        // ignore
       }
     }
 
@@ -277,7 +290,7 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
         resume,
         pdfUrl,
         filename: req.file.filename,
-        message: 'Resume PDF uploaded and registered successfully',
+        message: 'Resume PDF uploaded to Cloudinary successfully',
       },
     });
   } catch (error) {
@@ -294,7 +307,7 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
 
     res.status(500).json({
       success: false,
-      error: { code: 'UPLOAD_REGISTRATION_FAILED', message: 'Failed to record resume upload.' },
+      error: { code: 'UPLOAD_REGISTRATION_FAILED', message: 'Failed to upload resume to Cloudinary.' },
     });
   }
 }
