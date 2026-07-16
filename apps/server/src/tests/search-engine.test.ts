@@ -142,6 +142,40 @@ describe('Advanced Job Search Engine (Sprint 2) Integration Suite', () => {
 
       fetchSpy.mockRestore();
     });
+
+    it('should throw an error when URL fetch fails (HTTP status >= 400)', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation((): Promise<any> => {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+        });
+      });
+
+      const url = 'https://google.com/jobs/invalid-url';
+      await expect(IngestionService.ingestFromUrl(url)).rejects.toThrow(
+        'Failed to fetch job URL: Not Found (404)'
+      );
+
+      fetchSpy.mockRestore();
+    });
+
+    it('should throw an error when minimum job details cannot be parsed', async () => {
+      const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation((): Promise<any> => {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () => Promise.resolve('<html><body>Empty page</body></html>'),
+        });
+      });
+
+      const url = 'https://google.com/jobs/empty-page';
+      await expect(IngestionService.ingestFromUrl(url)).rejects.toThrow(
+        'Failed to extract minimum job details (title, company, description) from URL.'
+      );
+
+      fetchSpy.mockRestore();
+    });
   });
 
   describe('2. Deduplication Layer', () => {

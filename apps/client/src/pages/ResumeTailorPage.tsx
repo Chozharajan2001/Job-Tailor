@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { Download, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 
 // ─── Types ────────────────────────────────────────────────────
 interface IJob { _id: string; companyName: string; jobTitle: string; status: string; parsedJD: unknown | null; }
@@ -72,6 +73,21 @@ export default function ResumeTailorPage() {
     onError: (error: any) => {
       console.error('PDF download failed:', error);
       alert('Failed to generate PDF. Please try again.');
+    },
+  });
+
+  const updateResumeMutation = useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: any }) => {
+      const response = await api.put<{ resume: IResume }>(`/resumes/${id}`, body);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-resumes', selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ['resumes'] });
+      toast.success('Resume summary updated successfully!');
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.error?.message || 'Failed to update resume summary');
     },
   });
 
@@ -168,12 +184,14 @@ export default function ResumeTailorPage() {
             {existingResumes.length > 0 && (
               <div className="space-y-3">
                 <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Generated Versions ({existingResumes.length})</h3>
-                {existingResumes.map((resume) => (
+                 {existingResumes.map((resume) => (
                   <ResumeCard 
                     key={resume._id} 
                     resume={resume}
                     onDownloadPDF={() => downloadPDFMutation.mutate(resume._id)}
                     isDownloading={downloadPDFMutation.isPending}
+                    onUpdateResume={(body) => updateResumeMutation.mutate({ id: resume._id, body })}
+                    isUpdating={updateResumeMutation.isPending}
                   />
                 ))}
               </div>
@@ -195,25 +213,52 @@ export default function ResumeTailorPage() {
 function ResumeCard({ 
   resume, 
   onDownloadPDF,
-  isDownloading 
+  isDownloading,
+  onUpdateResume,
+  isUpdating = false
 }: { 
   resume: IResume; 
   onDownloadPDF: () => void;
   isDownloading: boolean;
+  onUpdateResume: (body: any) => void;
+  isUpdating?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedSummary, setEditedSummary] = useState(resume.tailoredSummary || '');
   const s = resume.atsScore;
 
+  // Keep state in sync with prop updates
+  useEffect(() => {
+    setEditedSummary(resume.tailoredSummary || '');
+  }, [resume.tailoredSummary]);
+
+  function handleSave() {
+    onUpdateResume({ tailoredSummary: editedSummary });
+    setIsEditing(false);
+  }
+
   return (
-    <div className={`border rounded-xl overflow-hidden transition-all ${expanded ? 'shadow-md' : ''}`}>
-      <div className="p-4 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+    <div className={`border rounded-xl overflow-hidden transition-all bg-white ${expanded ? 'shadow-md border-primary/20' : 'hover:border-slate-300'}`}>
+      <div className="p-4 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center justify-between">
-          <div>
-            <h4 className="font-semibold text-sm">{resume.versionLabel}</h4>
-            <span className="text-xs text-muted-foreground">v{resume._id.slice(-4)} · {new Date(resume.createdAt).toLocaleDateString()}</span>
+          <div className="space-y-0.5">
+            <h4 className="font-semibold text-sm text-slate-800">{resume.versionLabel}</h4>
+            <span className="text-[10px] text-muted-foreground font-mono">v{resume._id.slice(-4)} · {new Date(resume.createdAt).toLocaleDateString()}</span>
           </div>
           <div className="flex items-center gap-2">
             <ATSScoreBadge score={s?.overallScore || 0} />
+            {/* Edit Trigger Button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded(true);
+                setIsEditing(!isEditing);
+              }}
+              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs rounded-lg font-semibold transition-colors cursor-pointer"
+            >
+              {isEditing ? 'Cancel Edit' : '📝 Edit'}
+            </button>
             {/* Download PDF Button */}
             <button
               onClick={(e) => {
@@ -238,17 +283,42 @@ function ResumeCard({
       </div>
 
       {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t pt-3">
+        <div className="px-4 pb-4 space-y-4 border-t pt-3 bg-slate-50/20">
           {/* Tailored Summary */}
-          {resume.tailoredSummary && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Tailored Summary</p>
-              <p className="text-sm leading-relaxed bg-gray-50 p-3 rounded-lg">{resume.tailoredSummary}</p>
-            </div>
-          )}
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">Tailored Summary</p>
+            {isEditing ? (
+              <div className="space-y-2">
+                <textarea
+                  value={editedSummary}
+                  onChange={(e) => setEditedSummary(e.target.value)}
+                  rows={4}
+                  className="w-full text-xs p-3 border rounded-lg bg-white outline-none resize-none focus:border-primary focus:ring-1 focus:ring-primary/20 text-slate-800 leading-relaxed font-sans"
+                  placeholder="Edit your tailored professional summary..."
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    className="text-xs px-3 py-1 text-muted-foreground hover:text-foreground cursor-pointer font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={isUpdating}
+                    className="text-xs px-4 py-1 bg-primary text-white font-semibold rounded hover:bg-primary/95 cursor-pointer disabled:opacity-50 shadow-sm"
+                  >
+                    {isUpdating ? 'Saving...' : '✓ Save Changes'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-700 leading-relaxed bg-slate-50/50 p-3 rounded-lg border border-slate-100">{resume.tailoredSummary || 'No summary generated.'}</p>
+            )}
+          </div>
 
           {/* Score Breakdown */}
-          <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="grid grid-cols-2 gap-2 text-xs">
             <ScoreBar label="Keyword Match" value={s?.keywordMatchScore || 0} color="#22c55e" />
             <ScoreBar label="Semantic" value={s?.semanticMatchScore || 0} color="#a855f7" />
             <ScoreBar label="Sections" value={s?.sectionCompletenessScore || 0} color="#3b82f6" />

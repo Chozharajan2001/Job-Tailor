@@ -17,7 +17,8 @@ import {
   Github,
   Linkedin,
   Globe,
-  Plus
+  Plus,
+  X
 } from 'lucide-react';
 import ProfileUploadModal from '../components/ProfileUploadModal';
 
@@ -722,7 +723,7 @@ function ProjectsSection({ projects, onAdd, onUpdate, onDelete }: ProjectsSectio
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
-    name: '', description: '', techStack: '', tags: [] as string[],
+    name: '', description: '', techStack: [] as string[], tags: [] as string[],
     link: '', github: '', startDate: '', highlights: ['', ''],
   });
 
@@ -731,7 +732,7 @@ function ProjectsSection({ projects, onAdd, onUpdate, onDelete }: ProjectsSectio
     setForm({
       name: p.name,
       description: p.description,
-      techStack: p.techStack?.join(', ') || '',
+      techStack: p.techStack || [],
       tags: p.tags || [],
       link: p.link || '',
       github: p.github || '',
@@ -746,7 +747,7 @@ function ProjectsSection({ projects, onAdd, onUpdate, onDelete }: ProjectsSectio
     const payload = {
       name: form.name,
       description: form.description,
-      techStack: form.techStack.split(',').map(t => t.trim()).filter(Boolean),
+      techStack: form.techStack,
       tags: form.tags as any,
       link: form.link || undefined,
       github: form.github || undefined,
@@ -760,7 +761,7 @@ function ProjectsSection({ projects, onAdd, onUpdate, onDelete }: ProjectsSectio
     }
     setShowForm(false);
     setEditingId(null);
-    setForm({ name: '', description: '', techStack: '', tags: [], link: '', github: '', startDate: '', highlights: ['', ''] });
+    setForm({ name: '', description: '', techStack: [], tags: [], link: '', github: '', startDate: '', highlights: ['', ''] });
   }
 
   return (
@@ -802,9 +803,46 @@ function ProjectsSection({ projects, onAdd, onUpdate, onDelete }: ProjectsSectio
             <textarea placeholder="Summarize what this project does..." value={form.description} onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} rows={2} className="px-3 py-2 border rounded-lg text-sm bg-white outline-none resize-none" />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-600">Tech Stack (comma-separated)</label>
-            <input placeholder="e.g., Node.js, Express, React, GraphQL" value={form.techStack} onChange={(e) => setForm(f => ({ ...f, techStack: e.target.value }))} className="px-3 py-2 border rounded-lg text-sm bg-white" />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-gray-600 font-medium">Tech Stack *</label>
+            <div className="flex flex-wrap gap-2 p-2 border border-gray-200 bg-white rounded-lg focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
+              {form.techStack.map((tech) => (
+                <span key={tech} className="inline-flex items-center gap-1.5 text-xs bg-indigo-50/70 text-indigo-700 px-2.5 py-1 rounded-full border border-indigo-200/50 font-semibold select-none transition-all hover:bg-indigo-100 hover:text-indigo-800">
+                  {tech}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm(f => ({ ...f, techStack: f.techStack.filter(t => t !== tech) }));
+                    }}
+                    className="text-indigo-400 hover:text-indigo-650 transition-colors focus:outline-none cursor-pointer p-0.5 rounded-full hover:bg-indigo-200/50"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </span>
+              ))}
+              <input
+                type="text"
+                placeholder={form.techStack.length === 0 ? "e.g., React (Type and press Enter or Comma)" : "Add tech..."}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    const inputVal = e.currentTarget.value.trim().replace(/,$/, '');
+                    if (inputVal && !form.techStack.includes(inputVal)) {
+                      setForm(f => ({ ...f, techStack: [...f.techStack, inputVal] }));
+                    }
+                    e.currentTarget.value = '';
+                  }
+                }}
+                onBlur={(e) => {
+                  const inputVal = e.currentTarget.value.trim();
+                  if (inputVal && !form.techStack.includes(inputVal)) {
+                    setForm(f => ({ ...f, techStack: [...f.techStack, inputVal] }));
+                    e.currentTarget.value = '';
+                  }
+                }}
+                className="flex-1 min-w-[120px] text-xs bg-transparent outline-none border-none py-0.5 placeholder-slate-400 text-slate-800"
+              />
+            </div>
           </div>
 
           <div className="space-y-1.5">

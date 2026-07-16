@@ -4,12 +4,14 @@ import { extractAndParseJson } from './utils.js';
 
 export class NvidiaNimAdapter implements AIProvider {
   private client: OpenAI;
+  private defaultModel: string;
 
-  constructor(apiKey: string, baseUrl: string) {
+  constructor(apiKey: string, baseUrl: string, defaultModel?: string) {
     this.client = new OpenAI({
       apiKey,
       baseURL: baseUrl
     });
+    this.defaultModel = defaultModel || 'openai/gpt-oss-20b';
   }
 
   async generateCompletion(
@@ -23,13 +25,14 @@ export class NvidiaNimAdapter implements AIProvider {
     ];
 
     const response = await this.client.chat.completions.create({
-      model: options?.model || 'meta/llama-3.1-70b-instruct',
+      model: options?.model || this.defaultModel,
       messages,
       temperature: options?.temperature ?? 0.2,
       max_tokens: options?.maxTokens,
       response_format: options?.jsonResponse ? { type: 'json_object' } : undefined
     });
 
+    console.log(35, response)
     const content = response.choices[0]?.message?.content || '';
     const usage = response.usage;
 
@@ -50,6 +53,7 @@ export class NvidiaNimAdapter implements AIProvider {
     schema?: object,
     options?: CompletionOptions
   ): Promise<T> {
+    console.log(56)
     const completion = await this.generateCompletion(prompt, systemPrompt, {
       ...options,
       jsonResponse: true

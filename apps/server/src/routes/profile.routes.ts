@@ -29,9 +29,22 @@ const router = Router();
 // All profile routes require authentication
 router.use(authenticate);
 
+// ─── Validation Schemas ────────────────────────────────────────
+const urlOrEmpty = z.string().url('Must be a valid URL format').or(z.string().length(0));
+
+const updateProfileSchema = z.object({
+  summary: z.string().max(500, 'Summary cannot exceed 500 characters').optional(),
+  links: z.object({
+    github: urlOrEmpty.optional(),
+    linkedin: urlOrEmpty.optional(),
+    portfolio: urlOrEmpty.optional(),
+    website: urlOrEmpty.optional(),
+  }).partial().optional(),
+}).partial();
+
 // ─── Profile CRUD ──────────────────────────────────────────────
 router.get('/', getProfile);
-router.put('/', validateBody(z.object({ summary: z.string().optional(), links: z.record(z.string()).optional() }).partial()), updateProfile);
+router.put('/', validateBody(updateProfileSchema), updateProfile);
 router.post('/upload', upload.single('resume'), uploadAndPopulateProfile);
 
 // ─── Skills ────────────────────────────────────────────────────
@@ -60,14 +73,27 @@ router.delete('/experience/:id', deleteExperience);
 
 // ─── Projects ─────────────────────────────────────────────────
 router.post('/projects', validateBody(z.object({
-  name: z.string().min(1), description: z.string().min(1),
-  techStack: z.array(z.string()),
+  name: z.string().min(1, 'Project name is required'),
+  description: z.string().min(1, 'Project description is required'),
+  techStack: z.array(z.string().min(1, 'Tech stack item cannot be empty')).min(1, 'At least one tech stack item is required'),
   tags: z.array(z.enum(['frontend', 'backend', 'devops', 'ai', 'mobile'])),
-  link: z.string().optional(), github: z.string().optional(),
-  startDate: z.string(), endDate: z.string().optional(),
+  link: urlOrEmpty.optional(),
+  github: urlOrEmpty.optional(),
+  startDate: z.string().min(1),
+  endDate: z.string().optional(),
   highlights: z.array(z.string()),
 })), addProject);
-router.put('/projects/:id', validateBody(z.object({}).partial()), updateProject);
+router.put('/projects/:id', validateBody(z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
+  techStack: z.array(z.string().min(1)).optional(),
+  tags: z.array(z.enum(['frontend', 'backend', 'devops', 'ai', 'mobile'])).optional(),
+  link: urlOrEmpty.optional(),
+  github: urlOrEmpty.optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  highlights: z.array(z.string()).optional(),
+}).partial()), updateProject);
 router.delete('/projects/:id', deleteProject);
 
 // ─── Education ────────────────────────────────────────────────

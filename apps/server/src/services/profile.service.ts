@@ -189,7 +189,7 @@ export async function uploadAndPopulateProfile(
   if (!rawText || !rawText.trim()) {
     throw new ApiError(400, 'PDF_EMPTY', 'Could not extract text from the PDF file. Ensure the PDF is not a scanned image.');
   }
-
+  // console.log(192, rawText);
   const parsedData = await parseResumeText(rawText);
 
   const profile = await Profile.findOneAndUpdate(

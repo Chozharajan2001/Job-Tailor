@@ -219,17 +219,59 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
     return;
   }
 
-  // For now, store local path. In production, upload to Cloudinary/S3
   const pdfUrl = `/uploads/resumes/${req.file.filename}`;
 
-  res.status(201).json({
-    success: true,
-    data: {
+  try {
+    const existingResumes = await Resume.countDocuments({ userId });
+    const nextVersion = existingResumes + 1;
+    
+    // Clean original name for versionLabel
+    const originalNameClean = req.file.originalname
+      .replace(/\.[^/.]+$/, "")
+      .replace(/[^a-zA-Z0-9_\-\s]/g, "");
+    const versionLabel = `${originalNameClean}_v${nextVersion}`;
+
+    const resume = await Resume.create({
+      userId,
+      version: nextVersion,
+      versionLabel,
       pdfUrl,
-      filename: req.file.filename,
-      message: 'Resume PDF uploaded successfully',
-    },
-  });
+      status: 'draft',
+      skills: [],
+      experience: [],
+      projects: [],
+      sectionOrder: ['skills', 'experience', 'projects', 'education'],
+      atsScore: {
+        overallScore: 0,
+        keywordMatchScore: 0,
+        semanticMatchScore: 0,
+        sectionCompletenessScore: 0,
+        formatScore: 0,
+        breakdown: {
+          matchedSkills: [],
+          missingSkills: [],
+          weakSkills: [],
+          actionItems: [],
+        },
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        resume,
+        pdfUrl,
+        filename: req.file.filename,
+        message: 'Resume PDF uploaded and registered successfully',
+      },
+    });
+  } catch (error) {
+    console.error('Failed to create resume entry on upload:', error);
+    res.status(500).json({
+      success: false,
+      error: { code: 'UPLOAD_REGISTRATION_FAILED', message: 'Failed to record resume upload.' },
+    });
+  }
 }
 
 /**

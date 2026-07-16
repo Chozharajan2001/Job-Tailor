@@ -13,12 +13,15 @@ interface AuthState {
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  sessionExpired: boolean;
 
   // Actions
   setAuth: (user: User, accessToken: string) => void;
   clearAuth: () => void;
   setLoading: (loading: boolean) => void;
   initialize: () => void;
+  setSessionExpired: (expired: boolean) => void;
+  setAccessToken: (token: string) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -28,6 +31,7 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       isAuthenticated: false,
       isLoading: true,
+      sessionExpired: false,
 
       // Initialize auth state - call this on app mount
       initialize: () => {
@@ -35,10 +39,10 @@ export const useAuthStore = create<AuthState>()(
         const state = get();
         if (state.accessToken && state.user) {
           // We have valid auth, keep isLoading false (already set by persist)
-          set({ isLoading: false });
+          set({ isLoading: false, sessionExpired: false });
         } else {
           // No auth data, stop loading
-          set({ isLoading: false });
+          set({ isLoading: false, sessionExpired: false });
         }
       },
 
@@ -48,6 +52,7 @@ export const useAuthStore = create<AuthState>()(
           accessToken,
           isAuthenticated: true,
           isLoading: false,
+          sessionExpired: false,
         }),
 
       clearAuth: () =>
@@ -56,9 +61,16 @@ export const useAuthStore = create<AuthState>()(
           accessToken: null,
           isAuthenticated: false,
           isLoading: false,
+          sessionExpired: false,
         }),
 
       setLoading: (isLoading) => set({ isLoading }),
+      setSessionExpired: (sessionExpired) => set({ sessionExpired }),
+      setAccessToken: (accessToken) =>
+        set({
+          accessToken,
+          isAuthenticated: true,
+        }),
     }),
     { name: 'jobtailor-auth' }
   )

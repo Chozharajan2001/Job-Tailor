@@ -26,7 +26,8 @@ export class AIProviderManager {
     ) {
       this.providers.set('nvidia', new NvidiaNimAdapter(
         config.nvidiaNimApiKey,
-        config.nvidiaNimBaseUrl
+        config.nvidiaNimBaseUrl,
+        config.nvidiaNimModel
       ));
     }
 

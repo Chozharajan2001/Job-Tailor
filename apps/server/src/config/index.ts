@@ -25,6 +25,7 @@ export const config = {
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   nvidiaNimApiKey: process.env.NVIDIA_NIM_API_KEY || '',
   nvidiaNimBaseUrl: process.env.NVIDIA_NIM_BASE_URL || '',
+  nvidiaNimModel: process.env.NVIDIA_NIM_MODEL || 'openai/gpt-oss-20b',
   preferredProvider: (process.env.PREFERRED_AI_PROVIDER || 'openai') as 'openai' | 'gemini' | 'nvidia',
   
   cloudinary: {

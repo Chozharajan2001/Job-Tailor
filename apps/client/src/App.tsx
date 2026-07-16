@@ -1,6 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import { useAuthStore } from './stores/authStore';
+import SessionExpiredModal from './components/SessionExpiredModal';
+import { Toaster } from 'react-hot-toast';
 
 // Real pages
 import LoginPage from './pages/LoginPage';
@@ -29,32 +31,36 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
-      {/* Public routes */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+    <>
+      <Routes>
+        {/* Public routes */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
 
-      {/* Protected routes */}
-      <Route
-        path="/"
-        element={
-          <RequireAuth>
-            <Layout />
-          </RequireAuth>
-        }
-      >
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="profile" element={<ProfilePage />} />
-        <Route path="jobs" element={<JobsPage />} />
-        <Route path="tailor" element={<ResumeTailorPage />} />
-        <Route path="tracker" element={<TrackerPage />} />
-        <Route path="interview/:id" element={<InterviewModePage />} />
-        <Route path="analytics" element={<AnalyticsPage />} />
-      </Route>
+        {/* Protected routes */}
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <Layout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route path="jobs" element={<JobsPage />} />
+          <Route path="tailor" element={<ResumeTailorPage />} />
+          <Route path="tracker" element={<TrackerPage />} />
+          <Route path="interview/:id" element={<InterviewModePage />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
+        </Route>
 
-      {/* Catch-all */}
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+        {/* Catch-all */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+      <SessionExpiredModal />
+      <Toaster position="top-right" />
+    </>
   );
 }

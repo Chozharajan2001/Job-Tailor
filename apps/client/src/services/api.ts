@@ -1,3 +1,5 @@
+import { useAuthStore } from '../stores/authStore';
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 interface ApiOptions extends RequestInit {
@@ -65,10 +67,51 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(url, { ...fetchOptions, headers });
+    // Send request with credentials: 'include' to pass cookies (for refreshToken)
+    const response = await fetch(url, { ...fetchOptions, headers, credentials: 'include' });
 
     // Handle errors
     if (!response.ok) {
+      // If 401 and we are not already requesting auth actions, try silent refresh
+      if (
+        response.status === 401 &&
+        !endpoint.includes('/auth/login') &&
+        !endpoint.includes('/auth/register') &&
+        !endpoint.includes('/auth/refresh')
+      ) {
+        try {
+          const refreshRes = await fetch(`${this.baseUrl}/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+          });
+
+          if (refreshRes.ok) {
+            const refreshData = await refreshRes.json();
+            const newAccessToken = refreshData.data.accessToken;
+
+            // Save new token to Zustand store
+            useAuthStore.getState().setAccessToken(newAccessToken);
+
+            // Retry original request with new token
+            headers['Authorization'] = `Bearer ${newAccessToken}`;
+            const retryResponse = await fetch(url, { ...fetchOptions, headers, credentials: 'include' });
+            
+            if (retryResponse.ok) {
+              return retryResponse.json();
+            }
+
+            const errorBody = await retryResponse.json().catch(() => ({ error: { message: 'Request failed' } }));
+            throw new ApiError(retryResponse.status, errorBody, errorBody.error?.message || `API Error: ${retryResponse.status}`);
+          }
+        } catch (refreshErr) {
+          console.error('Silent refresh failed:', refreshErr);
+        }
+
+        // Trigger session expiration popup modal
+        useAuthStore.getState().setSessionExpired(true);
+      }
+
       const errorBody = await response.json().catch(() => ({ error: { message: 'Request failed' } }));
       throw new ApiError(response.status, errorBody, errorBody.error?.message || `API Error: ${response.status}`);
     }

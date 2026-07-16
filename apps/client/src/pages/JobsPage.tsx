@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
-import { Upload, FileText, X } from 'lucide-react';
+import { Upload, FileText, X, Check, Plus } from 'lucide-react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
 import { Link } from 'react-router-dom';
 
@@ -29,6 +29,7 @@ interface IJob {
   parsedJD: IParsedJD | null;
   status: string;
   savedAt: string;
+  attachedResumeId?: string;
 }
 
 interface IResume {
@@ -45,6 +46,7 @@ export default function JobsPage() {
   const [showApplicationModal, setShowApplicationModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showQuickATSModal, setShowQuickATSModal] = useState(false);
+  const [showAddSourceModal, setShowAddSourceModal] = useState(false);
 
   // ─── Search & Filter States ──────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -97,6 +99,17 @@ export default function JobsPage() {
       }>('/resumes/quick-ats-check', { jobId });
       return response.data;
     }
+  });
+
+  const attachResumeMutation = useMutation({
+    mutationFn: async ({ jobId, resumeId }: { jobId: string; resumeId: string }) => {
+      const response = await api.patch<{ job: IJob }>(`/jobs/${jobId}/attach-resume`, { resumeId });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['global-search'] });
+    },
   });
 
   // ─── Fetch Jobs ─────────────────────────────────────────────
@@ -283,6 +296,28 @@ export default function JobsPage() {
     onError: (err: any) => {
       alert(err.response?.data?.error?.message || 'Failed to update trust score.');
     },
+  });
+
+  const createSourceMutation = useMutation({
+    mutationFn: async (data: {
+      name: string;
+      sourceType: 'manual_paste' | 'public_job_page';
+      baseUrl: string;
+      crawlFrequency: number;
+      extractionStrategy: 'html_metadata' | 'json_ld' | 'manual_input';
+      trustScore?: number;
+    }) => {
+      const response = await api.post('/search/sources', data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['search-sources'] });
+      refetchAnalytics();
+      setShowAddSourceModal(false);
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error?.message || 'Failed to register source');
+    }
   });
 
   const { data: sourcesRes } = useQuery({
@@ -1101,7 +1136,15 @@ export default function JobsPage() {
 
                       {/* Source Registries Health Audit */}
                       <div className="bg-white border rounded-xl p-5 shadow-sm space-y-4">
-                        <h4 className="font-bold text-sm text-gray-900 border-b pb-2">🔌 Job Source Health & Trust Matrix</h4>
+                        <div className="flex items-center justify-between border-b pb-2">
+                          <h4 className="font-bold text-sm text-gray-900">🔌 Job Source Health & Trust Matrix</h4>
+                          <button
+                            onClick={() => setShowAddSourceModal(true)}
+                            className="text-xs bg-primary/10 text-primary hover:bg-primary/20 px-2.5 py-1 rounded font-semibold cursor-pointer transition-colors"
+                          >
+                            + Register Source
+                          </button>
+                        </div>
                         <div className="overflow-x-auto">
                           <table className="w-full text-left text-xs text-gray-700 min-w-[600px]">
                             <thead>
@@ -1306,6 +1349,9 @@ export default function JobsPage() {
                     setShowQuickATSModal(true);
                     quickATSMutation.mutate(selectedJob._id);
                   }}
+                  resumes={resumes}
+                  onAttachResume={(resumeId) => attachResumeMutation.mutate({ jobId: selectedJob._id, resumeId })}
+                  isAttaching={attachResumeMutation.isPending}
                 />
               ) : (
                 <div className="border rounded-xl h-[500px] flex items-center justify-center text-muted-foreground">
@@ -1450,6 +1496,15 @@ export default function JobsPage() {
           }}
         />
       )}
+
+      {/* Register Source Modal */}
+      {showAddSourceModal && (
+        <RegisterSourceModal
+          onClose={() => setShowAddSourceModal(false)}
+          onSubmit={(data) => createSourceMutation.mutate(data)}
+          isLoading={createSourceMutation.isPending}
+        />
+      )}
     {/* Quick ATS Preview Modal */}
       {showQuickATSModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowQuickATSModal(false)}>
@@ -1557,12 +1612,24 @@ function statusColor(status: string): string {
   return map[status] || 'bg-gray-100 text-gray-700';
 }
 
-function JobDetailPanel({ job, isParsing, onParse, onCreateApplication, onQuickATSCheck }: { 
+function JobDetailPanel({ 
+  job, 
+  isParsing, 
+  onParse, 
+  onCreateApplication, 
+  onQuickATSCheck,
+  resumes = [],
+  onAttachResume,
+  isAttaching = false
+}: { 
   job: IJob; 
   isParsing: boolean; 
   onParse: () => void;
   onCreateApplication: () => void;
   onQuickATSCheck: () => void;
+  resumes?: IResume[];
+  onAttachResume: (resumeId: string) => void;
+  isAttaching?: boolean;
 }) {
   if (!job.parsedJD) {
     return (
@@ -1627,6 +1694,42 @@ function JobDetailPanel({ job, isParsing, onParse, onCreateApplication, onQuickA
           <Link to="/tailor" className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 transition-colors">
             Tailor Resume →
           </Link>
+        </div>
+      </div>
+
+      {/* Attach Resume Selector */}
+      <div className="flex items-center gap-2 bg-slate-50 border p-3 rounded-lg flex-wrap justify-between">
+        <div className="flex items-center gap-1.5 text-xs text-slate-650 font-medium">
+          <FileText className="w-4 h-4 text-primary" />
+          {job.attachedResumeId ? (
+            <span>
+              Attached Resume:{' '}
+              <strong className="text-slate-800">
+                {resumes.find(r => r._id === job.attachedResumeId)?.versionLabel || 'Linked Resume'}
+              </strong>
+            </span>
+          ) : (
+            <span className="text-slate-500">No custom resume attached yet</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={job.attachedResumeId || ''}
+            onChange={(e) => {
+              if (e.target.value) {
+                onAttachResume(e.target.value);
+              }
+            }}
+            disabled={isAttaching}
+            className="text-xs bg-white border border-slate-200 rounded px-2.5 py-1 outline-none text-slate-700 focus:border-primary cursor-pointer"
+          >
+            <option value="">-- Link Resume --</option>
+            {resumes.map((r) => (
+              <option key={r._id} value={r._id}>
+                {r.versionLabel} {r.atsScore ? `(${r.atsScore.overallScore} ATS)` : ''}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -1749,98 +1852,179 @@ function JDPasteModal({ onSubmit, isLoading, onClose }: {
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b">
-          <h2 className="text-xl font-bold">Add New Job</h2>
-          <p className="text-sm text-muted-foreground">Paste the job description and optionally attach a resume.</p>
+        <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
+          <div>
+            <h2 className="text-xl font-bold">Add New Job</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">Integrate the job description and optionally attach a reference resume.</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 cursor-pointer p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <input required placeholder="Company Name *" value={form.companyName} onChange={(e) => setForm(f => ({...f, companyName: e.target.value}))} className="px-4 py-2.5 border rounded-lg text-sm" />
-            <input required placeholder="Job Title *" value={form.jobTitle} onChange={(e) => setForm(f => ({...f, jobTitle: e.target.value}))} className="px-4 py-2.5 border rounded-lg text-sm" />
-            <input placeholder="Location" value={form.location} onChange={(e) => setForm(f => ({...f, location: e.target.value}))} className="px-4 py-2.5 border rounded-lg text-sm" />
-            <input placeholder="Job Link (optional)" value={form.jobLink} onChange={(e) => setForm(f => ({...f, jobLink: e.target.value}))} className="px-4 py-2.5 border rounded-lg text-sm" />
-            <select value={form.workType} onChange={(e) => setForm(f => ({...f, workType: e.target.value}))} className="px-4 py-2.5 border rounded-lg text-sm">
-              {['remote', 'hybrid', 'onsite'].map(o => <option key={o}>{o}</option>)}
-            </select>
-            <select value={form.employmentType} onChange={(e) => setForm(f => ({...f, employmentType: e.target.value}))} className="px-4 py-2.5 border rounded-lg text-sm">
-              {['full-time', 'part-time', 'contract', 'internship'].map(o => <option key={o}>{o}</option>)}
-            </select>
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600">Company Name *</label>
+                <input required placeholder="e.g. Stripe" value={form.companyName} onChange={(e) => setForm(f => ({...f, companyName: e.target.value}))} className="px-3.5 py-2 border rounded-lg text-sm bg-white outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all placeholder-gray-300" />
+              </div>
+              
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600">Job Title *</label>
+                <input required placeholder="e.g. Senior Frontend Engineer" value={form.jobTitle} onChange={(e) => setForm(f => ({...f, jobTitle: e.target.value}))} className="px-3.5 py-2 border rounded-lg text-sm bg-white outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all placeholder-gray-300" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600">Location (optional)</label>
+                <input placeholder="e.g. San Francisco, CA / Remote" value={form.location} onChange={(e) => setForm(f => ({...f, location: e.target.value}))} className="px-3.5 py-2 border rounded-lg text-sm bg-white outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all placeholder-gray-300" />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600">Job Link (optional)</label>
+                <input placeholder="https://careers.stripe.com/..." value={form.jobLink} onChange={(e) => setForm(f => ({...f, jobLink: e.target.value}))} className="px-3.5 py-2 border rounded-lg text-sm bg-white outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all placeholder-gray-300" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600">Work Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {['remote', 'hybrid', 'onsite'].map((wt) => {
+                    const isSelected = form.workType === wt;
+                    return (
+                      <button
+                        key={wt}
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, workType: wt }))}
+                        className={`py-2 border text-xs font-semibold rounded-lg capitalize cursor-pointer transition-all ${
+                          isSelected
+                            ? 'border-primary bg-primary/5 text-primary shadow-sm shadow-primary/5 font-bold'
+                            : 'border-gray-200 bg-white hover:border-gray-300 text-gray-700'
+                        }`}
+                      >
+                        {wt}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600">Employment Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {['full-time', 'part-time', 'contract', 'internship'].map((et) => {
+                    const isSelected = form.employmentType === et;
+                    return (
+                      <button
+                        key={et}
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, employmentType: et }))}
+                        className={`py-2 border text-xs font-semibold rounded-lg capitalize cursor-pointer transition-all ${
+                          isSelected
+                            ? 'border-primary bg-primary/5 text-primary shadow-sm shadow-primary/5 font-bold'
+                            : 'border-gray-200 bg-white hover:border-gray-300 text-gray-700'
+                        }`}
+                      >
+                        {et.replace('-', ' ')}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Resume Attachment Section */}
-          <div className="border rounded-lg p-4 bg-gray-50">
-            <label className="block text-sm font-medium mb-2">Attach Resume (Optional)</label>
-            
-            {selectedResumeId ? (
-              // Show selected resume with remove option
-              <div className="flex items-center gap-3 p-3 bg-white border rounded-lg">
-                <FileText className="w-5 h-5 text-primary" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">
-                    {resumes.find(r => r._id === selectedResumeId)?.versionLabel || 'Selected Resume'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">This resume will be used for ATS scoring</p>
-                </div>
+          <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Attach Reference Resume</label>
+              {selectedResumeId && (
                 <button
                   type="button"
                   onClick={() => setSelectedResumeId('')}
-                  className="p-1 hover:bg-gray-100 rounded transition-colors"
-                  title="Remove resume"
+                  className="text-xs text-red-500 hover:text-red-700 font-semibold cursor-pointer"
                 >
-                  <X className="w-4 h-4 text-gray-500" />
+                  Clear Selection
+                </button>
+              )}
+            </div>
+
+            {resumes.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {resumes.map((resume) => {
+                  const isSelected = selectedResumeId === resume._id;
+                  return (
+                    <button
+                      key={resume._id}
+                      type="button"
+                      onClick={() => setSelectedResumeId(isSelected ? '' : resume._id)}
+                      className={`flex items-center gap-2 px-3 py-2 border rounded-xl text-xs font-semibold cursor-pointer transition-all ${
+                        isSelected 
+                          ? 'border-primary bg-primary/5 text-primary ring-2 ring-primary/10' 
+                          : 'border-gray-200 bg-white hover:border-gray-350 text-gray-750'
+                      }`}
+                    >
+                      <FileText className={`w-3.5 h-3.5 ${isSelected ? 'text-primary' : 'text-gray-400'}`} />
+                      <span>{resume.versionLabel || 'Resume'}</span>
+                      {isSelected ? (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedResumeId('');
+                          }}
+                          className="hover:bg-primary/15 p-0.5 rounded transition-colors ml-1 cursor-pointer flex items-center justify-center"
+                          title="Deselect"
+                        >
+                          <X className="w-3 h-3 text-primary font-bold" />
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setShowUploadModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 border border-dashed border-gray-300 rounded-xl text-xs font-semibold hover:border-primary hover:text-primary transition-all bg-white hover:bg-slate-50 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-gray-400" />
+                  <span>Upload New</span>
                 </button>
               </div>
             ) : (
-              // Show resume selection or upload options
-              <div className="space-y-3">
-                {resumes.length > 0 ? (
-                  <select
-                    value={selectedResumeId}
-                    onChange={(e) => setSelectedResumeId(e.target.value)}
-                    className="w-full px-4 py-2.5 border rounded-lg text-sm bg-white"
-                  >
-                    <option value="">Select an existing resume</option>
-                    {resumes.map((resume) => (
-                      <option key={resume._id} value={resume._id}>
-                        {resume.versionLabel}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No resumes available yet.</p>
-                )}
-                
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">or</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowUploadModal(true)}
-                    className="flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg hover:border-primary hover:text-primary transition-colors cursor-pointer"
-                  >
-                    <Upload className="w-4 h-4" />
-                    Upload New Resume
-                  </button>
-                </div>
+              <div className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl">
+                <span className="text-xs text-muted-foreground">No resumes available yet. Upload a master resume to get started.</span>
+                <button
+                  type="button"
+                  onClick={() => setShowUploadModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Upload PDF
+                </button>
               </div>
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Job Description *</label>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600">Job Description *</label>
             <textarea
-              required rows={10}
+              required rows={8}
               value={form.jdRawText}
               onChange={(e) => setForm(f => ({...f, jdRawText: e.target.value}))}
               placeholder="Paste the full job description here..."
-              className="w-full px-4 py-2.5 border rounded-lg text-sm resize-none"
+              className="w-full px-4 py-2.5 border rounded-lg text-sm bg-white outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all resize-none animate-fade-in"
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer">Cancel</button>
-            <button type="submit" disabled={isLoading || !form.jdRawText.trim()} className="px-6 py-2.5 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 disabled:opacity-50 cursor-pointer">
-              {isLoading ? 'Adding...' : '+ Add Job'}
+          <div className="flex justify-end gap-3 pt-2 border-t">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground cursor-pointer">
+              Cancel
+            </button>
+            <button type="submit" disabled={isLoading || !form.jdRawText.trim()} className="px-6 py-2.5 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/95 disabled:opacity-50 cursor-pointer shadow-sm shadow-primary/10">
+              {isLoading ? 'Adding...' : 'Add Job'}
             </button>
           </div>
         </form>
@@ -1970,4 +2154,136 @@ function focusColor(key: string): string {
     frontend: '#3b82f6', backend: '#22c55e', devops: '#f97316', ai: '#a855f7', mobile: '#ec4899',
   };
   return colors[key] || '#94a3b8';
+}
+
+function RegisterSourceModal({
+  onClose,
+  onSubmit,
+  isLoading,
+}: {
+  onClose: () => void;
+  onSubmit: (data: any) => void;
+  isLoading: boolean;
+}) {
+  const [form, setForm] = useState({
+    name: '',
+    sourceType: 'public_job_page',
+    baseUrl: '',
+    crawlFrequency: 1440,
+    extractionStrategy: 'json_ld',
+    trustScore: 1.0,
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name.trim() || !form.baseUrl.trim()) {
+      alert('Please fill in all required fields');
+      return;
+    }
+    onSubmit(form);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+          <h2 className="text-lg font-bold">Register Ingestion Source</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">&times;</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Source Name *</label>
+            <input
+              type="text"
+              placeholder="e.g. YCombinator Jobs"
+              value={form.name}
+              onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+              className="w-full px-4 py-2 border rounded-lg text-sm bg-white"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Source Type *</label>
+            <select
+              value={form.sourceType}
+              onChange={(e) => setForm(f => ({ ...f, sourceType: e.target.value }))}
+              className="w-full px-4 py-2 border rounded-lg text-sm bg-white"
+            >
+              <option value="public_job_page">Crawler / Public Job Page</option>
+              <option value="manual_paste">Manual Paste Only</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Base URL *</label>
+            <input
+              type="url"
+              placeholder="https://www.workatastartup.com/jobs"
+              value={form.baseUrl}
+              onChange={(e) => setForm(f => ({ ...f, baseUrl: e.target.value }))}
+              className="w-full px-4 py-2 border rounded-lg text-sm bg-white"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Crawl Freq (mins)</label>
+              <input
+                type="number"
+                min={0}
+                value={form.crawlFrequency}
+                onChange={(e) => setForm(f => ({ ...f, crawlFrequency: parseInt(e.target.value) || 1440 }))}
+                className="w-full px-4 py-2 border rounded-lg text-sm bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Trust Score (0-1)</label>
+              <input
+                type="number"
+                step="0.05"
+                min="0"
+                max="1"
+                value={form.trustScore}
+                onChange={(e) => setForm(f => ({ ...f, trustScore: parseFloat(e.target.value) || 1.0 }))}
+                className="w-full px-4 py-2 border rounded-lg text-sm bg-white"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Extraction Strategy</label>
+            <select
+              value={form.extractionStrategy}
+              onChange={(e) => setForm(f => ({ ...f, extractionStrategy: e.target.value }))}
+              className="w-full px-4 py-2 border rounded-lg text-sm bg-white"
+            >
+              <option value="json_ld">JSON-LD Metadata</option>
+              <option value="html_metadata">HTML Metadata Scraper</option>
+              <option value="manual_input">Manual Input Format</option>
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="px-6 py-2 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/95 disabled:opacity-50 cursor-pointer shadow-sm shadow-primary/10"
+            >
+              {isLoading ? 'Registering...' : 'Register Source'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }

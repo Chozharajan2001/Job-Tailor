@@ -44,6 +44,18 @@ export default function CreateApplicationModal({
         ]);
         setJobs(jobsRes.data.jobs || []);
         setResumes(resumesRes.data.resumes || []);
+
+        // Try pre-populating with latest reusable resume if none is preselected
+        if (!preselectedResumeId) {
+          try {
+            const reuseRes = await api.get<{ resume: IResume }>('/resumes/reuse');
+            if (reuseRes.success && reuseRes.data?.resume) {
+              setSelectedResumeId(reuseRes.data.resume._id);
+            }
+          } catch (err) {
+            // No recent resume found, ignore 404
+          }
+        }
       } catch (error) {
         console.error('Failed to fetch data:', error);
       } finally {
@@ -51,7 +63,7 @@ export default function CreateApplicationModal({
       }
     }
     fetchData();
-  }, []);
+  }, [preselectedResumeId]);
 
   // ─── Create Application Mutation ────────────────────────────
   const createAppMutation = useMutation({

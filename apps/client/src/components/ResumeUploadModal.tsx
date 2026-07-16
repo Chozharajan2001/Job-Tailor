@@ -21,8 +21,7 @@ export default function ResumeUploadModal({ onClose, onSuccess }: ResumeUploadMo
       
       // Use request method directly to support custom headers for file upload
       const response = await api.request<{ 
-        success: boolean; 
-        data: { pdfUrl: string; filename: string; message: string };
+        pdfUrl: string; filename: string; message: string;
       }>('/resumes/upload', {
         method: 'POST',
         body: formData,
@@ -31,10 +30,10 @@ export default function ResumeUploadModal({ onClose, onSuccess }: ResumeUploadMo
       
       return response.data;
     },
-    onSuccess: (response) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['resumes'] });
       if (onSuccess) {
-        onSuccess(response.data.pdfUrl);
+        onSuccess(data.pdfUrl);
       }
       onClose();
     },
