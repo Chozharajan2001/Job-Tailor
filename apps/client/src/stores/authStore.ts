@@ -72,6 +72,12 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: true,
         }),
     }),
-    { name: 'jobtailor-auth' }
+    { 
+      name: 'jobtailor-auth',
+      partialize: (state) => ({ 
+        user: state.user, 
+        sessionExpired: state.sessionExpired 
+      })
+    }
   )
 );

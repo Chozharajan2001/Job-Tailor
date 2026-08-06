@@ -19,9 +19,15 @@ export const config = {
 
   bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '12', 10),
 
-resetPasswordExpiry: process.env.RESET_PASSWORD_EXPIRY || '1h',
+  resetPasswordExpiry: process.env.RESET_PASSWORD_EXPIRY || '1h',
 
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  emailVerificationExpiry: process.env.EMAIL_VERIFICATION_EXPIRY || '24h',
+
+  maxLoginAttempts: parseInt(process.env.MAX_LOGIN_ATTEMPTS || '5', 10),
+  lockoutDuration: parseInt(process.env.LOCKOUT_DURATION_MINUTES || '15', 10) * 60 * 1000, // in milliseconds
+  maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || '5', 10),
+
+  corsOrigin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:5173'],
 
   email: {
     host: process.env.SMTP_HOST || '',
@@ -52,7 +58,12 @@ resetPasswordExpiry: process.env.RESET_PASSWORD_EXPIRY || '1h',
 export function validateConfig(): void {
   if (!config.mongodb.uri) throw new Error('MONGODB_URI is required');
   if (!config.jwt.secret || config.jwt.secret.includes('fallback')) {
+    if (config.nodeEnv === 'production') throw new Error('JWT_SECRET must be set in production');
     console.warn('⚠️  Using default JWT secret — set JWT_SECRET in production');
+  }
+  if (!config.jwt.refreshSecret || config.jwt.refreshSecret.includes('fallback')) {
+    if (config.nodeEnv === 'production') throw new Error('JWT_REFRESH_SECRET must be set in production');
+    console.warn('⚠️  Using default JWT refresh secret — set JWT_REFRESH_SECRET in production');
   }
   if (config.nodeEnv === 'production') {
     const hasOpenAI = !!config.openaiApiKey;

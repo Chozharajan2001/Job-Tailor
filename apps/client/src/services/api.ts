@@ -31,18 +31,104 @@ export class ApiError extends Error {
 /**
  * Typed API client for JobTailor backend.
  * Auto-injects JWT tokens, handles errors consistently.
+ * Access token stored in memory (Zustand), refresh token in HttpOnly cookie.
  */
 class ApiClient {
   private baseUrl: string;
+  private refreshMutex: Promise<string> | null = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
   }
 
   private getToken(): string | null {
-    return localStorage.getItem('jobtailor-auth')
-      ? JSON.parse(localStorage.getItem('jobtailor-auth')!).state?.accessToken || null
-      : null;
+    // Read access token from Zustand memory state (not localStorage)
+    return useAuthStore.getState().accessToken;
+  }
+
+  private setToken(token: string): void {
+    useAuthStore.getState().setAccessToken(token);
+  }
+
+  private clearToken(): void {
+    useAuthStore.getState().setAccessToken('');
+  }
+
+  /**
+   * Get or create a mutex for silent refresh to prevent race conditions
+   */
+  private getRefreshMutex(): Promise<string> {
+    if (!this.refreshMutex) {
+      this.refreshMutex = this.performSilentRefresh().finally(() => {
+        this.refreshMutex = null;
+      });
+    }
+    return this.refreshMutex;
+  }
+
+  /**
+   * Perform silent token refresh using HttpOnly refresh cookie
+   */
+  private async performSilentRefresh(): Promise<string> {
+    const refreshRes = await fetch(`${this.baseUrl}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+
+    if (!refreshRes.ok) {
+      // Refresh failed - trigger session expiry
+      useAuthStore.getState().setSessionExpired(true);
+      throw new Error('Token refresh failed');
+    }
+
+    const refreshData = await refreshRes.json();
+    const newAccessToken = refreshData.data.accessToken;
+
+    // Save new token to Zustand store (memory only)
+    this.setToken(newAccessToken);
+
+    return newAccessToken;
+  }
+
+  /**
+   * Proactively refresh token before expiry (at 80% lifetime)
+   * For 15min token, refresh at 12min
+   */
+  private proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private scheduleProactiveRefresh(token: string): void {
+    // Clear existing timer
+    if (this.proactiveRefreshTimer) {
+      clearTimeout(this.proactiveRefreshTimer);
+    }
+
+    try {
+      // Decode JWT to get expiry
+      const parts = token.split('.');
+      if (parts.length !== 3) return;
+      
+      const payloadPart = parts[1];
+      if (!payloadPart) return;
+      
+      const payload = JSON.parse(atob(payloadPart));
+      const expiry = payload.exp * 1000; // Convert to milliseconds
+      const now = Date.now();
+      const lifetime = expiry - now;
+      
+      // Refresh at 80% of lifetime (e.g., 12min for 15min token)
+      const refreshAt = lifetime * 0.8;
+      
+      if (refreshAt > 0 && refreshAt < lifetime) {
+        this.proactiveRefreshTimer = setTimeout(() => {
+          this.getRefreshMutex().catch(() => {
+            // Silent refresh failed - session expired modal will handle
+          });
+        }, refreshAt);
+      }
+    } catch {
+      // Ignore decode errors
+    }
   }
 
   async request<T>(endpoint: string, options: ApiOptions = {}): Promise<ApiResponse<T>> {
@@ -65,6 +151,8 @@ class ApiClient {
 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+      // Schedule proactive refresh
+      this.scheduleProactiveRefresh(token);
     }
 
     // Send request with credentials: 'include' to pass cookies (for refreshToken)
@@ -80,36 +168,24 @@ class ApiClient {
         !endpoint.includes('/auth/refresh')
       ) {
         try {
-          const refreshRes = await fetch(`${this.baseUrl}/auth/refresh`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-          });
+          // Use mutex to prevent multiple concurrent refreshes
+          const newAccessToken = await this.getRefreshMutex();
 
-          if (refreshRes.ok) {
-            const refreshData = await refreshRes.json();
-            const newAccessToken = refreshData.data.accessToken;
-
-            // Save new token to Zustand store
-            useAuthStore.getState().setAccessToken(newAccessToken);
-
-            // Retry original request with new token
-            headers['Authorization'] = `Bearer ${newAccessToken}`;
-            const retryResponse = await fetch(url, { ...fetchOptions, headers, credentials: 'include' });
-            
-            if (retryResponse.ok) {
-              return retryResponse.json();
-            }
-
-            const errorBody = await retryResponse.json().catch(() => ({ error: { message: 'Request failed' } }));
-            throw new ApiError(retryResponse.status, errorBody, errorBody.error?.message || `API Error: ${retryResponse.status}`);
+          // Retry original request with new token
+          headers['Authorization'] = `Bearer ${newAccessToken}`;
+          const retryResponse = await fetch(url, { ...fetchOptions, headers, credentials: 'include' });
+          
+          if (retryResponse.ok) {
+            return retryResponse.json();
           }
+
+          const errorBody = await retryResponse.json().catch(() => ({ error: { message: 'Request failed' } }));
+          throw new ApiError(retryResponse.status, errorBody, errorBody.error?.message || `API Error: ${retryResponse.status}`);
         } catch (refreshErr) {
           console.error('Silent refresh failed:', refreshErr);
+          // Trigger session expiration popup modal
+          useAuthStore.getState().setSessionExpired(true);
         }
-
-        // Trigger session expiration popup modal
-        useAuthStore.getState().setSessionExpired(true);
       }
 
       const errorBody = await response.json().catch(() => ({ error: { message: 'Request failed' } }));

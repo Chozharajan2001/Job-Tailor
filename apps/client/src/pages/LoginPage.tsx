@@ -11,17 +11,38 @@ export default function LoginPage() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
 
+  // Generate client fingerprint for security
+  const getFingerprint = () => ({
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    platform: navigator.platform,
+    screenResolution: `${screen.width}x${screen.height}`,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
     try {
-      const data = await authService.login(email, password);
+      const data = await authService.login(email, password, getFingerprint());
       setAuth(data.user, data.accessToken);
       navigate('/dashboard');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+    } catch (err: any) {
+      const errorCode = err.response?.data?.error?.code;
+      const errorMessage = err.response?.data?.error?.message || err.message;
+
+      if (errorCode === 'EMAIL_NOT_VERIFIED') {
+        setError('Please verify your email before logging in. Check your inbox for a verification link.');
+        // Could redirect to resend verification page
+      } else if (errorCode === 'ACCOUNT_LOCKED') {
+        setError(errorMessage);
+      } else if (errorCode === 'TOKEN_REUSE_DETECTED') {
+        setError('Security violation detected. Please log in again.');
+      } else {
+        setError(errorMessage || 'Login failed');
+      }
     } finally {
       setIsLoading(false);
     }

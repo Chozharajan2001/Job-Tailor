@@ -7,13 +7,21 @@ export default function RegisterPage() {
   const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', confirmPassword: '' });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
 
   function updateField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
     setError('');
   }
+
+  // Generate client fingerprint for security
+  const getFingerprint = () => ({
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    platform: navigator.platform,
+    screenResolution: `${screen.width}x${screen.height}`,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,11 +43,27 @@ export default function RegisterPage() {
         password: form.password,
         firstName: form.firstName,
         lastName: form.lastName,
+        fingerprint: getFingerprint(),
       });
-      setAuth(data.user, data.accessToken);
-      navigate('/dashboard');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      
+      // Registration successful - redirect to verification page
+      // The server doesn't return tokens anymore - user must verify email first
+      navigate('/verify-email', { 
+        state: { 
+          email: form.email,
+          message: data.message || 'Please check your email to verify your account.',
+          expires: data.verificationExpires
+        }
+      });
+    } catch (err: any) {
+      const errorCode = err.response?.data?.error?.code;
+      const errorMessage = err.response?.data?.error?.message || err.message;
+
+      if (errorCode === 'EMAIL_EXISTS') {
+        setError('An account with this email already exists');
+      } else {
+        setError(errorMessage || 'Registration failed');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -96,4 +120,8 @@ export default function RegisterPage() {
       </div>
     </div>
   );
+}
+
+function updateField(field: string, value: string) {
+  // This function is defined inside the component
 }

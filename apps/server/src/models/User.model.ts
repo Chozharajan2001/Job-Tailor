@@ -10,6 +10,22 @@ export interface IUser extends Document {
   lastLoginAt?: Date;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
+  emailVerified: boolean;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: Date;
+  loginAttempts: number;
+  lockUntil?: Date;
+  lastFailedLogin?: Date;
+  refreshTokenHash?: string;
+  refreshTokenExpires?: Date;
+  activeSessions: Array<{
+    refreshTokenHash: string;
+    userAgent: string;
+    ip: string;
+    fingerprintHash?: string;
+    createdAt: Date;
+    lastUsedAt: Date;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -60,6 +76,42 @@ const userSchema = new Schema<IUser>(
     resetPasswordExpires: {
       type: Date,
     },
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerificationToken: {
+      type: String,
+      sparse: true,
+    },
+    emailVerificationExpires: {
+      type: Date,
+    },
+    loginAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lockUntil: {
+      type: Date,
+    },
+    lastFailedLogin: {
+      type: Date,
+    },
+    refreshTokenHash: {
+      type: String,
+      sparse: true,
+    },
+    refreshTokenExpires: {
+      type: Date,
+    },
+    activeSessions: [{
+      refreshTokenHash: { type: String, required: true },
+      userAgent: { type: String, required: true },
+      ip: { type: String, required: true },
+      fingerprintHash: { type: String },
+      createdAt: { type: Date, default: Date.now },
+      lastUsedAt: { type: Date, default: Date.now },
+    }],
   },
   {
     timestamps: true,
