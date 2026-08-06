@@ -1,12 +1,15 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../services/api';
-import { KeyRound, Loader2, AlertCircle } from 'lucide-react';
+import { KeyRound, Loader2, AlertCircle, LogOut } from 'lucide-react';
 
 export default function SessionExpiredModal() {
   const sessionExpired = useAuthStore((s) => s.sessionExpired);
   const user = useAuthStore((s) => s.user);
   const setAuth = useAuthStore((s) => s.setAuth);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
+  const navigate = useNavigate();
 
   const [email, setEmail] = useState(user?.email || '');
   const [password, setPassword] = useState('');
@@ -14,6 +17,12 @@ export default function SessionExpiredModal() {
   const [loading, setLoading] = useState(false);
 
   if (!sessionExpired) return null;
+
+  function handleLogout() {
+    api.post('/auth/logout').catch(() => {});
+    clearAuth();
+    navigate('/login');
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -113,6 +122,15 @@ export default function SessionExpiredModal() {
               ) : (
                 <span>Confirm Password</span>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full py-3 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-medium transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Log Out</span>
             </button>
           </form>
         </div>

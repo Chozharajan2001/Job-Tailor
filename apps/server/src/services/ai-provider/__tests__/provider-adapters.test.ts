@@ -185,7 +185,7 @@ describe('AI Provider Adapters', () => {
     it('should call OpenAI endpoint with custom base URL', async () => {
       mockCreate.mockResolvedValueOnce({
         choices: [{ message: { content: 'Nvidia NIM Response' } }],
-        model: 'meta/llama-3.1-70b-instruct',
+        model: 'openai/gpt-oss-20b',
       });
 
       const adapter = new NvidiaNimAdapter('test-api-key', 'https://nim.nvidia.com/v1');
@@ -193,7 +193,7 @@ describe('AI Provider Adapters', () => {
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'meta/llama-3.1-70b-instruct',
+          model: 'openai/gpt-oss-20b',
         })
       );
       expect(result.content).toBe('Nvidia NIM Response');

@@ -30,13 +30,6 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Auth routes get stricter rate limiting
-const authLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // 10 login/register attempts per hour
-  message: { success: false, error: { code: 'AUTH_RATE_LIMITED', message: 'Too many auth attempts, please try again later.' } },
-});
-
 // ─── Body Parsing ──────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -48,7 +41,7 @@ app.get('/health', (_req, res) => {
 });
 
 // ─── API Routes (to be added in Phase 2+) ─────────────────────────
-app.use('/api/v1/auth', authLimiter, (await import('./routes/auth.routes.js')).default);
+app.use('/api/v1/auth', (await import('./routes/auth.routes.js')).default);
 app.use('/api/v1/profile', (await import('./routes/profile.routes.js')).default);
 app.use('/api/v1/jobs', (await import('./routes/job.routes.js')).default);
 app.use('/api/v1/resumes', (await import('./routes/resume.routes.js')).default);

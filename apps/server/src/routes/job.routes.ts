@@ -20,13 +20,13 @@ const jobCreateSchema = z.object({
   companyName: z.string().min(1, 'Company name is required'),
   jobTitle: z.string().min(1, 'Job title is required'),
   jobLink: z.string().url().optional(),
-  location: z.string().min(1),
+  location: z.string().optional().default('remote'),
   workType: z.enum(['remote', 'hybrid', 'onsite']).default('remote'),
   employmentType: z.enum(['full-time', 'part-time', 'contract', 'internship']).default('full-time'),
   salaryRange: z.object({ min: z.number(), max: z.number(), currency: z.string() }).optional(),
   postedDate: z.string().datetime().optional(),
   jdRawText: z.string().min(10, 'JD text must be at least 10 characters'),
-  attachedResumeId: z.string().optional(), // Support resume attachment at creation
+  attachedResumeId: z.string().optional(),
 });
 
 const idParamSchema = z.object({ id: z.string() });

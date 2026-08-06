@@ -18,8 +18,21 @@ export const config = {
   },
 
   bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '12', 10),
-  
+
+resetPasswordExpiry: process.env.RESET_PASSWORD_EXPIRY || '1h',
+
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+
+  email: {
+    host: process.env.SMTP_HOST || '',
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    secure: process.env.SMTP_SECURE === 'true',
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.EMAIL_FROM || 'noreply@jobtailor.app',
+    fromName: process.env.EMAIL_FROM_NAME || 'JobTailor',
+    frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  },
 
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   geminiApiKey: process.env.GEMINI_API_KEY || '',

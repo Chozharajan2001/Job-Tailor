@@ -66,6 +66,12 @@ export default function LoginPage() {
               placeholder="Enter your password"
               className="w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
             />
+            <Link
+              to="/forgot-password"
+              className="block mt-2 text-sm text-primary hover:underline text-right"
+            >
+              Forgot password?
+            </Link>
           </div>
 
           <button

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { registerUser, loginUser, refreshTokenService, generateTokens } from '../services/auth.service.js';
+import { registerUser, loginUser, refreshTokenService, generateTokens, requestPasswordReset, resetPassword } from '../services/auth.service.js';
 import { User } from '../models/User.model.js';
 
 /**
@@ -128,4 +128,32 @@ export async function logout(_req: Request, res: Response): Promise<void> {
   res.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
 
   res.json({ success: true, data: { message: 'Logged out successfully.' } });
+}
+
+/**
+ * POST /api/v1/auth/forgot-password
+ * Request a password reset link (sent via email).
+ */
+export async function forgotPassword(req: Request, res: Response): Promise<void> {
+  const { email } = req.body;
+  await requestPasswordReset(email);
+
+  res.json({
+    success: true,
+    data: { message: 'If an account with that email exists, a password reset link has been sent to your email.' },
+  });
+}
+
+/**
+ * POST /api/v1/auth/reset-password
+ * Reset password using a valid token.
+ */
+export async function resetPasswordHandler(req: Request, res: Response): Promise<void> {
+  const { token, password } = req.body;
+  await resetPassword(token, password);
+
+  res.json({
+    success: true,
+    data: { message: 'Password has been reset successfully.' },
+  });
 }

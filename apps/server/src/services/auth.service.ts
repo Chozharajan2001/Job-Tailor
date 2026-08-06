@@ -1,9 +1,11 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import type { Secret, SignOptions } from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { User } from '../models/User.model.js';
+import { sendPasswordResetEmail } from './email.service.js';
 
 // ─── Token Payload ──────────────────────────────────────────────
 interface TokenPayload {
@@ -161,6 +163,92 @@ export async function refreshTokenService(refreshTokenString: string): Promise<T
 
   // Generate new token pair
   return generateTokens({ _id: user._id.toString(), email: user.email });
+}
+
+// ─── Password Reset ──────────────────────────────────────────────
+
+/**
+ * Request a password reset. Generates a token and sends reset email.
+ * Always returns success to prevent user enumeration.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const user = await User.findOne({ email: email.toLowerCase() });
+
+  // Always return silently — don't reveal whether email exists
+  if (!user) {
+    return;
+  }
+
+  // Generate a random token
+  const plainToken = crypto.randomBytes(32).toString('hex');
+  const hashedToken = await bcrypt.hash(plainToken, config.bcryptRounds);
+
+  // Calculate expiry (parse config like '1h', '30m', etc.)
+  const expiresAt = new Date(Date.now() + parseExpiryMs(config.resetPasswordExpiry));
+
+  await User.findByIdAndUpdate(user._id, {
+    resetPasswordToken: hashedToken,
+    resetPasswordExpires: expiresAt,
+  });
+
+  // Build reset URL with frontend URL from config
+  const resetUrl = `${config.email.frontendUrl}/reset-password/${plainToken}`;
+
+  // Send password reset email
+  await sendPasswordResetEmail(user.email, resetUrl, expiresAt);
+}
+
+/**
+ * Reset password using a valid token.
+ */
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  // Find any user with a reset token that hasn't expired
+  const users = await User.find({
+    resetPasswordExpires: { $gt: new Date() },
+  }).select('+resetPasswordToken').lean();
+
+  let matchedUser: typeof users[0] | null = null;
+
+  for (const user of users) {
+    if (user.resetPasswordToken) {
+      const isMatch = await bcrypt.compare(token, user.resetPasswordToken);
+      if (isMatch) {
+        matchedUser = user;
+        break;
+      }
+    }
+  }
+
+  if (!matchedUser) {
+    throw new ApiError(400, 'INVALID_RESET_TOKEN', 'Invalid or expired reset token.');
+  }
+
+  // Hash the new password
+  const passwordHash = await bcrypt.hash(newPassword, config.bcryptRounds);
+
+  // Update user: set new password and clear reset fields
+  await User.findByIdAndUpdate(matchedUser._id, {
+    passwordHash,
+    $unset: { resetPasswordToken: 1, resetPasswordExpires: 1 },
+  });
+}
+
+/**
+ * Parse a human-friendly expiry string (e.g. '1h', '30m', '2d') into milliseconds.
+ */
+function parseExpiryMs(expiry: string): number {
+  const match = expiry.match(/^(\d+)([mhd])$/);
+  if (!match) return 60 * 60 * 1000; // fallback: 1 hour
+
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+
+  switch (unit) {
+    case 'm': return value * 60 * 1000;
+    case 'h': return value * 60 * 60 * 1000;
+    case 'd': return value * 24 * 60 * 60 * 1000;
+    default: return 60 * 60 * 1000;
+  }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────

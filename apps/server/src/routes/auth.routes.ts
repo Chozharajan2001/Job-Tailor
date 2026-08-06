@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { register, login, refresh, getMe, logout } from '../controllers/auth.controller.js';
+import { register, login, refresh, getMe, logout, forgotPassword, resetPasswordHandler } from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { validateBody } from '../middleware/validation.js';
 
@@ -26,6 +26,20 @@ const loginSchema = z.object({
 
 const refreshTokenSchema = z.object({
   refreshToken: z.string().optional(),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Must be a valid email address'),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Reset token is required'),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Must contain at least one number'),
 });
 
 // ─── Routes ────────────────────────────────────────────────────
@@ -64,5 +78,19 @@ router.get('/me', authenticate, getMe);
  * @access Private
  */
 router.post('/logout', authenticate, logout);
+
+/**
+ * POST /api/v1/auth/forgot-password
+ * @desc Request a password reset link
+ * @access Public
+ */
+router.post('/forgot-password', validateBody(forgotPasswordSchema), forgotPassword);
+
+/**
+ * POST /api/v1/auth/reset-password
+ * @desc Reset password using a valid token
+ * @access Public
+ */
+router.post('/reset-password', validateBody(resetPasswordSchema), resetPasswordHandler);
 
 export default router;

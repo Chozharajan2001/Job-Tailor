@@ -160,19 +160,22 @@ describe('Advanced Job Search Engine (Sprint 2) Integration Suite', () => {
       fetchSpy.mockRestore();
     });
 
-    it('should throw an error when minimum job details cannot be parsed', async () => {
+    it('should handle minimal HTML by extracting fallback metadata', async () => {
       const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation((): Promise<any> => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          text: () => Promise.resolve('<html><body>Empty page</body></html>'),
+          text: () => Promise.resolve('<html><head><title>Empty page</title></head><body>Empty page</body></html>'),
         });
       });
 
       const url = 'https://google.com/jobs/empty-page';
-      await expect(IngestionService.ingestFromUrl(url)).rejects.toThrow(
-        'Failed to extract minimum job details (title, company, description) from URL.'
-      );
+      const job = await IngestionService.ingestFromUrl(url);
+      
+      expect(job).toBeDefined();
+      expect(job.jobTitle).toBe('Empty page');
+      expect(job.companyName).toBe('google');
+      expect(job.description).toContain('Empty page').toContain('Empty page');
 
       fetchSpy.mockRestore();
     });

@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import { Upload, FileText, X, Check, Plus } from 'lucide-react';
 import ResumeUploadModal from '../components/ResumeUploadModal';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 
 // ─── Types ────────────────────────────────────────────────────
 interface IParsedJD {
@@ -98,7 +99,10 @@ export default function JobsPage() {
         message: string;
       }>('/resumes/quick-ats-check', { jobId });
       return response.data;
-    }
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || error.message || 'Quick ATS check failed. Please ensure you have a resume set up.');
+    },
   });
 
   const attachResumeMutation = useMutation({
@@ -109,6 +113,10 @@ export default function JobsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       queryClient.invalidateQueries({ queryKey: ['global-search'] });
+      toast.success('Resume attached to job!');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || error.message || 'Failed to attach resume.');
     },
   });
 
@@ -378,14 +386,24 @@ export default function JobsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       queryClient.invalidateQueries({ queryKey: ['resumes'] });
+      toast.success('Job added successfully!');
       setShowModal(false);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || error.message || 'Failed to create job. Please try again.');
     },
   });
 
   // ─── Parse JD Mutation ───────────────────────────────────────
   const parseJDMutation = useMutation({
     mutationFn: (jobId: string) => api.post<IParsedJD>(`/jobs/${jobId}/parse`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      toast.success('JD parsed successfully!');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || error.message || 'Failed to parse JD. Please try again.');
+    },
   });
 
   // ─── Create Application Mutation ────────────────────────────
@@ -395,7 +413,11 @@ export default function JobsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['applications'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Application created!');
       setShowApplicationModal(false);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error?.message || error.message || 'Failed to create application.');
     },
   });
 
@@ -1842,7 +1864,7 @@ function JDPasteModal({ onSubmit, isLoading, onClose }: {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.companyName || !form.jobTitle || !form.jdRawText) return;
+    if (!form.companyName || !form.jobTitle || !form.location || !form.jdRawText) return;
     onSubmit({
       ...form,
       attachedResumeId: selectedResumeId || undefined,
@@ -1878,8 +1900,8 @@ function JDPasteModal({ onSubmit, isLoading, onClose }: {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-600">Location (optional)</label>
-                <input placeholder="e.g. San Francisco, CA / Remote" value={form.location} onChange={(e) => setForm(f => ({...f, location: e.target.value}))} className="px-3.5 py-2 border rounded-lg text-sm bg-white outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all placeholder-gray-300" />
+                <label className="text-xs font-semibold text-gray-600">Location *</label>
+                <input required placeholder="e.g. San Francisco, CA / Remote" value={form.location} onChange={(e) => setForm(f => ({...f, location: e.target.value}))} className="px-3.5 py-2 border rounded-lg text-sm bg-white outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all placeholder-gray-300" />
               </div>
 
               <div className="flex flex-col gap-1">
@@ -2023,7 +2045,7 @@ function JDPasteModal({ onSubmit, isLoading, onClose }: {
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground cursor-pointer">
               Cancel
             </button>
-            <button type="submit" disabled={isLoading || !form.jdRawText.trim()} className="px-6 py-2.5 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/95 disabled:opacity-50 cursor-pointer shadow-sm shadow-primary/10">
+            <button type="submit" disabled={isLoading || !form.companyName.trim() || !form.jobTitle.trim() || !form.location.trim() || !form.jdRawText.trim()} className="px-6 py-2.5 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/95 disabled:opacity-50 cursor-pointer shadow-sm shadow-primary/10">
               {isLoading ? 'Adding...' : 'Add Job'}
             </button>
           </div>

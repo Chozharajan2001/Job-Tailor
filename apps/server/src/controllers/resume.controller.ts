@@ -470,3 +470,142 @@ export async function quickATSCheck(req: Request, res: Response): Promise<void> 
     });
   }
 }
+
+/**
+ * POST /api/v1/resumes — Create a profile-based master resume.
+ * This is the user's complete professional profile resume (isProfileResume: true).
+ */
+export async function createProfileResume(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+  const {
+    versionLabel,
+    tailoredSummary,
+    skills,
+    experience,
+    projects,
+    sectionOrder,
+    atsScore,
+  } = req.body;
+
+  // Validate required fields
+  if (!versionLabel) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'MISSING_VERSION_LABEL', message: 'versionLabel is required.' },
+    });
+    return;
+  }
+
+  try {
+    // Check if user already has a profile resume
+    const existingProfileResume = await Resume.findOne({ userId, isProfileResume: true }).exec();
+    if (existingProfileResume) {
+      res.status(409).json({
+        success: false,
+        error: { 
+          code: 'PROFILE_RESUME_EXISTS', 
+          message: 'Profile resume already exists. Use PUT /resumes/profile to update it.',
+          existingResumeId: existingProfileResume._id,
+        },
+      });
+      return;
+    }
+
+    // Validate skills array
+    const validatedSkills = Array.isArray(skills) ? skills : [];
+    const validatedExperience = Array.isArray(experience) ? experience : [];
+    const validatedProjects = Array.isArray(projects) ? projects : [];
+    const validatedSectionOrder = Array.isArray(sectionOrder) ? sectionOrder : ['summary', 'skills', 'experience', 'projects', 'education'];
+
+    // Default ATS score structure if not provided
+    const defaultATSScore = {
+      overallScore: 0,
+      keywordMatchScore: 0,
+      semanticMatchScore: 0,
+      sectionCompletenessScore: 0,
+      formatScore: 0,
+      breakdown: {
+        matchedSkills: [],
+        missingSkills: [],
+        weakSkills: [],
+        actionItems: [],
+      },
+    };
+
+    const resume = await Resume.create({
+      userId,
+      version: 1,
+      versionLabel,
+      tailoredSummary: tailoredSummary || '',
+      skills: validatedSkills,
+      experience: validatedExperience,
+      projects: validatedProjects,
+      sectionOrder: validatedSectionOrder,
+      atsScore: atsScore || defaultATSScore,
+      status: 'draft',
+      isProfileResume: true,
+    });
+
+    res.status(201).json({ success: true, data: { resume } });
+  } catch (error) {
+    console.error('Profile resume creation failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to create profile resume';
+    res.status(500).json({
+      success: false,
+      error: { code: 'PROFILE_RESUME_CREATION_FAILED', message },
+    });
+  }
+}
+
+/**
+ * PUT /api/v1/resumes/profile — Update the user's profile-based master resume.
+ */
+export async function updateProfileResume(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+
+  try {
+    const profileResume = await Resume.findOneAndUpdate(
+      { userId, isProfileResume: true },
+      req.body,
+      { new: true }
+    ).lean<IResume>().exec();
+
+    if (!profileResume) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'PROFILE_RESUME_NOT_FOUND', message: 'Profile resume not found. Create one first.' },
+      });
+      return;
+    }
+
+    res.json({ success: true, data: { resume: profileResume } });
+  } catch (error) {
+    console.error('Profile resume update failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to update profile resume';
+    res.status(500).json({
+      success: false,
+      error: { code: 'PROFILE_RESUME_UPDATE_FAILED', message },
+    });
+  }
+}
+
+/**
+ * GET /api/v1/resumes/profile — Get the user's profile-based master resume.
+ */
+export async function getProfileResume(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.userId;
+
+  const profileResume = await Resume.findOne({ userId, isProfileResume: true })
+    .lean<IResume>()
+    .exec();
+
+  if (!profileResume) {
+    res.status(404).json({
+      success: false,
+      error: { code: 'PROFILE_RESUME_NOT_FOUND', message: 'No profile resume found.' },
+    });
+    return;
+  }
+
+  res.json({ success: true, data: { resume: profileResume } });
+}

@@ -16,10 +16,11 @@ import { User } from '../models/User.model.js';
 import * as profileService from '../services/profile.service.js';
 
 process.env.NODE_ENV = 'test';
+// Use the same test database as search-engine tests to avoid connection conflicts
 if (process.env.MONGODB_URI) {
-  process.env.MONGODB_URI = process.env.MONGODB_URI.replace(/\/job_tailor.*$/, '/job_tailor_profile_test');
+  process.env.MONGODB_URI = process.env.MONGODB_URI.replace(/\/job_tailor.*$/, '/job_tailor_test');
 } else {
-  process.env.MONGODB_URI = 'mongodb://127.0.0.1:27017/job_tailor_profile_test';
+  process.env.MONGODB_URI = 'mongodb://127.0.0.1:27017/job_tailor_test';
 }
 
 let testUserId: string;
