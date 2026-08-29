@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../stores/authStore';
-import { api } from '../services/api';
-import { KeyRound, Loader2, AlertCircle, LogOut } from 'lucide-react';
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuthStore } from "../stores/authStore";
+import { api } from "../services/api";
+import { KeyRound, Loader2, AlertCircle, LogOut } from "lucide-react";
 
 export default function SessionExpiredModal() {
   const sessionExpired = useAuthStore((s) => s.sessionExpired);
@@ -10,24 +11,31 @@ export default function SessionExpiredModal() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const [email, setEmail] = useState(user?.email || '');
-  const [password, setPassword] = useState('');
+  // Derive the email from the store and keep it in sync (no stale snapshot)
+  const [email, setEmail] = useState(user?.email || "");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (user?.email) setEmail(user.email);
+  }, [user?.email]);
 
   if (!sessionExpired) return null;
 
   function handleLogout() {
-    api.post('/auth/logout').catch(() => {});
+    api.post("/auth/logout").catch(() => {});
+    queryClient.clear();
     clearAuth();
-    navigate('/login');
+    navigate("/login");
   }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     if (!email || !password) {
-      setError('Please fill in all fields.');
+      setError("Please fill in all fields.");
       return;
     }
 
@@ -35,18 +43,23 @@ export default function SessionExpiredModal() {
     setError(null);
 
     try {
-      const res = await api.post<{ user: any; accessToken: string }>('/auth/login', {
-        email,
-        password,
-      });
+      const res = await api.post<{ user: any; accessToken: string }>(
+        "/auth/login",
+        {
+          email,
+          password,
+        },
+      );
 
+      // Drop any cached data from the previous session before re-authenticating
+      queryClient.clear();
       setAuth(res.data.user, res.data.accessToken);
-      setPassword('');
+      setPassword("");
     } catch (err: any) {
       setError(
         err.response?.data?.error?.message ||
           err.message ||
-          'Failed to login. Please check credentials.'
+          "Failed to login. Please check credentials.",
       );
     } finally {
       setLoading(false);
@@ -65,9 +78,12 @@ export default function SessionExpiredModal() {
           </div>
 
           <div className="text-center mb-8">
-            <h3 className="text-2xl font-bold text-slate-800 tracking-tight">Session Expired</h3>
+            <h3 className="text-2xl font-bold text-slate-800 tracking-tight">
+              Session Expired
+            </h3>
             <p className="text-sm text-slate-500 mt-2">
-              For your security, please sign back in to continue working without losing your changes.
+              For your security, please sign back in to continue working without
+              losing your changes.
             </p>
           </div>
 

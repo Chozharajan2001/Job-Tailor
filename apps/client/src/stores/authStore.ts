@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 interface User {
   _id: string;
@@ -19,7 +19,7 @@ interface AuthState {
   setAuth: (user: User, accessToken: string) => void;
   clearAuth: () => void;
   setLoading: (loading: boolean) => void;
-  initialize: () => void;
+  initialize: () => Promise<void>;
   setSessionExpired: (expired: boolean) => void;
   setAccessToken: (token: string) => void;
 }
@@ -33,16 +33,37 @@ export const useAuthStore = create<AuthState>()(
       isLoading: true,
       sessionExpired: false,
 
-      // Initialize auth state - call this on app mount
-      initialize: () => {
-        // Check if we have persisted auth data
+      // Initialize auth state - call this on app mount.
+      // The access token lives only in memory, so after a page reload we try
+      // to restore the session silently using the HttpOnly refresh cookie.
+      initialize: async () => {
         const state = get();
-        if (state.accessToken && state.user) {
-          // We have valid auth, keep isLoading false (already set by persist)
+
+        if (!state.user) {
+          // No persisted user — nothing to restore
           set({ isLoading: false, sessionExpired: false });
+          return;
+        }
+
+        // Lazily import to avoid a circular dependency (api -> authStore)
+        const { api } = await import("../services/api");
+        const restored = await api.trySilentRefresh();
+
+        if (restored) {
+          set({
+            isAuthenticated: true,
+            isLoading: false,
+            sessionExpired: false,
+          });
         } else {
-          // No auth data, stop loading
-          set({ isLoading: false, sessionExpired: false });
+          // Cookie expired or invalid — fully reset and clear any stale caches
+          set({
+            user: null,
+            accessToken: null,
+            isAuthenticated: false,
+            isLoading: false,
+            sessionExpired: false,
+          });
         }
       },
 
@@ -68,16 +89,16 @@ export const useAuthStore = create<AuthState>()(
       setSessionExpired: (sessionExpired) => set({ sessionExpired }),
       setAccessToken: (accessToken) =>
         set({
-          accessToken,
-          isAuthenticated: true,
+          accessToken: accessToken || null,
+          isAuthenticated: Boolean(accessToken),
         }),
     }),
-    { 
-      name: 'jobtailor-auth',
-      partialize: (state) => ({ 
-        user: state.user, 
-        sessionExpired: state.sessionExpired 
-      })
-    }
-  )
+    {
+      name: "jobtailor-auth",
+      partialize: (state) => ({
+        user: state.user,
+        sessionExpired: state.sessionExpired,
+      }),
+    },
+  ),
 );

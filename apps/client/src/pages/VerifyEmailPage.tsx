@@ -1,77 +1,93 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { authService } from '../services/auth';
-import { Loader2, CheckCircle, AlertCircle, Mail } from 'lucide-react';
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation, useParams, Link } from "react-router-dom";
+import { authService } from "../services/auth";
+import { Loader2, CheckCircle, AlertCircle, Mail } from "lucide-react";
 
 export default function VerifyEmailPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [token, setToken] = useState<string>('');
-  const [email, setEmail] = useState<string>('');
-  const [message, setMessage] = useState<string>('');
-  const [error, setError] = useState<string>('');
+  // Supports both /verify-email?token=... and legacy /verify-email/<token> links
+  const { token: routeToken } = useParams<{ token: string }>();
+  const [token, setToken] = useState<string>("");
+  const [email, setEmail] = useState<string>("");
+  const [message, setMessage] = useState<string>("");
+  const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [verificationExpires, setVerificationExpires] = useState<Date | null>(null);
+  const [verificationExpires, setVerificationExpires] = useState<Date | null>(
+    null,
+  );
 
-  // Get token from URL params or location state
+  // Get token from query param, route param, or location state
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const urlToken = params.get('token');
+    const urlToken = params.get("token") || routeToken;
     if (urlToken) {
       setToken(urlToken);
     }
 
     // Also check location state (from registration redirect)
-    const state = location.state as { email?: string; message?: string; expires?: string } | null;
+    const state = location.state as {
+      email?: string;
+      message?: string;
+      expires?: string;
+    } | null;
     if (state) {
       if (state.email) setEmail(state.email);
       if (state.message) setMessage(state.message);
       if (state.expires) setVerificationExpires(new Date(state.expires));
     }
-  }, [location]);
+  }, [location, routeToken]);
 
-  async function handleVerify() {
+  const handleVerify = useCallback(async () => {
     if (!token) {
-      setError('No verification token provided. Please check your email for the verification link.');
+      setError(
+        "No verification token provided. Please check your email for the verification link.",
+      );
       return;
     }
 
-    setError('');
+    setError("");
     setIsLoading(true);
 
     try {
       await authService.verifyEmail(token);
       setSuccess(true);
-      setMessage('Email verified successfully! You can now log in.');
+      setMessage("Email verified successfully! You can now log in.");
     } catch (err: any) {
       const errorCode = err.response?.data?.error?.code;
       const errorMessage = err.response?.data?.error?.message || err.message;
 
-      if (errorCode === 'INVALID_VERIFICATION_TOKEN') {
-        setError('Invalid or expired verification token. Please request a new one.');
+      if (errorCode === "INVALID_VERIFICATION_TOKEN") {
+        setError(
+          "Invalid or expired verification token. Please request a new one.",
+        );
       } else {
-        setError(errorMessage || 'Verification failed');
+        setError(errorMessage || "Verification failed");
       }
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [token]);
 
   async function handleResend() {
     if (!email) {
-      setError('Email is required to resend verification');
+      setError("Email is required to resend verification");
       return;
     }
 
-    setError('');
+    setError("");
     setIsLoading(true);
 
     try {
       await authService.resendVerificationEmail(email);
-      setMessage('A new verification link has been sent to your email.');
+      setMessage("A new verification link has been sent to your email.");
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || err.message || 'Failed to resend verification');
+      setError(
+        err.response?.data?.error?.message ||
+          err.message ||
+          "Failed to resend verification",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -82,7 +98,7 @@ export default function VerifyEmailPage() {
     if (token && !success && !isLoading) {
       handleVerify();
     }
-  }, [token]);
+  }, [token, success, isLoading, handleVerify]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -104,7 +120,9 @@ export default function VerifyEmailPage() {
             <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4 border border-green-100">
               <CheckCircle className="w-8 h-8 text-green-500" />
             </div>
-            <h3 className="text-xl font-semibold text-slate-800 mb-2">Email Verified!</h3>
+            <h3 className="text-xl font-semibold text-slate-800 mb-2">
+              Email Verified!
+            </h3>
             <p className="text-slate-500 text-sm mb-6">
               Your email has been verified. You can now sign in to your account.
             </p>
@@ -126,10 +144,12 @@ export default function VerifyEmailPage() {
             {!email && (
               <div className="text-center">
                 <Mail className="w-12 h-12 mx-auto mb-4 text-primary/50" />
-                <h3 className="text-lg font-semibold text-slate-800 mb-2">Check Your Email</h3>
+                <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                  Check Your Email
+                </h3>
                 <p className="text-slate-500 text-sm mb-6">
-                  We've sent a verification link to your email address. 
-                  Click the link in the email to verify your account.
+                  We've sent a verification link to your email address. Click
+                  the link in the email to verify your account.
                 </p>
                 <p className="text-xs text-slate-400">
                   The link expires in 24 hours.
@@ -141,7 +161,8 @@ export default function VerifyEmailPage() {
               <div className="space-y-3">
                 <div className="p-3 bg-slate-50 rounded-lg border">
                   <p className="text-sm text-slate-600">
-                    Verification sent to <strong className="text-slate-800">{email}</strong>
+                    Verification sent to{" "}
+                    <strong className="text-slate-800">{email}</strong>
                   </p>
                   {verificationExpires && (
                     <p className="text-xs text-slate-500 mt-1">
@@ -161,7 +182,7 @@ export default function VerifyEmailPage() {
                       Sending...
                     </>
                   ) : (
-                    'Resend Verification Email'
+                    "Resend Verification Email"
                   )}
                 </button>
 
@@ -173,7 +194,9 @@ export default function VerifyEmailPage() {
 
             {!email && !token && (
               <div className="pt-4 border-t">
-                <label className="block text-sm font-medium mb-1">Enter Email to Resend</label>
+                <label className="block text-sm font-medium mb-1">
+                  Enter Email to Resend
+                </label>
                 <input
                   type="email"
                   value={email}
@@ -187,8 +210,11 @@ export default function VerifyEmailPage() {
         )}
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Already verified?{' '}
-          <Link to="/login" className="text-primary font-medium hover:underline">
+          Already verified?{" "}
+          <Link
+            to="/login"
+            className="text-primary font-medium hover:underline"
+          >
             Sign In
           </Link>
         </p>
