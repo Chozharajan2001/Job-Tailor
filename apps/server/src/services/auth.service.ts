@@ -1,13 +1,13 @@
-import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
-import type { Secret, SignOptions } from 'jsonwebtoken';
-import { config } from '../config/index.js';
-import { ApiError } from '../middleware/error-handler.js';
-import { User, IUser } from '../models/User.model.js';
-import { ObjectId } from 'mongoose';
-import { sendPasswordResetEmail } from './email.service.js';
-import { auditLogger } from './audit-logger.service.js';
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
+import jwt from "jsonwebtoken";
+import type { Secret, SignOptions } from "jsonwebtoken";
+import { config } from "../config/index.js";
+import { ApiError } from "../middleware/error-handler.js";
+import { User, IUser } from "../models/User.model.js";
+import { ObjectId } from "mongoose";
+import { sendPasswordResetEmail } from "./email.service.js";
+import { auditLogger } from "./audit-logger.service.js";
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface TokenPayload {
@@ -15,11 +15,18 @@ interface TokenPayload {
   email: string;
 }
 
+interface RefreshTokenPayload extends TokenPayload {
+  /** Unique session identifier (JWT `jti` claim) — one per device/login */
+  sessionId: string;
+}
+
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
+  /** SHA-256 hex of the refresh token, stored per-session for equality lookups */
   refreshTokenHash: string;
   refreshTokenExpires: Date;
+  sessionId: string;
 }
 
 interface FullUser {
@@ -27,7 +34,7 @@ interface FullUser {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'user' | 'admin';
+  role: "user" | "admin";
   isActive: boolean;
   lastLoginAt?: Date;
   createdAt: Date;
@@ -40,9 +47,8 @@ interface FullUser {
   resetPasswordExpires?: Date;
   emailVerificationToken?: string;
   emailVerificationExpires?: Date;
-  refreshTokenHash?: string;
-  refreshTokenExpires?: Date;
   activeSessions: Array<{
+    sessionId: string;
     refreshTokenHash: string;
     userAgent: string;
     ip: string;
@@ -58,7 +64,7 @@ interface SanitizedUser {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'user' | 'admin';
+  role: "user" | "admin";
   isActive: boolean;
   lastLoginAt?: Date;
   createdAt: Date;
@@ -73,6 +79,7 @@ interface RegisterInput {
 }
 
 interface SessionData {
+  sessionId: string;
   refreshTokenHash: string;
   userAgent: string;
   ip: string;
@@ -83,32 +90,34 @@ interface SessionData {
 
 // ─── Token Generation ───────────────────────────────────────────────
 function generateAccessToken(payload: TokenPayload): string {
-  return jwt.sign(payload, config.jwt.secret as Secret, { expiresIn: config.jwt.expiry as SignOptions['expiresIn'] });
+  return jwt.sign(payload, config.jwt.secret as Secret, {
+    expiresIn: config.jwt.expiry as SignOptions["expiresIn"],
+  });
 }
 
-function generateRefreshToken(payload: TokenPayload): string {
-  return jwt.sign(payload, config.jwt.refreshSecret as Secret, { expiresIn: config.jwt.refreshExpiry as SignOptions['expiresIn'] });
+function generateRefreshToken(payload: RefreshTokenPayload): string {
+  return jwt.sign(payload, config.jwt.refreshSecret as Secret, {
+    expiresIn: config.jwt.refreshExpiry as SignOptions["expiresIn"],
+    // Unique token id — guarantees a rotated token differs from its
+    // predecessor even when issued within the same second (same iat)
+    jwtid: crypto.randomUUID(),
+  });
 }
 
 /**
  * Generate a cryptographically secure random token
  */
 function generateSecureToken(): string {
-  return crypto.randomBytes(32).toString('hex');
+  return crypto.randomBytes(32).toString("hex");
 }
 
 /**
- * Hash a token using bcrypt
+ * Fast, deterministic hash for HIGH-ENTROPY tokens (refresh/verification/reset).
+ * SHA-256 is appropriate here because the inputs are 256-bit random values —
+ * unlike passwords, they don't need slow hashing, and equality lookups are possible.
  */
-async function hashToken(token: string): Promise<string> {
-  return bcrypt.hash(token, config.bcryptRounds);
-}
-
-/**
- * Compare a plain token with its hash
- */
-async function compareToken(token: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(token, hash);
+function sha256Token(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
 }
 
 /**
@@ -122,41 +131,65 @@ function parseExpiryMs(expiry: string): number {
   const unit = match[2];
 
   switch (unit) {
-    case 'm': return value * 60 * 1000;
-    case 'h': return value * 60 * 60 * 1000;
-    case 'd': return value * 24 * 60 * 60 * 1000;
-    default: return 60 * 60 * 1000;
+    case "m":
+      return value * 60 * 1000;
+    case "h":
+      return value * 60 * 60 * 1000;
+    case "d":
+      return value * 24 * 60 * 60 * 1000;
+    default:
+      return 60 * 60 * 1000;
   }
 }
 
 /**
- * Generate token pair and hash the refresh token for storage
+ * Refresh-token lifetime in ms, derived from JWT_REFRESH_EXPIRE config.
  */
-export async function generateTokens(user: { _id: string; email: string }): Promise<TokenPair> {
-  const payload: TokenPayload = { userId: user._id.toString(), email: user.email };
+export function getRefreshExpiryMs(): number {
+  return parseExpiryMs(config.jwt.refreshExpiry);
+}
 
-  const accessToken = generateAccessToken(payload);
+/**
+ * Generate token pair for a session.
+ * When `sessionId` is provided (token rotation), the session identity is kept
+ * stable so replayed pre-rotation tokens can still be detected as reuse;
+ * otherwise a fresh sessionId is created (new login).
+ * The refresh token is stored hashed (SHA-256) per session.
+ */
+export async function generateTokens(
+  user: { _id: string; email: string },
+  sessionId?: string,
+): Promise<TokenPair> {
+  const resolvedSessionId = sessionId || crypto.randomUUID();
+  const payload: RefreshTokenPayload = {
+    userId: user._id.toString(),
+    email: user.email,
+    sessionId: resolvedSessionId,
+  };
+
+  const accessToken = generateAccessToken({
+    userId: user._id.toString(),
+    email: user.email,
+  });
   const refreshToken = generateRefreshToken(payload);
-  const refreshTokenHash = await hashToken(refreshToken);
-  const refreshExpiryMs = config.jwt.refreshExpiry.includes('d')
-    ? parseExpiryMs(config.jwt.refreshExpiry)
-    : 7 * 24 * 60 * 60 * 1000; // fallback 7 days
-  const refreshTokenExpires = new Date(Date.now() + refreshExpiryMs);
+  const refreshTokenHash = sha256Token(refreshToken);
+  const refreshTokenExpires = new Date(Date.now() + getRefreshExpiryMs());
 
   return {
     accessToken,
     refreshToken,
     refreshTokenHash,
     refreshTokenExpires,
+    sessionId: resolvedSessionId,
   };
 }
 
 /**
- * Verify and decode a refresh token. Returns payload if valid.
+ * Verify and decode a refresh token. Returns payload (incl. sessionId) if valid.
  */
-export function verifyRefreshToken(token: string): TokenPayload | null {
+export function verifyRefreshToken(token: string): RefreshTokenPayload | null {
   try {
-    return jwt.verify(token, config.jwt.refreshSecret) as TokenPayload;
+    return jwt.verify(token, config.jwt.refreshSecret) as RefreshTokenPayload;
   } catch {
     return null;
   }
@@ -165,8 +198,15 @@ export function verifyRefreshToken(token: string): TokenPayload | null {
 /**
  * Create a session object for tracking active sessions
  */
-function createSession(refreshTokenHash: string, userAgent: string, ip: string, fingerprintHash?: string): SessionData {
+function createSession(
+  sessionId: string,
+  refreshTokenHash: string,
+  userAgent: string,
+  ip: string,
+  fingerprintHash?: string,
+): SessionData {
   return {
+    sessionId,
     refreshTokenHash,
     userAgent,
     ip,
@@ -181,7 +221,7 @@ function createSession(refreshTokenHash: string, userAgent: string, ip: string, 
  */
 function hashFingerprint(fingerprint: Record<string, string>): string {
   const str = JSON.stringify(fingerprint);
-  return crypto.createHash('sha256').update(str).digest('hex');
+  return crypto.createHash("sha256").update(str).digest("hex");
 }
 
 // ─── Auth Operations ────────────────────────────────────────────────
@@ -196,22 +236,27 @@ export async function registerUser(input: RegisterInput): Promise<{
   verificationExpires: Date;
 }> {
   // Check for existing email
-  const existingUser = await User.findOne({ email: input.email.toLowerCase() }).lean();
+  const existingUser = await User.findOne({
+    email: input.email.toLowerCase(),
+  }).lean();
   if (existingUser) {
     throw new ApiError(
       409,
-      'EMAIL_EXISTS',
-      'An account with this email already exists'
+      "EMAIL_EXISTS",
+      "An account with this email already exists",
     );
   }
 
   // Hash password
   const passwordHash = await bcrypt.hash(input.password, config.bcryptRounds);
 
-  // Generate email verification token
+  // Generate email verification token (plaintext sent via email; only the
+  // SHA-256 hash is stored so the DB can be queried directly)
   const verificationToken = generateSecureToken();
-  const verificationTokenHash = await hashToken(verificationToken);
-  const verificationExpires = new Date(Date.now() + parseExpiryMs(config.emailVerificationExpiry));
+  const verificationTokenHash = sha256Token(verificationToken);
+  const verificationExpires = new Date(
+    Date.now() + parseExpiryMs(config.emailVerificationExpiry),
+  );
 
   // Create user (not verified yet)
   const user = await User.create({
@@ -219,7 +264,7 @@ export async function registerUser(input: RegisterInput): Promise<{
     passwordHash,
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
-    role: 'user',
+    role: "user",
     emailVerified: false,
     emailVerificationToken: verificationTokenHash,
     emailVerificationExpires: verificationExpires,
@@ -239,27 +284,20 @@ export async function registerUser(input: RegisterInput): Promise<{
 }
 
 /**
- * Verify email with token
+ * Verify email with token — single indexed lookup on the stored SHA-256 hash.
  */
 export async function verifyEmail(token: string): Promise<void> {
-  const users = await User.find({
+  const matchedUser = await User.findOne({
+    emailVerificationToken: sha256Token(token),
     emailVerificationExpires: { $gt: new Date() },
-  }).select('+emailVerificationToken').lean();
-
-  let matchedUser: typeof users[0] | null = null;
-
-  for (const user of users) {
-    if (user.emailVerificationToken) {
-      const isMatch = await compareToken(token, user.emailVerificationToken);
-      if (isMatch) {
-        matchedUser = user;
-        break;
-      }
-    }
-  }
+  }).lean();
 
   if (!matchedUser) {
-    throw new ApiError(400, 'INVALID_VERIFICATION_TOKEN', 'Invalid or expired verification token.');
+    throw new ApiError(
+      400,
+      "INVALID_VERIFICATION_TOKEN",
+      "Invalid or expired verification token.",
+    );
   }
 
   // Mark email as verified and clear verification fields
@@ -268,7 +306,10 @@ export async function verifyEmail(token: string): Promise<void> {
     $unset: { emailVerificationToken: 1, emailVerificationExpires: 1 },
   });
 
-  auditLogger.emailVerified({ userId: matchedUser._id.toString(), ip: 'unknown' });
+  auditLogger.emailVerified({
+    userId: matchedUser._id.toString(),
+    ip: "unknown",
+  });
 }
 
 /**
@@ -288,8 +329,10 @@ export async function resendVerificationEmail(email: string): Promise<void> {
 
   // Generate new verification token
   const verificationToken = generateSecureToken();
-  const verificationTokenHash = await hashToken(verificationToken);
-  const verificationExpires = new Date(Date.now() + parseExpiryMs(config.emailVerificationExpiry));
+  const verificationTokenHash = sha256Token(verificationToken);
+  const verificationExpires = new Date(
+    Date.now() + parseExpiryMs(config.emailVerificationExpiry),
+  );
 
   await User.findByIdAndUpdate(user._id, {
     emailVerificationToken: verificationTokenHash,
@@ -297,7 +340,7 @@ export async function resendVerificationEmail(email: string): Promise<void> {
   });
 
   // Send verification email (controller handles this)
-  auditLogger.emailVerificationSent({ email: user.email, ip: 'unknown' });
+  auditLogger.emailVerificationSent({ email: user.email, ip: "unknown" });
 }
 
 /**
@@ -309,40 +352,50 @@ export async function loginUser(
   password: string,
   userAgent: string,
   ip: string,
-  fingerprint?: Record<string, string>
+  fingerprint?: Record<string, string>,
 ) {
   // Find user with password hash included
   const user = await User.findOne({ email: email.toLowerCase() })
-    .select('+passwordHash +loginAttempts +lockUntil +emailVerified +activeSessions')
+    .select(
+      "+passwordHash +loginAttempts +lockUntil +emailVerified +activeSessions",
+    )
     .lean();
 
   if (!user) {
-    auditLogger.loginFailed({ email, ip, userAgent, reason: 'User not found' });
-    throw new ApiError(
-      401,
-      'INVALID_CREDENTIALS',
-      'Invalid email or password'
-    );
+    auditLogger.loginFailed({ email, ip, userAgent, reason: "User not found" });
+    throw new ApiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
   }
 
   // Check if account is locked
   if (user.lockUntil && user.lockUntil > new Date()) {
-    const lockDurationMinutes = Math.ceil((user.lockUntil.getTime() - Date.now()) / (60 * 1000));
-    auditLogger.accountLocked({ email, ip, attempts: user.loginAttempts, lockDuration: lockDurationMinutes });
+    const lockDurationMinutes = Math.ceil(
+      (user.lockUntil.getTime() - Date.now()) / (60 * 1000),
+    );
+    auditLogger.accountLocked({
+      email,
+      ip,
+      attempts: user.loginAttempts,
+      lockDuration: lockDurationMinutes,
+    });
     throw new ApiError(
       423,
-      'ACCOUNT_LOCKED',
-      `Account temporarily locked. Try again in ${lockDurationMinutes} minutes.`
+      "ACCOUNT_LOCKED",
+      `Account temporarily locked. Try again in ${lockDurationMinutes} minutes.`,
     );
   }
 
   // Check email verification
   if (!user.emailVerified) {
-    auditLogger.loginFailed({ email, ip, userAgent, reason: 'Email not verified' });
+    auditLogger.loginFailed({
+      email,
+      ip,
+      userAgent,
+      reason: "Email not verified",
+    });
     throw new ApiError(
       403,
-      'EMAIL_NOT_VERIFIED',
-      'Please verify your email before logging in. Check your inbox for a verification link.'
+      "EMAIL_NOT_VERIFIED",
+      "Please verify your email before logging in. Check your inbox for a verification link.",
     );
   }
 
@@ -369,13 +422,15 @@ export async function loginUser(
 
     await User.findByIdAndUpdate(user._id, update);
 
-    auditLogger.loginFailed({ email, ip, userAgent, reason: 'Invalid password', attempts: newAttempts });
+    auditLogger.loginFailed({
+      email,
+      ip,
+      userAgent,
+      reason: "Invalid password",
+      attempts: newAttempts,
+    });
 
-    throw new ApiError(
-      401,
-      'INVALID_CREDENTIALS',
-      'Invalid email or password'
-    );
+    throw new ApiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
   }
 
   // Password is correct - reset failed attempts and update last login
@@ -386,30 +441,50 @@ export async function loginUser(
   });
 
   // Generate tokens
-  const tokens = await generateTokens({ _id: user._id.toString(), email: user.email });
+  const tokens = await generateTokens({
+    _id: user._id.toString(),
+    email: user.email,
+  });
 
   // Create session
-  const fingerprintHash = fingerprint ? hashFingerprint(fingerprint) : undefined;
-  const session = createSession(tokens.refreshTokenHash, userAgent, ip, fingerprintHash);
+  const fingerprintHash = fingerprint
+    ? hashFingerprint(fingerprint)
+    : undefined;
+  const session = createSession(
+    tokens.sessionId,
+    tokens.refreshTokenHash,
+    userAgent,
+    ip,
+    fingerprintHash,
+  );
 
   // Enforce concurrent session limit
   const activeSessions = user.activeSessions || [];
   if (activeSessions.length >= config.maxConcurrentSessions) {
     // Remove oldest session
-    activeSessions.sort((a, b) => a.lastUsedAt.getTime() - b.lastUsedAt.getTime());
-    const removed = activeSessions.shift()!;
-    auditLogger.sessionRevoked({ userId: user._id.toString(), reason: 'concurrent_limit', ip });
+    activeSessions.sort(
+      (a, b) => a.lastUsedAt.getTime() - b.lastUsedAt.getTime(),
+    );
+    activeSessions.shift();
+    auditLogger.sessionRevoked({
+      userId: user._id.toString(),
+      reason: "concurrent_limit",
+      ip,
+    });
   }
 
   activeSessions.push(session);
 
   await User.findByIdAndUpdate(user._id, {
     activeSessions,
-    refreshTokenHash: tokens.refreshTokenHash,
-    refreshTokenExpires: tokens.refreshTokenExpires,
   });
 
-  auditLogger.loginSuccess({ userId: user._id.toString(), ip, userAgent, fingerprintHash });
+  auditLogger.loginSuccess({
+    userId: user._id.toString(),
+    ip,
+    userAgent,
+    fingerprintHash,
+  });
 
   return {
     user: sanitizeUser(user),
@@ -419,62 +494,89 @@ export async function loginUser(
 
 /**
  * Refresh an access token using a valid refresh token.
- * Implements token rotation: old refresh token is invalidated, new one issued.
+ * Implements token rotation: the session's old refresh token is invalidated
+ * and a new one issued. Each device/session rotates independently, so
+ * multi-device logins work without interfering with each other.
  */
-export async function refreshTokenService(refreshTokenString: string, userAgent: string, ip: string, fingerprint?: Record<string, string>): Promise<TokenPair> {
+export async function refreshTokenService(
+  refreshTokenString: string,
+  userAgent: string,
+  ip: string,
+  fingerprint?: Record<string, string>,
+): Promise<TokenPair> {
   const payload = verifyRefreshToken(refreshTokenString);
-  if (!payload) {
+  if (!payload || !payload.sessionId) {
     throw new ApiError(
       401,
-      'INVALID_REFRESH_TOKEN',
-      'Invalid or expired refresh token. Please login again.'
+      "INVALID_REFRESH_TOKEN",
+      "Invalid or expired refresh token. Please login again.",
     );
   }
 
-  // Find user with current refresh token hash
-  const user = await User.findById(payload.userId)
-    .select('+refreshTokenHash +refreshTokenExpires +isActive +activeSessions')
-    .lean();
+  const user = await User.findById(payload.userId).lean();
 
   if (!user || !user.isActive) {
     throw new ApiError(
       401,
-      'AUTH_INVALID_TOKEN',
-      'User not found or account deactivated.'
+      "AUTH_INVALID_TOKEN",
+      "User not found or account deactivated.",
     );
   }
 
-  // Check if refresh token exists and is not expired
-  if (!user.refreshTokenHash || !user.refreshTokenExpires || user.refreshTokenExpires < new Date()) {
-    throw new ApiError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token expired. Please login again.');
+  const sessions = user.activeSessions || [];
+  const session = sessions.find((s) => s.sessionId === payload.sessionId);
+
+  if (!session) {
+    // Session was revoked (logout / password change / security event)
+    throw new ApiError(
+      401,
+      "INVALID_REFRESH_TOKEN",
+      "Session expired. Please login again.",
+    );
   }
 
-  // Verify the refresh token matches the stored hash
-  const isMatch = await compareToken(refreshTokenString, user.refreshTokenHash);
-  if (!isMatch) {
-    // Token doesn't match - possible token reuse attack!
-    // Revoke all tokens for this user as a security measure
-    await revokeAllUserTokens(user._id.toString(), 'token_reuse_detected');
-    auditLogger.tokenRevoked({ userId: payload.userId, reason: 'token_reuse_detected', ip });
-    throw new ApiError(401, 'TOKEN_REUSE_DETECTED', 'Security violation detected. Please login again.');
+  // Verify the refresh token matches the stored hash for THIS session
+  if (session.refreshTokenHash !== sha256Token(refreshTokenString)) {
+    // Hash mismatch on a known session — possible token reuse/forgery.
+    // Revoke all sessions for this user as a security measure.
+    await revokeAllUserTokens(user._id.toString(), "token_reuse_detected");
+    auditLogger.tokenRevoked({
+      userId: payload.userId,
+      reason: "token_reuse_detected",
+      ip,
+    });
+    throw new ApiError(
+      401,
+      "TOKEN_REUSE_DETECTED",
+      "Security violation detected. Please login again.",
+    );
   }
 
-  // Generate new token pair (rotation)
-  const tokens = await generateTokens({ _id: user._id.toString(), email: user.email });
-
-  // Update session's lastUsedAt and token hash
-  const fingerprintHash = fingerprint ? hashFingerprint(fingerprint) : undefined;
-  const activeSessions = (user.activeSessions || []).map((s: SessionData) =>
-    s.refreshTokenHash === user.refreshTokenHash
-      ? { ...s, refreshTokenHash: tokens.refreshTokenHash, lastUsedAt: new Date(), fingerprintHash }
-      : s
+  // Rotate: new refresh token, SAME sessionId (so replaying the old token
+  // hits this session and fails the hash check → reuse detection).
+  const tokens = await generateTokens(
+    { _id: user._id.toString(), email: user.email },
+    payload.sessionId,
   );
+  const fingerprintHash = fingerprint
+    ? hashFingerprint(fingerprint)
+    : undefined;
 
-  await User.findByIdAndUpdate(user._id, {
-    refreshTokenHash: tokens.refreshTokenHash,
-    refreshTokenExpires: tokens.refreshTokenExpires,
-    activeSessions,
-  });
+  await User.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        "activeSessions.$[session].refreshTokenHash": tokens.refreshTokenHash,
+        "activeSessions.$[session].userAgent": userAgent,
+        "activeSessions.$[session].ip": ip,
+        "activeSessions.$[session].lastUsedAt": new Date(),
+        ...(fingerprintHash
+          ? { "activeSessions.$[session].fingerprintHash": fingerprintHash }
+          : {}),
+      },
+    },
+    { arrayFilters: [{ "session.sessionId": payload.sessionId }] },
+  );
 
   auditLogger.tokenRefreshed({ userId: payload.userId, ip, fingerprintHash });
 
@@ -482,67 +584,80 @@ export async function refreshTokenService(refreshTokenString: string, userAgent:
 }
 
 /**
- * Revoke the current refresh token (logout)
+ * Revoke a specific session identified by its refresh token (logout)
  */
-export async function revokeRefreshToken(userId: string, reason: string = 'logout'): Promise<void> {
-  await User.findByIdAndUpdate(userId, {
-    $unset: { refreshTokenHash: 1, refreshTokenExpires: 1 },
-    $pull: { activeSessions: {} }, // Will need specific session removal in practice
-  });
+export async function revokeRefreshToken(
+  refreshTokenString: string,
+  reason: string = "logout",
+): Promise<void> {
+  const payload = verifyRefreshToken(refreshTokenString);
+  if (!payload?.sessionId) return;
 
-  auditLogger.tokenRevoked({ userId, reason });
+  await User.updateOne(
+    { _id: payload.userId },
+    { $pull: { activeSessions: { sessionId: payload.sessionId } } },
+  );
+
+  auditLogger.tokenRevoked({ userId: payload.userId, reason });
 }
 
 /**
  * Revoke all refresh tokens for a user (logout everywhere / password change)
  */
-export async function revokeAllUserTokens(userId: string, reason: string = 'security'): Promise<void> {
-  const user = await User.findById(userId).select('activeSessions').lean();
+export async function revokeAllUserTokens(
+  userId: string,
+  reason: string = "security",
+): Promise<void> {
+  const user = await User.findById(userId).select("activeSessions").lean();
   const sessionCount = user?.activeSessions?.length || 0;
 
   await User.findByIdAndUpdate(userId, {
-    $unset: { refreshTokenHash: 1, refreshTokenExpires: 1 },
     activeSessions: [],
   });
 
-  if (reason === 'logout_all') {
-    auditLogger.logoutAll({ userId, ip: 'unknown', sessionCount });
+  if (reason === "logout_all") {
+    auditLogger.logoutAll({ userId, ip: "unknown", sessionCount });
   } else {
-    auditLogger.allSessionsRevoked({ userId, reason, ip: 'unknown', sessionCount });
+    auditLogger.allSessionsRevoked({
+      userId,
+      reason,
+      ip: "unknown",
+      sessionCount,
+    });
   }
 }
 
 /**
- * Logout - revoke specific session
+ * Logout - revoke the specific session tied to the given refresh token.
+ * Other devices/sessions remain valid.
+ * The user is derived from the (verified) token, so the session being
+ * removed always belongs to its real owner.
  */
-export async function logout(userId: string, refreshTokenString?: string): Promise<void> {
+export async function logout(
+  userId: string,
+  refreshTokenString?: string,
+): Promise<void> {
   if (refreshTokenString) {
-    // Find and remove specific session
     const payload = verifyRefreshToken(refreshTokenString);
-    if (payload) {
-      const hash = await hashToken(refreshTokenString);
-      await User.findByIdAndUpdate(userId, {
-        $pull: { activeSessions: { refreshTokenHash: hash } },
-      });
+    if (payload?.sessionId) {
+      await User.updateOne(
+        { _id: payload.userId },
+        { $pull: { activeSessions: { sessionId: payload.sessionId } } },
+      );
     }
   }
 
-  // Also clear the main refresh token if this was the last/active one
-  const user = await User.findById(userId).select('activeSessions').lean();
-  if (!user?.activeSessions?.length) {
-    await User.findByIdAndUpdate(userId, {
-      $unset: { refreshTokenHash: 1, refreshTokenExpires: 1 },
-    });
-  }
-
-  auditLogger.tokenRevoked({ userId, reason: 'logout' });
+  auditLogger.tokenRevoked({ userId, reason: "logout" });
 }
 
 /**
  * Request a password reset. Generates a token and sends reset email.
  * Always returns success to prevent user enumeration.
  */
-export async function requestPasswordReset(email: string, ip: string): Promise<void> {
+export async function requestPasswordReset(
+  email: string,
+  ip: string,
+): Promise<void> {
   const user = await User.findOne({ email: email.toLowerCase() });
 
   // Always return silently — don't reveal whether email exists
@@ -552,10 +667,12 @@ export async function requestPasswordReset(email: string, ip: string): Promise<v
 
   // Generate a random token
   const plainToken = generateSecureToken();
-  const hashedToken = await hashToken(plainToken);
+  const hashedToken = sha256Token(plainToken);
 
   // Calculate expiry
-  const expiresAt = new Date(Date.now() + parseExpiryMs(config.resetPasswordExpiry));
+  const expiresAt = new Date(
+    Date.now() + parseExpiryMs(config.resetPasswordExpiry),
+  );
 
   await User.findByIdAndUpdate(user._id, {
     resetPasswordToken: hashedToken,
@@ -572,28 +689,24 @@ export async function requestPasswordReset(email: string, ip: string): Promise<v
 }
 
 /**
- * Reset password using a valid token.
+ * Reset password using a valid token — single indexed lookup on the SHA-256 hash.
  */
-export async function resetPassword(token: string, newPassword: string, ip: string): Promise<void> {
-  // Find any user with a reset token that hasn't expired
-  const users = await User.find({
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+  ip: string,
+): Promise<void> {
+  const matchedUser = await User.findOne({
+    resetPasswordToken: sha256Token(token),
     resetPasswordExpires: { $gt: new Date() },
-  }).select('+resetPasswordToken').lean();
-
-  let matchedUser: typeof users[0] | null = null;
-
-  for (const user of users) {
-    if (user.resetPasswordToken) {
-      const isMatch = await compareToken(token, user.resetPasswordToken);
-      if (isMatch) {
-        matchedUser = user;
-        break;
-      }
-    }
-  }
+  }).lean();
 
   if (!matchedUser) {
-    throw new ApiError(400, 'INVALID_RESET_TOKEN', 'Invalid or expired reset token.');
+    throw new ApiError(
+      400,
+      "INVALID_RESET_TOKEN",
+      "Invalid or expired reset token.",
+    );
   }
 
   // Hash the new password
@@ -607,22 +720,37 @@ export async function resetPassword(token: string, newPassword: string, ip: stri
     activeSessions: [],
   });
 
-  auditLogger.passwordResetCompleted({ userId: matchedUser._id.toString(), ip });
+  auditLogger.passwordResetCompleted({
+    userId: matchedUser._id.toString(),
+    ip,
+  });
 }
 
 /**
  * Change password (authenticated user)
  */
-export async function changePassword(userId: string, currentPassword: string, newPassword: string, ip: string): Promise<void> {
-  const user = await User.findById(userId).select('+passwordHash').lean();
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+  ip: string,
+): Promise<void> {
+  const user = await User.findById(userId).select("+passwordHash").lean();
 
   if (!user) {
-    throw new ApiError(404, 'USER_NOT_FOUND', 'User not found.');
+    throw new ApiError(404, "USER_NOT_FOUND", "User not found.");
   }
 
-  const isPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+  const isPasswordValid = await bcrypt.compare(
+    currentPassword,
+    user.passwordHash,
+  );
   if (!isPasswordValid) {
-    throw new ApiError(401, 'INVALID_CREDENTIALS', 'Current password is incorrect.');
+    throw new ApiError(
+      401,
+      "INVALID_CREDENTIALS",
+      "Current password is incorrect.",
+    );
   }
 
   const passwordHash = await bcrypt.hash(newPassword, config.bcryptRounds);
@@ -639,9 +767,11 @@ export async function changePassword(userId: string, currentPassword: string, ne
 /**
  * Check if user account is locked
  */
-export async function checkAccountLock(email: string): Promise<{ locked: boolean; lockUntil?: Date }> {
+export async function checkAccountLock(
+  email: string,
+): Promise<{ locked: boolean; lockUntil?: Date }> {
   const user = await User.findOne({ email: email.toLowerCase() })
-    .select('lockUntil')
+    .select("lockUntil")
     .lean();
 
   if (!user) {

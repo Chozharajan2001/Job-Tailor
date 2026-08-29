@@ -1,21 +1,22 @@
-import { config } from '../config/index.js';
+import mongoose from "mongoose";
+import { config } from "../config/index.js";
+import { AuditLog } from "../models/AuditLog.model.js";
 
 export type AuditEventType =
-  | 'LOGIN_SUCCESS'
-  | 'LOGIN_FAILED'
-  | 'TOKEN_REFRESHED'
-  | 'TOKEN_REVOKED'
-  | 'PASSWORD_CHANGED'
-  | 'ACCOUNT_LOCKED'
-  | 'EMAIL_VERIFIED'
-  | 'LOGOUT_ALL'
-  | 'PASSWORD_RESET_REQUESTED'
-  | 'PASSWORD_RESET_COMPLETED'
-  | 'EMAIL_VERIFICATION_SENT'
-  | 'EMAIL_VERIFIED'
-  | 'SESSION_CREATED'
-  | 'SESSION_REVOKED'
-  | 'ALL_SESSIONS_REVOKED';
+  | "LOGIN_SUCCESS"
+  | "LOGIN_FAILED"
+  | "TOKEN_REFRESHED"
+  | "TOKEN_REVOKED"
+  | "PASSWORD_CHANGED"
+  | "ACCOUNT_LOCKED"
+  | "EMAIL_VERIFIED"
+  | "LOGOUT_ALL"
+  | "PASSWORD_RESET_REQUESTED"
+  | "PASSWORD_RESET_COMPLETED"
+  | "EMAIL_VERIFICATION_SENT"
+  | "SESSION_CREATED"
+  | "SESSION_REVOKED"
+  | "ALL_SESSIONS_REVOKED";
 
 export interface AuditEventData {
   userId?: string;
@@ -42,7 +43,7 @@ class AuditLogger {
   private isProduction: boolean;
 
   constructor() {
-    this.isProduction = config.nodeEnv === 'production';
+    this.isProduction = config.nodeEnv === "production";
   }
 
   /**
@@ -56,10 +57,14 @@ class AuditLogger {
       data: {
         ...data,
         // Ensure IP and userAgent are always included when available
-        ip: data.ip || 'unknown',
-        userAgent: data.userAgent || 'unknown',
+        ip: data.ip || "unknown",
+        userAgent: data.userAgent || "unknown",
       },
     };
+
+    // Persist to the AuditLog collection (fire-and-forget; the audit trail
+    // must never break the auth flow)
+    this.persist(entry);
 
     if (this.isProduction) {
       // In production, send to structured logging service (e.g., Datadog, Logstash, CloudWatch)
@@ -67,72 +72,117 @@ class AuditLogger {
       console.log(JSON.stringify(entry));
     } else {
       // In development, pretty print with colors
-      const status = success ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m';
-      const color = success ? '\x1b[32m' : '\x1b[31m';
-      const reset = '\x1b[0m';
+      const status = success ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m";
+      const color = success ? "\x1b[32m" : "\x1b[31m";
+      const reset = "\x1b[0m";
       console.log(
         `${color}[AUDIT]${reset} ${entry.timestamp} ${status} ${eventType}`,
-        JSON.stringify(data, null, 2)
+        JSON.stringify(data, null, 2),
       );
     }
   }
 
+  /**
+   * Persist an audit entry to MongoDB when a connection is available.
+   */
+  private persist(entry: AuditLogEntry): void {
+    if (mongoose.connection.readyState !== 1) return;
+    AuditLog.create({
+      timestamp: new Date(entry.timestamp),
+      eventType: entry.eventType,
+      success: entry.success,
+      data: entry.data,
+    }).catch((err) =>
+      console.error("⚠️  AuditLogger: failed to persist entry:", err),
+    );
+  }
+
   // Convenience methods for common events
 
-  loginSuccess(data: { userId: string; ip: string; userAgent: string; fingerprintHash?: string }): void {
-    this.log('LOGIN_SUCCESS', true, data);
+  loginSuccess(data: {
+    userId: string;
+    ip: string;
+    userAgent: string;
+    fingerprintHash?: string;
+  }): void {
+    this.log("LOGIN_SUCCESS", true, data);
   }
 
-  loginFailed(data: { email: string; ip: string; userAgent: string; reason: string; attempts?: number }): void {
-    this.log('LOGIN_FAILED', false, data);
+  loginFailed(data: {
+    email: string;
+    ip: string;
+    userAgent: string;
+    reason: string;
+    attempts?: number;
+  }): void {
+    this.log("LOGIN_FAILED", false, data);
   }
 
-  tokenRefreshed(data: { userId: string; ip: string; fingerprintHash?: string }): void {
-    this.log('TOKEN_REFRESHED', true, data);
+  tokenRefreshed(data: {
+    userId: string;
+    ip: string;
+    fingerprintHash?: string;
+  }): void {
+    this.log("TOKEN_REFRESHED", true, data);
   }
 
   tokenRevoked(data: { userId: string; reason: string; ip?: string }): void {
-    this.log('TOKEN_REVOKED', true, { ...data, reason: data.reason });
+    this.log("TOKEN_REVOKED", true, { ...data, reason: data.reason });
   }
 
   passwordChanged(data: { userId: string; ip: string }): void {
-    this.log('PASSWORD_CHANGED', true, data);
+    this.log("PASSWORD_CHANGED", true, data);
   }
 
-  accountLocked(data: { email: string; ip: string; attempts: number; lockDuration: number }): void {
-    this.log('ACCOUNT_LOCKED', true, data);
+  accountLocked(data: {
+    email: string;
+    ip: string;
+    attempts: number;
+    lockDuration: number;
+  }): void {
+    this.log("ACCOUNT_LOCKED", true, data);
   }
 
   emailVerified(data: { userId: string; ip: string }): void {
-    this.log('EMAIL_VERIFIED', true, data);
+    this.log("EMAIL_VERIFIED", true, data);
   }
 
   logoutAll(data: { userId: string; ip: string; sessionCount: number }): void {
-    this.log('LOGOUT_ALL', true, data);
+    this.log("LOGOUT_ALL", true, data);
   }
 
   passwordResetRequested(data: { email: string; ip: string }): void {
-    this.log('PASSWORD_RESET_REQUESTED', true, data);
+    this.log("PASSWORD_RESET_REQUESTED", true, data);
   }
 
   passwordResetCompleted(data: { userId: string; ip: string }): void {
-    this.log('PASSWORD_RESET_COMPLETED', true, data);
+    this.log("PASSWORD_RESET_COMPLETED", true, data);
   }
 
   emailVerificationSent(data: { email: string; ip: string }): void {
-    this.log('EMAIL_VERIFICATION_SENT', true, data);
+    this.log("EMAIL_VERIFICATION_SENT", true, data);
   }
 
-  sessionCreated(data: { userId: string; ip: string; userAgent: string; fingerprintHash?: string }): void {
-    this.log('SESSION_CREATED', true, data);
+  sessionCreated(data: {
+    userId: string;
+    ip: string;
+    userAgent: string;
+    fingerprintHash?: string;
+  }): void {
+    this.log("SESSION_CREATED", true, data);
   }
 
   sessionRevoked(data: { userId: string; reason: string; ip?: string }): void {
-    this.log('SESSION_REVOKED', true, { ...data, reason: data.reason });
+    this.log("SESSION_REVOKED", true, { ...data, reason: data.reason });
   }
 
-  allSessionsRevoked(data: { userId: string; reason: string; ip?: string; sessionCount: number }): void {
-    this.log('ALL_SESSIONS_REVOKED', true, data);
+  allSessionsRevoked(data: {
+    userId: string;
+    reason: string;
+    ip?: string;
+    sessionCount: number;
+  }): void {
+    this.log("ALL_SESSIONS_REVOKED", true, data);
   }
 }
 
