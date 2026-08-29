@@ -2,6 +2,9 @@
 # JobTailor Server — Docker Production Build
 # ──────────────────────────────────────────────────────
 # Multi-stage: build → runtime (with Chromium for Puppeteer)
+#
+# IMPORTANT: build context must be the MONOREPO ROOT
+# (see docker-compose.yml: build.context = .)
 # ──────────────────────────────────────────────────────
 
 # Stage 1: Build
@@ -9,13 +12,20 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json ./
-RUN npm ci --only=production=false
+# Copy workspace manifests first for dependency layer caching
+COPY package.json package-lock.json ./
+COPY apps/server/package.json ./apps/server/
+COPY apps/client/package.json ./apps/client/
+COPY packages/shared-types/package.json ./packages/shared-types/
+RUN npm ci
 
-COPY tsconfig.json ./
-COPY src/ ./src/
+# Copy shared packages and server source
+COPY tsconfig.base.json ./
+COPY packages/shared-types ./packages/shared-types
+COPY apps/server/tsconfig.json ./apps/server/
+COPY apps/server/src ./apps/server/src
 
-RUN npm run build
+RUN npm run build --workspace=job-tailor-server
 
 # Stage 2: Runtime (includes Chrome for PDF generation)
 FROM node:22-slim AS runner
@@ -45,11 +55,11 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
-# Copy built files only
+# Copy built artifacts and runtime dependencies
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY package.json ./
-COPY --from=builder /apps/server/tsconfig.json ./
+COPY --from=builder /app/packages/shared-types ./packages/shared-types
+COPY --from=builder /app/apps/server/dist ./dist
+COPY --from=builder /app/apps/server/package.json ./
 
 # Non-root user for security
 RUN useradd -m -r jobtailor && chown -R jobtailor:jobtailor /app

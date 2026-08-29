@@ -1,0 +1,2 @@
+# Enforce Conventional Commits message format
+npx --no -- commitlint --edit "$1"

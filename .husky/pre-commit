@@ -1,0 +1,3 @@
+# Format staged files, then run typecheck + lint on affected workspaces
+npx lint-staged
+npx turbo run typecheck lint

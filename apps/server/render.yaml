@@ -7,8 +7,9 @@ services:
     buildCommand: cd apps/server && npm install && npm run build
     startCommand: cd apps/server && node dist/app.js
     healthCheckPath: /health
-    autoDeploy: true
-    
+    # Deploy only after CI is green — trigger deploys manually or via CI hook
+    autoDeploy: false
+
     # Environment variables (set in Render dashboard)
     envVars:
       - key: NODE_ENV

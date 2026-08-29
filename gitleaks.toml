@@ -1,0 +1,25 @@
+# Gitleaks configuration — scan for committed secrets
+# Run locally (requires gitleaks binary): gitleaks detect --source . --verbose
+# Intended use: pre-push hook or CI secret-scan job.
+
+title = "JobTailor gitleaks config"
+
+[extend]
+# Use gitleaks' default ruleset (AWS keys, JWTs, private keys, generic secrets...)
+useDefault = true
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+    '''node_modules''',
+    '''.turbo''',
+    '''dist''',
+    '''package-lock.json''',
+]
+# Placeholder/example values in docs and examples are fine
+regexes = [
+    '''your-[a-z-]+''',
+    '''sk-your-''',
+    '''change-in-production''',
+    '''generated-64-byte-hex''',
+]
