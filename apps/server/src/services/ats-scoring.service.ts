@@ -1,11 +1,21 @@
-import { aiProviderManager } from './ai-provider/provider-manager.js';
-import { IParsedJD } from '../models/Job.model.js';
-import type { IATSScore, IMatchedSkill, IMissingSkill, IWeakSkill } from '../models/Resume.model.js';
+import { aiProviderManager } from "./ai-provider/provider-manager.js";
+import { IParsedJD } from "../models/Job.model.js";
+import type {
+  IATSScore,
+  IMatchedSkill,
+  IMissingSkill,
+  IWeakSkill,
+} from "../models/Resume.model.js";
 
 // ─── Types ─────────────────────────────────────────────────────
 interface ResumeContent {
   summary: string;
-  skills: Array<{ name: string; category: string; yearsOfExperience: number; proficiency: string }>;
+  skills: Array<{
+    name: string;
+    category: string;
+    yearsOfExperience: number;
+    proficiency: string;
+  }>;
   experience: Array<{ company: string; bullets: Array<{ text: string }> }>;
   projects: Array<{ name: string; techStack: string[]; highlights: string[] }>;
 }
@@ -18,7 +28,7 @@ interface ResumeContent {
 function extractKeywords(text: string): Set<string> {
   const words = text
     .toLowerCase()
-    .replace(/[^\w\s+#.-]/g, ' ')
+    .replace(/[^\w\s+#.-]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length > 1);
   return new Set(words);
@@ -37,7 +47,9 @@ function calculateKeywordScore(resume: ResumeContent, jd: IParsedJD): number {
     ...resume.skills.map((s) => s.name),
     ...resume.experience.flatMap((e) => e.bullets.map((b) => b.text)),
     ...resume.projects.flatMap((p) => [...p.techStack, ...p.highlights]),
-  ].join(' ').toLowerCase();
+  ]
+    .join(" ")
+    .toLowerCase();
 
   const resumeKeywords = extractKeywords(resumeText);
 
@@ -62,10 +74,12 @@ function calculateKeywordScore(resume: ResumeContent, jd: IParsedJD): number {
  */
 function buildMatchedSkills(
   resumeSkills: Array<{ name: string }>,
-  jd: IParsedJD
+  jd: IParsedJD,
 ): IMatchedSkill[] {
   const allJDSkills = [...jd.requiredSkills, ...jd.preferredSkills];
-  const resumeSkillNames = new Set(resumeSkills.map((s) => s.name.toLowerCase()));
+  const resumeSkillNames = new Set(
+    resumeSkills.map((s) => s.name.toLowerCase()),
+  );
 
   return allJDSkills.map((skill) => ({
     skill,
@@ -80,9 +94,11 @@ function buildMatchedSkills(
  */
 function findMissingSkills(
   resumeSkills: Array<{ name: string }>,
-  jd: IParsedJD
+  jd: IParsedJD,
 ): IMissingSkill[] {
-  const resumeSkillNames = new Set(resumeSkills.map((s) => s.name.toLowerCase()));
+  const resumeSkillNames = new Set(
+    resumeSkills.map((s) => s.name.toLowerCase()),
+  );
 
   return jd.requiredSkills
     .filter((skill) => !resumeSkillNames.has(skill.toLowerCase()))
@@ -98,7 +114,7 @@ function findMissingSkills(
  */
 function findWeakSkills(
   resumeSkills: Array<{ name: string; yearsOfExperience: number }>,
-  jd: IParsedJD
+  jd: IParsedJD,
 ): IWeakSkill[] {
   // Map common skills to expected years by seniority level
   const seniorityExpMap: Record<string, number> = {
@@ -114,7 +130,7 @@ function findWeakSkills(
   return resumeSkills
     .filter((rs) => {
       const isRequired = jd.requiredSkills.some(
-        (jdSkill) => jdSkill.toLowerCase() === rs.name.toLowerCase()
+        (jdSkill) => jdSkill.toLowerCase() === rs.name.toLowerCase(),
       );
       return isRequired && rs.yearsOfExperience < requiredExp;
     })
@@ -133,19 +149,32 @@ function findWeakSkills(
 /**
  * Generate action items based on gaps found.
  */
-function generateActionItems(missing: IMissingSkill[], weak: IWeakSkill[]): string[] {
+function generateActionItems(
+  missing: IMissingSkill[],
+  weak: IWeakSkill[],
+): string[] {
   const items: string[] = [];
 
   if (missing.length > 0) {
-    items.push(`Add top missing skills: ${missing.slice(0, 3).map((m) => m.skill).join(', ')}`);
+    items.push(
+      `Add top missing skills: ${missing
+        .slice(0, 3)
+        .map((m) => m.skill)
+        .join(", ")}`,
+    );
   }
 
   if (weak.length > 0) {
-    items.push(`Strengthen weak skills: ${weak.slice(0, 3).map((w) => w.skill).join(', ')}`);
+    items.push(
+      `Strengthen weak skills: ${weak
+        .slice(0, 3)
+        .map((w) => w.skill)
+        .join(", ")}`,
+    );
   }
 
-  items.push('Quantify achievements with metrics where possible');
-  items.push('Tailor summary to use JD-specific keywords');
+  items.push("Quantify achievements with metrics where possible");
+  items.push("Tailor summary to use JD-specific keywords");
 
   return items;
 }
@@ -154,8 +183,8 @@ function generateActionItems(missing: IMissingSkill[], weak: IWeakSkill[]): stri
 
 async function semanticScore(
   resume: ResumeContent,
-  jd: IParsedJD
-): Promise<{ score: number; reasoning?: string }> {
+  jd: IParsedJD,
+): Promise<{ score: number | null; reasoning?: string }> {
   try {
     const prompt = `JOB DESCRIPTION:\n${JSON.stringify(jd)}\n\nRESUME:\n${JSON.stringify(resume)}`;
     const systemPrompt = `You are an ATS (Applicant Tracking System) evaluator. Score resumes against job descriptions on a scale of 0-100.
@@ -167,19 +196,23 @@ Respond ONLY with JSON: {"score": 0-100, "reasoning": "brief explanation"}`;
       reasoning?: string;
     }
 
-    const result = await aiProviderManager.generateStructuredOutput<SemanticScoreResponse>(
-      prompt,
-      systemPrompt,
-      undefined,
-      { temperature: 0.1, maxTokens: 300 }
-    );
+    const result =
+      await aiProviderManager.generateStructuredOutput<SemanticScoreResponse>(
+        prompt,
+        systemPrompt,
+        undefined,
+        { temperature: 0.1, maxTokens: 300 },
+      );
 
+    const raw = Number(result?.score);
+    if (!Number.isFinite(raw)) return { score: null };
     return {
-      score: Math.min(100, Math.max(0, result.score || 75)),
-      reasoning: result.reasoning
+      score: Math.min(100, Math.max(0, raw)),
+      reasoning: result.reasoning,
     };
   } catch {
-    return { score: 75 }; // Fallback on LLM failure
+    // Never fabricate a score — null signals "LLM phase unavailable"
+    return { score: null };
   }
 }
 
@@ -201,7 +234,9 @@ function calculateSectionCompleteness(resume: ResumeContent): number {
 
   // Experience (30 points)
   if (resume.experience.length >= 1) {
-    const hasBullets = resume.experience.every((e) => e.bullets && e.bullets.length > 0);
+    const hasBullets = resume.experience.every(
+      (e) => e.bullets && e.bullets.length > 0,
+    );
     if (hasBullets) score += 30;
     else score += 15;
   }
@@ -223,12 +258,19 @@ function calculateFormatScore(resume: ResumeContent): number {
   let score = 60; // Base score for having content
 
   // Check for quantification patterns
-  const allText = resume.experience.flatMap((e) => e.bullets.map((b) => b.text)).join(' ');
-  const hasNumbers = /\d+%|\$\d+[\,.]?\d*|\d+\s*(users|requests|team|projects|months|years)/i.test(allText);
+  const allText = resume.experience
+    .flatMap((e) => e.bullets.map((b) => b.text))
+    .join(" ");
+  const hasNumbers =
+    /\d+%|\$\d+[,.]?\d*|\d+\s*(users|requests|team|projects|months|years)/i.test(
+      allText,
+    );
   if (hasNumbers) score += 20;
 
   // Check bullet count per experience
-  const avgBullets = resume.experience.reduce((sum, e) => sum + (e.bullets?.length || 0), 0) / (resume.experience.length || 1);
+  const avgBullets =
+    resume.experience.reduce((sum, e) => sum + (e.bullets?.length || 0), 0) /
+    (resume.experience.length || 1);
   if (avgBullets >= 4) score += 20;
   else if (avgBullets >= 2) score += 10;
 
@@ -245,44 +287,61 @@ function calculateFormatScore(resume: ResumeContent): number {
  * Phase 4: Format quality — 8% weight
  *
  * Final = weighted combination of all four phases.
+ * If the LLM phase fails, the score is renormalized over the deterministic
+ * phases and flagged `semanticScoreDegraded` — never fabricated.
  */
 export async function scoreATS(
   resume: ResumeContent,
-  jd: IParsedJD
+  jd: IParsedJD,
 ): Promise<IATSScore> {
   // Run independent scoring phases in parallel
-  const [semanticResult, keywordScore, sectionScore, formatScore] = await Promise.all([
-    semanticScore(resume, jd),
-    Promise.resolve(calculateKeywordScore(resume, jd)),
-    Promise.resolve(calculateSectionCompleteness(resume)),
-    Promise.resolve(calculateFormatScore(resume)),
-  ]);
+  const [semanticResult, keywordScore, sectionScore, formatScore] =
+    await Promise.all([
+      semanticScore(resume, jd),
+      Promise.resolve(calculateKeywordScore(resume, jd)),
+      Promise.resolve(calculateSectionCompleteness(resume)),
+      Promise.resolve(calculateFormatScore(resume)),
+    ]);
 
-  // Weighted final score
-  const overallScore = Math.round(
-    keywordScore * 0.35 +
-      semanticResult.score * 0.45 +
-      sectionScore * 0.12 +
-      formatScore * 0.08
-  );
+  const semanticDegraded = semanticResult.score === null;
+  const semanticScoreValue = semanticResult.score ?? 0;
+
+  // Weighted final score (renormalized when the LLM phase is unavailable)
+  const overallScore = semanticDegraded
+    ? Math.round(keywordScore * 0.55 + sectionScore * 0.25 + formatScore * 0.2)
+    : Math.round(
+        keywordScore * 0.35 +
+          semanticScoreValue * 0.45 +
+          sectionScore * 0.12 +
+          formatScore * 0.08,
+      );
 
   // Build breakdown
   const matchedSkills = buildMatchedSkills(resume.skills, jd);
   const missingSkills = findMissingSkills(resume.skills, jd);
-  const weakSkills = findWeakSkills(resume.skills as Array<{
-    name: string;
-    yearsOfExperience: number;
-    category: string;
-    proficiency: string;
-  }>, jd);
+  const weakSkills = findWeakSkills(
+    resume.skills as Array<{
+      name: string;
+      yearsOfExperience: number;
+      category: string;
+      proficiency: string;
+    }>,
+    jd,
+  );
   const actionItems = generateActionItems(missingSkills, weakSkills);
+  if (semanticDegraded) {
+    actionItems.unshift(
+      "Semantic (AI) scoring was unavailable — this score reflects keyword, completeness and format analysis only. Re-run later for a full evaluation.",
+    );
+  }
 
   return {
     overallScore,
     keywordMatchScore: keywordScore,
-    semanticMatchScore: semanticResult.score,
+    semanticMatchScore: semanticDegraded ? 0 : semanticScoreValue,
     sectionCompletenessScore: sectionScore,
     formatScore: formatScore,
+    semanticScoreDegraded: semanticDegraded || undefined,
     breakdown: {
       matchedSkills,
       missingSkills,

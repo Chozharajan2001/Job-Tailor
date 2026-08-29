@@ -1,4 +1,4 @@
-import mongoose, { Schema, Types, Document } from 'mongoose';
+import mongoose, { Schema, Types, Document } from "mongoose";
 
 export interface IMatchedSkill {
   skill: string;
@@ -27,6 +27,9 @@ export interface IATSScore {
   semanticMatchScore: number;
   sectionCompletenessScore: number;
   formatScore: number;
+  /** True when the LLM semantic phase failed and the score was computed
+   *  from deterministic phases only (never fabricated). */
+  semanticScoreDegraded?: boolean;
   breakdown: {
     matchedSkills: IMatchedSkill[];
     missingSkills: IMissingSkill[];
@@ -43,21 +46,33 @@ export interface IResume extends Document {
   versionLabel: string;
   tailoredSummary: string;
   skills: Array<{
-    name: string; category: string; yearsOfExperience: number; proficiency: string; isHighlighted: boolean;
+    name: string;
+    category: string;
+    yearsOfExperience: number;
+    proficiency: string;
+    isHighlighted: boolean;
   }>;
   experience: Array<{
     _id?: Types.ObjectId;
-    company: string; role: string; startDate: string; endDate: string | null;
-    location: string; isCurrentRole: boolean; bullets: Array<{ id: string; text: string; tags: string[] }>;
+    company: string;
+    role: string;
+    startDate: string;
+    endDate: string | null;
+    location: string;
+    isCurrentRole: boolean;
+    bullets: Array<{ id: string; text: string; tags: string[] }>;
   }>;
   projects: Array<{
-    name: string; description: string; techStack: string[]; tags: string[];
+    name: string;
+    description: string;
+    techStack: string[];
+    tags: string[];
     highlights: string[];
   }>;
   sectionOrder: string[];
   atsScore: IATSScore;
   pdfUrl?: string;
-  status: 'draft' | 'generated' | 'downloaded' | 'used';
+  status: "draft" | "generated" | "downloaded" | "used";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,22 +86,33 @@ const atsSchema = new Schema<IATSScore>(
     formatScore: { type: Number, default: 0 },
     breakdown: {
       matchedSkills: [
-        { skill: String, presentInResume: Boolean, presentInJD: Boolean, weight: Number },
+        {
+          skill: String,
+          presentInResume: Boolean,
+          presentInJD: Boolean,
+          weight: Number,
+        },
       ],
       missingSkills: [{ skill: String, required: Boolean, suggestion: String }],
       weakSkills: [
-        { skill: String, userYearsExp: Number, requiredYearsExp: Number, gap: Number, suggestion: String },
+        {
+          skill: String,
+          userYearsExp: Number,
+          requiredYearsExp: Number,
+          gap: Number,
+          suggestion: String,
+        },
       ],
       actionItems: [String],
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const resumeSchema = new Schema<IResume>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true }, // index: true removed - compound index below covers this
-    jobId: { type: Schema.Types.ObjectId, ref: 'Job' }, // Optional - null for profile-based resumes
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true }, // index: true removed - compound index below covers this
+    jobId: { type: Schema.Types.ObjectId, ref: "Job" }, // Optional - null for profile-based resumes
     isProfileResume: { type: Boolean, default: false }, // Flag to identify master/profile resume
 
     // Versioning
@@ -94,7 +120,7 @@ const resumeSchema = new Schema<IResume>(
     versionLabel: { type: String, required: true },
 
     // Tailored content (snapshots from master profile)
-    tailoredSummary: { type: String, default: '' },
+    tailoredSummary: { type: String, default: "" },
     skills: [
       {
         name: String,
@@ -115,7 +141,7 @@ const resumeSchema = new Schema<IResume>(
           isCurrentRole: Boolean,
           bullets: [{ id: String, text: String, tags: [String] }],
         },
-        { _id: true }
+        { _id: true },
       ),
     ],
     projects: [
@@ -129,7 +155,10 @@ const resumeSchema = new Schema<IResume>(
     ],
 
     // Layout
-    sectionOrder: { type: [String], default: ['skills', 'experience', 'projects', 'education'] },
+    sectionOrder: {
+      type: [String],
+      default: ["skills", "experience", "projects", "education"],
+    },
 
     // ATS Analysis
     atsScore: atsSchema,
@@ -140,17 +169,17 @@ const resumeSchema = new Schema<IResume>(
     // Status
     status: {
       type: String,
-      enum: ['draft', 'generated', 'downloaded', 'used'],
-      default: 'draft',
+      enum: ["draft", "generated", "downloaded", "used"],
+      default: "draft",
     },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Indexes for querying resumes
 resumeSchema.index({ userId: 1, jobId: 1 }); // For job-specific resumes
 resumeSchema.index({ userId: 1, isProfileResume: 1 }); // For profile-based resumes
 
-export const Resume = mongoose.model<IResume>('Resume', resumeSchema);
+export const Resume = mongoose.model<IResume>("Resume", resumeSchema);

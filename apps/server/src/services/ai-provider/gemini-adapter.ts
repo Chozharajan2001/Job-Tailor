@@ -1,47 +1,45 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { AIProvider, CompletionOptions, AICompletion } from './types.js';
-import { extractAndParseJson } from './utils.js';
+import { GoogleGenAI } from "@google/genai";
+import { AIProvider, CompletionOptions, AICompletion } from "./types.js";
+import { extractAndParseJson } from "./utils.js";
 
 export class GeminiAdapter implements AIProvider {
-  private client: GoogleGenerativeAI;
+  private client: GoogleGenAI;
 
   constructor(apiKey: string) {
-    this.client = new GoogleGenerativeAI(apiKey);
+    this.client = new GoogleGenAI({ apiKey });
   }
 
   async generateCompletion(
     prompt: string,
     systemPrompt?: string,
-    options?: CompletionOptions
+    options?: CompletionOptions,
   ): Promise<AICompletion> {
-    const modelName = options?.model || 'gemini-1.5-flash';
-    
-    const model = this.client.getGenerativeModel({
+    const modelName = options?.model || "gemini-2.0-flash";
+
+    const response = await this.client.models.generateContent({
       model: modelName,
-      systemInstruction: systemPrompt || undefined,
+      contents: prompt,
+      config: {
+        systemInstruction: systemPrompt || undefined,
+        temperature: options?.temperature ?? 0.2,
+        maxOutputTokens: options?.maxTokens,
+        ...(options?.jsonResponse
+          ? { responseMimeType: "application/json" }
+          : {}),
+      },
     });
 
-    const generationConfig: any = {
-      temperature: options?.temperature ?? 0.2,
-      maxOutputTokens: options?.maxTokens,
-    };
-
-    if (options?.jsonResponse) {
-      generationConfig.responseMimeType = 'application/json';
-    }
-
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig
-    });
-
-    const response = result.response;
-    const content = response.text() || '';
+    const content = response.text || "";
+    const usage = response.usageMetadata;
 
     return {
       content,
-      usage: {},
-      modelUsed: modelName
+      usage: {
+        inputTokens: usage?.promptTokenCount,
+        outputTokens: usage?.candidatesTokenCount,
+        totalTokens: usage?.totalTokenCount,
+      },
+      modelUsed: modelName,
     };
   }
 
@@ -49,11 +47,11 @@ export class GeminiAdapter implements AIProvider {
     prompt: string,
     systemPrompt: string,
     schema?: object,
-    options?: CompletionOptions
+    options?: CompletionOptions,
   ): Promise<T> {
     const completion = await this.generateCompletion(prompt, systemPrompt, {
       ...options,
-      jsonResponse: true
+      jsonResponse: true,
     });
     return extractAndParseJson<T>(completion.content);
   }
