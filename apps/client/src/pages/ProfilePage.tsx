@@ -498,8 +498,8 @@ export default function ProfilePage() {
         {activeTab === "experience" && (
           <ExperienceSection
             experiences={profile.experience || []}
-            onAdd={(e) => addExpMutation.mutate(e)}
-            onUpdate={(id, e) => updateExpMutation.mutate({ id, ...e })}
+            onAdd={(e) => addExpMutation.mutateAsync(e)}
+            onUpdate={(id, e) => updateExpMutation.mutateAsync({ id, ...e })}
             onDelete={(id) =>
               requestDelete(
                 "Delete experience",
@@ -847,8 +847,8 @@ function SkillsSection({
 // ══════════════════════════════════════════════════════════════
 interface ExperienceSectionProps {
   experiences: IExperience[];
-  onAdd: (e: Omit<IExperience, "_id">) => void;
-  onUpdate: (id: string, e: Partial<IExperience>) => void;
+  onAdd: (e: Omit<IExperience, "_id">) => Promise<unknown>;
+  onUpdate: (id: string, e: Partial<IExperience>) => Promise<unknown>;
   onDelete: (id: string) => void;
 }
 
@@ -909,35 +909,43 @@ function ExperienceSection({
     }));
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.company.trim() || !form.role.trim()) return;
     const payload = {
       company: form.company,
       role: form.role,
       startDate: form.startDate,
       endDate: form.isCurrentRole ? null : form.endDate || null,
-      location: form.location || "",
+      // Backend requires a location; default to Remote so the field is
+      // never silently rejected (matches the app's remote-first defaults)
+      location: form.location.trim() || "Remote",
       isCurrentRole: form.isCurrentRole,
       description: form.description,
       bullets: form.bullets.filter((b) => b.text.trim()),
     };
-    if (editingId) {
-      onUpdate(editingId, payload);
-    } else {
-      onAdd(payload);
+    try {
+      if (editingId) {
+        await onUpdate(editingId, payload);
+      } else {
+        await onAdd(payload);
+      }
+      // Only close and reset after the server accepted the data — on
+      // failure the global error toast shows and values are preserved.
+      setShowForm(false);
+      setEditingId(null);
+      setForm({
+        company: "",
+        role: "",
+        startDate: "",
+        endDate: "",
+        location: "",
+        isCurrentRole: true,
+        description: "",
+        bullets: [{ id: crypto.randomUUID(), text: "", tags: [] }],
+      });
+    } catch {
+      // keep the form open with the entered values; error toast already shown
     }
-    setShowForm(false);
-    setEditingId(null);
-    setForm({
-      company: "",
-      role: "",
-      startDate: "",
-      endDate: "",
-      location: "",
-      isCurrentRole: true,
-      description: "",
-      bullets: [{ id: crypto.randomUUID(), text: "", tags: [] }],
-    });
   }
 
   return (

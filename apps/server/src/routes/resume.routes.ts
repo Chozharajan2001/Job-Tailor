@@ -142,6 +142,10 @@ router.put(
   updateProfileResume,
 );
 
+// Static GET paths MUST be registered before the /:id wildcard route,
+// otherwise they are swallowed by /:id (e.g. GET /reuse matched as id="reuse")
+router.get("/reuse", getReusableResume);
+
 router.get("/:id", validateParams(idParamSchema), getResume);
 router.put(
   "/:id",
@@ -153,7 +157,6 @@ router.put(
 // PDF endpoints
 router.post("/:id/pdf", validateParams(idParamSchema), downloadPDF);
 router.post("/upload", upload.single("resume"), uploadResumePDF);
-router.get("/reuse", getReusableResume);
 
 // Quick ATS Check endpoint
 router.post("/quick-ats-check", validateBody(quickATSSchema), quickATSCheck);

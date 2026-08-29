@@ -123,6 +123,30 @@ export function errorHandler(
     return;
   }
 
+  // Handle Mongoose schema validation errors (required fields, etc.)
+  // These are client input problems -> 400, never 500.
+  const maybeValidationError = err as Error & {
+    name?: string;
+    errors?: Record<string, { path?: string; message?: string }>;
+  };
+  if (maybeValidationError.name === "ValidationError") {
+    const details = Object.values(maybeValidationError.errors || {}).map(
+      (e) => ({
+        field: e.path || "unknown",
+        message: e.message || "Invalid value",
+      }),
+    );
+    res.status(400).json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Data validation failed",
+        details,
+      },
+    });
+    return;
+  }
+
   // Generic fallback
   const isDev = process.env.NODE_ENV !== "production";
   res.status(500).json({

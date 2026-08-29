@@ -496,7 +496,8 @@ export default function JobsPage() {
       toast.error(
         error.response?.data?.error?.message ||
           error.message ||
-          "Failed to parse JD. Please try again.",
+          "Failed to parse JD. The AI provider may be unavailable — please try again.",
+        { duration: 8000 },
       );
     },
   });
@@ -2529,6 +2530,7 @@ function JDPasteModal({
       return;
     onSubmit({
       ...form,
+      jobLink: form.jobLink.trim() || undefined,
       attachedResumeId: selectedResumeId || undefined,
     });
   }
