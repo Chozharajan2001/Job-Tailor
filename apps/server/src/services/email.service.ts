@@ -1,5 +1,5 @@
-import nodemailer from 'nodemailer';
-import { config } from '../config/index.js';
+import nodemailer from "nodemailer";
+import { config } from "../config/index.js";
 
 let transporter: nodemailer.Transporter | null = null;
 
@@ -28,13 +28,16 @@ function getTransporter(): nodemailer.Transporter | null {
   });
 
   // Verify connection on first use
-  transporter.verify().then((success) => {
-    if (success) {
-      console.log('✅ Email service: SMTP connection verified');
-    }
-  }).catch((err) => {
-    console.warn('⚠️  Email service: SMTP verification failed:', err.message);
-  });
+  transporter
+    .verify()
+    .then((success) => {
+      if (success) {
+        console.log("✅ Email service: SMTP connection verified");
+      }
+    })
+    .catch((err) => {
+      console.warn("⚠️  Email service: SMTP verification failed:", err.message);
+    });
 
   return transporter;
 }
@@ -53,22 +56,32 @@ export function isEmailConfigured(): boolean {
 export async function sendPasswordResetEmail(
   to: string,
   resetUrl: string,
-  expiresAt: Date
+  expiresAt: Date,
 ): Promise<void> {
   const transport = getTransporter();
 
   if (!transport) {
+    if (config.nodeEnv === "production") {
+      // Never leak reset links into production logs; the API still returns a
+      // generic success to prevent user enumeration.
+      console.error(
+        "❌ Email service: password reset email could not be sent — SMTP is not configured",
+      );
+      return;
+    }
     // Dev fallback: log to console if no SMTP configured
-    console.log('\n🔑 Password Reset Link (Email not configured):');
+    console.log("\n🔑 Password Reset Link (Email not configured):");
     console.log(`   ${resetUrl}`);
     console.log(`   Expires: ${expiresAt.toISOString()}\n`);
     return;
   }
 
   const { from, fromName, frontendUrl } = config.email;
-  const expiryHours = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
+  const expiryHours = Math.ceil(
+    (expiresAt.getTime() - Date.now()) / (1000 * 60 * 60),
+  );
 
-  const subject = 'Reset your JobTailor password';
+  const subject = "Reset your JobTailor password";
 
   const htmlBody = `
 <!DOCTYPE html>
@@ -115,7 +128,7 @@ export async function sendPasswordResetEmail(
         <!-- Expiry Notice -->
         <div style="margin-top: 32px; padding: 16px; background-color: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
           <p style="margin: 0; color: #92400e; font-size: 14px; font-weight: 500;">
-            ⏰ This link expires in <strong>${expiryHours} hour${expiryHours !== 1 ? 's' : ''}</strong>.
+            ⏰ This link expires in <strong>${expiryHours} hour${expiryHours !== 1 ? "s" : ""}</strong>.
           </p>
         </div>
         
@@ -151,7 +164,7 @@ You requested a password reset for your JobTailor account.
 Click this link to set a new password:
 ${resetUrl}
 
-This link expires in ${expiryHours} hour${expiryHours !== 1 ? 's' : ''}.
+This link expires in ${expiryHours} hour${expiryHours !== 1 ? "s" : ""}.
 
 Security note: If you didn't request this password reset, please ignore this email.
 
@@ -184,22 +197,31 @@ ${frontendUrl}
 export async function sendVerificationEmail(
   to: string,
   verificationUrl: string,
-  expiresAt: Date
+  expiresAt: Date,
 ): Promise<void> {
   const transport = getTransporter();
 
   if (!transport) {
+    if (config.nodeEnv === "production") {
+      // Never leak verification links into production logs
+      console.error(
+        "❌ Email service: verification email could not be sent — SMTP is not configured",
+      );
+      return;
+    }
     // Dev fallback: log to console if no SMTP configured
-    console.log('\n🔑 Email Verification Link (Email not configured):');
+    console.log("\n🔑 Email Verification Link (Email not configured):");
     console.log(`   ${verificationUrl}`);
     console.log(`   Expires: ${expiresAt.toISOString()}\n`);
     return;
   }
 
   const { from, fromName, frontendUrl } = config.email;
-  const expiryHours = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
+  const expiryHours = Math.ceil(
+    (expiresAt.getTime() - Date.now()) / (1000 * 60 * 60),
+  );
 
-  const subject = 'Verify your JobTailor account';
+  const subject = "Verify your JobTailor account";
 
   const htmlBody = `
 <!DOCTYPE html>
@@ -246,7 +268,7 @@ export async function sendVerificationEmail(
         <!-- Expiry Notice -->
         <div style="margin-top: 32px; padding: 16px; background-color: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
           <p style="margin: 0; color: #92400e; font-size: 14px; font-weight: 500;">
-            ⏰ This link expires in <strong>${expiryHours} hour${expiryHours !== 1 ? 's' : ''}</strong>.
+            ⏰ This link expires in <strong>${expiryHours} hour${expiryHours !== 1 ? "s" : ""}</strong>.
           </p>
         </div>
         
@@ -282,7 +304,7 @@ Thanks for signing up! Please verify your email address to activate your account
 Click this link to verify your email:
 ${verificationUrl}
 
-This link expires in ${expiryHours} hour${expiryHours !== 1 ? 's' : ''}.
+This link expires in ${expiryHours} hour${expiryHours !== 1 ? "s" : ""}.
 
 Security note: If you didn't create this account, please ignore this email.
 
@@ -313,7 +335,9 @@ ${frontendUrl}
 export async function verifyEmailConnection(): Promise<boolean> {
   const transport = getTransporter();
   if (!transport) {
-    console.warn('⚠️  Email service: Not configured (missing SMTP credentials)');
+    console.warn(
+      "⚠️  Email service: Not configured (missing SMTP credentials)",
+    );
     return false;
   }
 
@@ -321,7 +345,7 @@ export async function verifyEmailConnection(): Promise<boolean> {
     await transport.verify();
     return true;
   } catch (error) {
-    console.error('❌ Email service: SMTP verification failed:', error);
+    console.error("❌ Email service: SMTP verification failed:", error);
     return false;
   }
 }

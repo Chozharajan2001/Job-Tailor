@@ -25,6 +25,7 @@ Your environment files have been created and are ready to configure!
    - Replace `<password>` with your actual password
 
 **Update in `apps/server/.env`:**
+
 ```env
 MONGODB_URI=mongodb+srv://jobtailor_user:YOUR_ACTUAL_PASSWORD@cluster0.xxxxx.mongodb.net/jobtailor?retryWrites=true&w=majority
 ```
@@ -40,6 +41,7 @@ MONGODB_URI=mongodb+srv://jobtailor_user:YOUR_ACTUAL_PASSWORD@cluster0.xxxxx.mon
 5. Copy the key (starts with `sk-`)
 
 **Update in `apps/server/.env`:**
+
 ```env
 OPENAI_API_KEY=sk-your-actual-openai-api-key-here
 ```
@@ -48,17 +50,22 @@ OPENAI_API_KEY=sk-your-actual-openai-api-key-here
 
 ---
 
-### **3. JWT Secrets** (Already Generated ✅)
+### **3. JWT Secrets** (Generate Your Own)
 
-Secure JWT secrets have been automatically generated for you. These are safe for development but should be regenerated for production.
+Generate strong random secrets for your environment. **Never commit real secret values.**
 
-**Current values in `apps/server/.env`:**
-```env
-JWT_SECRET=***REMOVED-JWT-SECRET***
-JWT_REFRESH_SECRET=***REMOVED-JWT-REFRESH-SECRET***
+```bash
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
 
-✅ **No action needed** - these are ready to use!
+**Set in `apps/server/.env` (your own generated values):**
+
+```env
+JWT_SECRET=<generated-64-byte-hex>
+JWT_REFRESH_SECRET=<different-generated-64-byte-hex>
+```
+
+⚠️ Rotate these secrets for production, and again any time they may have been exposed.
 
 ---
 
@@ -67,9 +74,11 @@ JWT_REFRESH_SECRET=***REMOVED-JWT-REFRESH-SECRET***
 For production, you'll want cloud storage for PDFs. For local development, leave these empty to use local file storage.
 
 **To enable Cloudinary:**
+
 1. Sign up at [Cloudinary](https://cloudinary.com/) (free tier available)
 2. Get your credentials from Dashboard
 3. Update in `apps/server/.env`:
+
 ```env
 CLOUDINARY_CLOUD_NAME=your-cloud-name
 CLOUDINARY_API_KEY=your-api-key
@@ -105,6 +114,7 @@ npm run dev
 ```
 
 **Expected Output:**
+
 ```
 ✓ Server running on http://localhost:5000
 ✓ Connected to MongoDB
@@ -118,6 +128,7 @@ npm run dev
 ## 🧪 Test the Application
 
 ### **Test Workflow #1: Create Job & Generate Resume**
+
 1. Register/Login to the app
 2. Go to "Jobs" page
 3. Click "Add Job"
@@ -134,6 +145,7 @@ npm run dev
 11. Click "Quick Apply" to create application
 
 ### **Test Workflow #2: Upload Existing Resume**
+
 1. Go to "Jobs" page
 2. Click "Upload Resume" button
 3. Drag & drop a PDF resume or click to browse
@@ -141,6 +153,7 @@ npm run dev
 5. Resume appears in your profile
 
 ### **Test Workflow #3: Track Applications**
+
 1. Go to "Tracker" page
 2. See your applications in Kanban board
 3. Click three-dot menu on any card
@@ -152,25 +165,30 @@ npm run dev
 ## 🔧 Troubleshooting
 
 ### **Error: "MONGODB_URI is required"**
+
 - Make sure `apps/server/.env` file exists
 - Verify MONGODB_URI is not commented out
 - Check MongoDB Atlas cluster is active
 
 ### **Error: "OPENAI_API_KEY is invalid"**
+
 - Verify your OpenAI API key is correct (starts with `sk-`)
 - Check you have available credits in OpenAI dashboard
 - Ensure no extra spaces in the key
 
 ### **Error: "Port 5000 already in use"**
+
 - Kill existing process: `netstat -ano | findstr :5000` then `taskkill /PID <PID> /F`
 - Or change PORT in `.env` to another value (e.g., 5001)
 
 ### **Frontend can't connect to backend**
+
 - Verify backend is running on port 5000
 - Check CORS_ORIGIN in `.env` matches your frontend URL
 - Ensure VITE_API_BASE_URL is correct in client .env
 
 ### **Build fails with TypeScript errors**
+
 - Run `npm run build` to check for compilation errors
 - Clear cache: `rm -rf node_modules apps/*/node_modules && npm install`
 
@@ -200,20 +218,26 @@ JOB TAILOR/
 When ready to deploy:
 
 ### **Frontend (Vercel)**
+
 ```bash
 cd apps/client
 vercel --prod
 ```
+
 Set environment variable in Vercel dashboard:
+
 - `VITE_API_BASE_URL=https://your-backend-url.onrender.com/api/v1`
 
 ### **Backend (Render/Railway)**
+
 Set environment variables in platform dashboard:
+
 - All variables from `apps/server/.env`
 - Set `NODE_ENV=production`
 - Generate new JWT secrets for production
 
 ### **Database (MongoDB Atlas)**
+
 - Already cloud-based, no migration needed
 - Whitelist Render/Railway IP addresses
 

@@ -17,11 +17,8 @@ build/
 # ============================================
 # Environment files (NEVER commit secrets)
 # ============================================
-.env
-.env.local
-.env.development
-.env.test
-.env.production
+.env*
+!.env.example
 apps/server/.env
 apps/client/.env.client
 

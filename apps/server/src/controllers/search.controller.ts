@@ -1,10 +1,13 @@
-import { Request, Response } from 'express';
-import { IngestionService } from '../services/ingestion.service.js';
-import { SearchService } from '../services/search.service.js';
-import { SavedSearchService } from '../services/saved-search.service.js';
-import { CleanupService } from '../services/cleanup.service.js';
-import { SourceRegistry } from '../models/SourceRegistry.model.js';
-import { AnalyticsService } from '../services/analytics.service.js';
+import { Request, Response } from "express";
+import { IngestionService } from "../services/ingestion.service.js";
+import { SearchService } from "../services/search.service.js";
+import { SavedSearchService } from "../services/saved-search.service.js";
+import { SourceRegistry } from "../models/SourceRegistry.model.js";
+import { AnalyticsService } from "../services/analytics.service.js";
+import {
+  runStaleCleanup,
+  isCleanupRunning,
+} from "../jobs/stale-cleanup.job.js";
 
 /**
  * POST /api/v1/search/ingest/url — Ingest job details from a public URL.
@@ -12,7 +15,12 @@ import { AnalyticsService } from '../services/analytics.service.js';
 export async function ingestUrl(req: Request, res: Response): Promise<void> {
   const { url } = req.body;
   if (!url) {
-    res.status(400).json({ success: false, error: { code: 'MISSING_URL', message: 'URL is required.' } });
+    res
+      .status(400)
+      .json({
+        success: false,
+        error: { code: "MISSING_URL", message: "URL is required." },
+      });
     return;
   }
 
@@ -21,14 +29,14 @@ export async function ingestUrl(req: Request, res: Response): Promise<void> {
     res.status(201).json({
       success: true,
       data: { job },
-      message: 'Job ingested successfully.',
+      message: "Job ingested successfully.",
     });
   } catch (error) {
-    console.error('Ingest URL error:', error);
-    const msg = error instanceof Error ? error.message : 'Ingestion failed';
+    console.error("Ingest URL error:", error);
+    const msg = error instanceof Error ? error.message : "Ingestion failed";
     res.status(500).json({
       success: false,
-      error: { code: 'INGESTION_FAILED', message: msg },
+      error: { code: "INGESTION_FAILED", message: msg },
     });
   }
 }
@@ -37,11 +45,22 @@ export async function ingestUrl(req: Request, res: Response): Promise<void> {
  * POST /api/v1/search/ingest/paste — Ingest job details from pasted text.
  */
 export async function ingestPaste(req: Request, res: Response): Promise<void> {
-  const { jobTitle, companyName, jdRawText, location, workType, employmentType, salaryRange } = req.body;
+  const {
+    jobTitle,
+    companyName,
+    jdRawText,
+    location,
+    workType,
+    employmentType,
+    salaryRange,
+  } = req.body;
   if (!jobTitle || !companyName || !jdRawText) {
     res.status(400).json({
       success: false,
-      error: { code: 'VALIDATION_FAILED', message: 'title, company, and raw text are required.' },
+      error: {
+        code: "VALIDATION_FAILED",
+        message: "title, company, and raw text are required.",
+      },
     });
     return;
   }
@@ -59,13 +78,16 @@ export async function ingestPaste(req: Request, res: Response): Promise<void> {
     res.status(201).json({
       success: true,
       data: { job },
-      message: 'Job pasted & processed successfully.',
+      message: "Job pasted & processed successfully.",
     });
   } catch (error) {
-    console.error('Ingest paste error:', error);
+    console.error("Ingest paste error:", error);
     res.status(500).json({
       success: false,
-      error: { code: 'INGESTION_FAILED', message: 'Failed to process pasted job description.' },
+      error: {
+        code: "INGESTION_FAILED",
+        message: "Failed to process pasted job description.",
+      },
     });
   }
 }
@@ -81,9 +103,13 @@ export async function searchJobs(req: Request, res: Response): Promise<void> {
   const sortBy = req.query.sortBy as any; // 'relevance' | 'date'
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 20;
-  const freshnessDays = req.query.freshnessDays ? parseInt(req.query.freshnessDays as string) : undefined;
+  const freshnessDays = req.query.freshnessDays
+    ? parseInt(req.query.freshnessDays as string)
+    : undefined;
   const employmentType = req.query.employmentType as string;
-  const salaryMin = req.query.salaryMin ? parseInt(req.query.salaryMin as string) : undefined;
+  const salaryMin = req.query.salaryMin
+    ? parseInt(req.query.salaryMin as string)
+    : undefined;
   const userId = req.user?.userId;
 
   try {
@@ -104,10 +130,20 @@ export async function searchJobs(req: Request, res: Response): Promise<void> {
     if (userId) {
       AnalyticsService.logSearchQuery(
         userId,
-        q || '',
-        { location, workType, sourceId, sortBy, freshnessDays, employmentType, salaryMin },
-        result.pagination.total
-      ).catch(err => console.error('Failed to log search query analytics:', err));
+        q || "",
+        {
+          location,
+          workType,
+          sourceId,
+          sortBy,
+          freshnessDays,
+          employmentType,
+          salaryMin,
+        },
+        result.pagination.total,
+      ).catch((err) =>
+        console.error("Failed to log search query analytics:", err),
+      );
     }
 
     res.json({
@@ -115,10 +151,13 @@ export async function searchJobs(req: Request, res: Response): Promise<void> {
       data: result,
     });
   } catch (error) {
-    console.error('Search jobs error:', error);
+    console.error("Search jobs error:", error);
     res.status(500).json({
       success: false,
-      error: { code: 'SEARCH_FAILED', message: 'Failed to complete search query.' },
+      error: {
+        code: "SEARCH_FAILED",
+        message: "Failed to complete search query.",
+      },
     });
   }
 }
@@ -126,12 +165,23 @@ export async function searchJobs(req: Request, res: Response): Promise<void> {
 /**
  * POST /api/v1/search/saved — Save a search query and filters.
  */
-export async function createSavedSearch(req: Request, res: Response): Promise<void> {
+export async function createSavedSearch(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
   const { name, query, filters, alertSubscription } = req.body;
 
   if (!name) {
-    res.status(400).json({ success: false, error: { code: 'MISSING_NAME', message: 'Saved search name is required.' } });
+    res
+      .status(400)
+      .json({
+        success: false,
+        error: {
+          code: "MISSING_NAME",
+          message: "Saved search name is required.",
+        },
+      });
     return;
   }
 
@@ -146,13 +196,13 @@ export async function createSavedSearch(req: Request, res: Response): Promise<vo
     res.status(201).json({
       success: true,
       data: { savedSearch: saved },
-      message: 'Search criteria saved.',
+      message: "Search criteria saved.",
     });
   } catch (error) {
-    console.error('Create saved search error:', error);
+    console.error("Create saved search error:", error);
     res.status(500).json({
       success: false,
-      error: { code: 'SAVED_SEARCH_FAILED', message: 'Failed to save search.' },
+      error: { code: "SAVED_SEARCH_FAILED", message: "Failed to save search." },
     });
   }
 }
@@ -160,17 +210,23 @@ export async function createSavedSearch(req: Request, res: Response): Promise<vo
 /**
  * GET /api/v1/search/saved — List the user's saved searches.
  */
-export async function listSavedSearches(req: Request, res: Response): Promise<void> {
+export async function listSavedSearches(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
 
   try {
     const savedSearches = await SavedSearchService.listSavedSearches(userId);
     res.json({ success: true, data: { savedSearches } });
   } catch (error) {
-    console.error('List saved searches error:', error);
+    console.error("List saved searches error:", error);
     res.status(500).json({
       success: false,
-      error: { code: 'SAVED_SEARCH_LIST_FAILED', message: 'Failed to retrieve saved searches.' },
+      error: {
+        code: "SAVED_SEARCH_LIST_FAILED",
+        message: "Failed to retrieve saved searches.",
+      },
     });
   }
 }
@@ -178,7 +234,10 @@ export async function listSavedSearches(req: Request, res: Response): Promise<vo
 /**
  * PATCH /api/v1/search/saved/:id — Update a user's saved search criteria/settings.
  */
-export async function updateSavedSearch(req: Request, res: Response): Promise<void> {
+export async function updateSavedSearch(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
   const id = req.params.id as string;
   const { name, query, filters, alertSubscription } = req.body;
@@ -194,7 +253,10 @@ export async function updateSavedSearch(req: Request, res: Response): Promise<vo
     if (!savedSearch) {
       res.status(404).json({
         success: false,
-        error: { code: 'SAVED_SEARCH_NOT_FOUND', message: 'Saved search not found or access denied.' },
+        error: {
+          code: "SAVED_SEARCH_NOT_FOUND",
+          message: "Saved search not found or access denied.",
+        },
       });
       return;
     }
@@ -202,13 +264,16 @@ export async function updateSavedSearch(req: Request, res: Response): Promise<vo
     res.json({
       success: true,
       data: { savedSearch },
-      message: 'Saved search updated successfully.',
+      message: "Saved search updated successfully.",
     });
   } catch (error) {
-    console.error('Update saved search error:', error);
+    console.error("Update saved search error:", error);
     res.status(500).json({
       success: false,
-      error: { code: 'SAVED_SEARCH_UPDATE_FAILED', message: 'Failed to update saved search.' },
+      error: {
+        code: "SAVED_SEARCH_UPDATE_FAILED",
+        message: "Failed to update saved search.",
+      },
     });
   }
 }
@@ -216,7 +281,10 @@ export async function updateSavedSearch(req: Request, res: Response): Promise<vo
 /**
  * DELETE /api/v1/search/saved/:id — Delete a user's saved search.
  */
-export async function deleteSavedSearch(req: Request, res: Response): Promise<void> {
+export async function deleteSavedSearch(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
   const id = req.params.id as string;
 
@@ -225,44 +293,60 @@ export async function deleteSavedSearch(req: Request, res: Response): Promise<vo
     if (!deleted) {
       res.status(404).json({
         success: false,
-        error: { code: 'SAVED_SEARCH_NOT_FOUND', message: 'Saved search not found or access denied.' },
+        error: {
+          code: "SAVED_SEARCH_NOT_FOUND",
+          message: "Saved search not found or access denied.",
+        },
       });
       return;
     }
 
     res.json({
       success: true,
-      message: 'Saved search deleted successfully.',
+      message: "Saved search deleted successfully.",
     });
   } catch (error) {
-    console.error('Delete saved search error:', error);
+    console.error("Delete saved search error:", error);
     res.status(500).json({
       success: false,
-      error: { code: 'SAVED_SEARCH_DELETE_FAILED', message: 'Failed to delete saved search.' },
+      error: {
+        code: "SAVED_SEARCH_DELETE_FAILED",
+        message: "Failed to delete saved search.",
+      },
     });
   }
 }
 
 /**
- * POST /api/v1/search/cleanup — Run the stale-job deactivation maintenance task.
+ * POST /api/v1/search/cleanup — Trigger the stale-job maintenance job.
+ * Runs asynchronously in the background (admin only); the daily schedule
+ * also runs automatically. Returns 202 Accepted.
  */
 export async function cleanupJobs(req: Request, res: Response): Promise<void> {
-  const thresholdDays = req.body.thresholdDays !== undefined ? parseInt(req.body.thresholdDays) : 30;
+  const thresholdDays =
+    req.body.thresholdDays !== undefined
+      ? parseInt(req.body.thresholdDays)
+      : 30;
 
-  try {
-    const deactivatedCount = await CleanupService.cleanupStaleJobs(thresholdDays);
-    res.json({
+  if (isCleanupRunning()) {
+    res.status(202).json({
       success: true,
-      data: { deactivatedCount },
-      message: 'Stale jobs cleaned up successfully.',
+      data: { started: false },
+      message: "A cleanup run is already in progress.",
     });
-  } catch (error) {
-    console.error('Cleanup jobs error:', error);
-    res.status(500).json({
-      success: false,
-      error: { code: 'CLEANUP_FAILED', message: 'Failed to run stale jobs cleanup.' },
-    });
+    return;
   }
+
+  // Fire-and-forget — never block the HTTP request on link verification
+  runStaleCleanup(thresholdDays).catch((err) =>
+    console.error("Cleanup trigger failed:", err),
+  );
+
+  res.status(202).json({
+    success: true,
+    data: { started: true },
+    message: "Stale jobs cleanup started in the background.",
+  });
 }
 
 /**
@@ -271,13 +355,19 @@ export async function cleanupJobs(req: Request, res: Response): Promise<void> {
 export async function listSources(req: Request, res: Response): Promise<void> {
   try {
     await IngestionService.ensureDefaultSources();
-    const sources = await SourceRegistry.find({ isEnabled: true }).sort({ name: 1 }).lean().exec();
+    const sources = await SourceRegistry.find({ isEnabled: true })
+      .sort({ name: 1 })
+      .lean()
+      .exec();
     res.json({ success: true, data: { sources } });
   } catch (error) {
-    console.error('List sources error:', error);
+    console.error("List sources error:", error);
     res.status(500).json({
       success: false,
-      error: { code: 'LIST_SOURCES_FAILED', message: 'Failed to retrieve sources.' },
+      error: {
+        code: "LIST_SOURCES_FAILED",
+        message: "Failed to retrieve sources.",
+      },
     });
   }
 }
@@ -286,12 +376,24 @@ export async function listSources(req: Request, res: Response): Promise<void> {
  * POST /api/v1/search/sources — Create a new source config.
  */
 export async function createSource(req: Request, res: Response): Promise<void> {
-  const { name, sourceType, baseUrl, crawlFrequency, extractionStrategy, robotsPolicy, trustScore } = req.body;
+  const {
+    name,
+    sourceType,
+    baseUrl,
+    crawlFrequency,
+    extractionStrategy,
+    robotsPolicy,
+    trustScore,
+  } = req.body;
 
   if (!name || !sourceType || !baseUrl || !extractionStrategy) {
     res.status(400).json({
       success: false,
-      error: { code: 'VALIDATION_FAILED', message: 'name, sourceType, baseUrl, and extractionStrategy are required.' },
+      error: {
+        code: "VALIDATION_FAILED",
+        message:
+          "name, sourceType, baseUrl, and extractionStrategy are required.",
+      },
     });
     return;
   }
@@ -311,13 +413,16 @@ export async function createSource(req: Request, res: Response): Promise<void> {
     res.status(201).json({
       success: true,
       data: { source },
-      message: 'Job source registered successfully.',
+      message: "Job source registered successfully.",
     });
   } catch (error) {
-    console.error('Create source error:', error);
+    console.error("Create source error:", error);
     res.status(500).json({
       success: false,
-      error: { code: 'CREATE_SOURCE_FAILED', message: 'Failed to register job source.' },
+      error: {
+        code: "CREATE_SOURCE_FAILED",
+        message: "Failed to register job source.",
+      },
     });
   }
 }
