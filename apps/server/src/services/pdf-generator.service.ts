@@ -1,65 +1,77 @@
 /**
  * PDF Generator Service — Converts tailored resume HTML to PDF using Puppeteer.
- * 
+ *
  * Flow:
  * 1. Takes tailored resume data (from Resume model)
- * 2. Renders it into a clean HTML template
- * 3. Uses Puppeteer to generate PDF buffer
+ * 2. Renders it into a clean HTML template (all fields HTML-escaped)
+ * 3. Uses a shared Puppeteer browser (singleton) to generate the PDF buffer
  * 4. Uploads to Cloudinary (or returns base64 for local dev)
  * 5. Returns download URL
  */
 
-import type { IResume } from '../models/Resume.model.js';
-import { config } from '../config/index.js';
-import { v2 as cloudinary } from 'cloudinary';
+import type { Browser } from "puppeteer";
+import type { IResume } from "../models/Resume.model.js";
+import { config } from "../config/index.js";
+import { v2 as cloudinary } from "cloudinary";
+import { escapeHtml } from "../utils/escape-html.js";
 
 // ─── Template Generation ───────────────────────────────────────
 
 function buildResumeHTML(resume: IResume): string {
-  const skills = (resume.skills || []).map(
-    (s) => `<span class="skill">${(s as unknown as { name: string }).name}</span>`
-  ).join('');
+  const skills = (resume.skills || [])
+    .map(
+      (s) =>
+        `<span class="skill">${escapeHtml((s as unknown as { name: string }).name)}</span>`,
+    )
+    .join("");
 
   const experienceHTML = (resume.experience || [])
     .map((exp: Record<string, unknown>) => {
       const e = exp as {
-        company?: string; role?: string; startDate?: string;
-        endDate?: string | null; location?: string; bullets?: Array<{ text: string }>;
+        company?: string;
+        role?: string;
+        startDate?: string;
+        endDate?: string | null;
+        location?: string;
+        bullets?: Array<{ text: string }>;
       };
       return `
         <div class="section-block">
           <div class="block-header">
-            <h3>${e.role || ''}</h3>
-            <span class="meta">${e.company || ''} · ${e.startDate || ''}${e.endDate ? ` – ${e.endDate}` : ' – Present'}</span>
+            <h3>${escapeHtml(e.role || "")}</h3>
+            <span class="meta">${escapeHtml(e.company || "")} · ${escapeHtml(e.startDate || "")}${e.endDate ? ` – ${escapeHtml(e.endDate)}` : " – Present"}</span>
           </div>
-          ${e.location ? `<p class="location">${e.location}</p>` : ''}
+          ${e.location ? `<p class="location">${escapeHtml(e.location)}</p>` : ""}
           <ul class="bullets">
-            ${(e.bullets || []).map((b) => `<li>${b.text}</li>`).join('')}
+            ${(e.bullets || []).map((b) => `<li>${escapeHtml(b.text)}</li>`).join("")}
           </ul>
         </div>`;
     })
-    .join('');
+    .join("");
 
   const projectsHTML = (resume.projects || [])
     .map((proj: Record<string, unknown>) => {
       const p = proj as {
-        name?: string; description?: string; techStack?: string[]; highlights?: string[];
+        name?: string;
+        description?: string;
+        techStack?: string[];
+        highlights?: string[];
       };
       const techStack = p.techStack || [];
       return `
         <div class="project-item">
-          <h3>${p.name || ''}</h3>
-          <p class="project-desc">${p.description || ''}</p>
-          ${techStack.length > 0 ? `<p class="tech-stack">${techStack.join(' · ')}</p>` : ''}
+          <h3>${escapeHtml(p.name || "")}</h3>
+          <p class="project-desc">${escapeHtml(p.description || "")}</p>
+          ${techStack.length > 0 ? `<p class="tech-stack">${techStack.map((t) => escapeHtml(t)).join(" · ")}</p>` : ""}
         </div>`;
     })
-    .join('');
+    .join("");
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>${resume.versionLabel || 'Resume'}</title>
+<title>${escapeHtml(resume.versionLabel || "Resume")}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -104,82 +116,128 @@ function buildResumeHTML(resume: IResume): string {
   <span style="font-size:8.5pt;color:#9ca3af;">Generated: ${new Date().toLocaleDateString()}</span>
 </div>
 
-${resume.tailoredSummary ? `<p class="summary">${resume.tailoredSummary}</p>` : ''}
+${resume.tailoredSummary ? `<p class="summary">${escapeHtml(resume.tailoredSummary)}</p>` : ""}
 
 <!-- ATS Score -->
-${resume.atsScore ? `
+${
+  resume.atsScore
+    ? `
 <div class="ats-header">
   <h2>ATS Match Score</h2>
-  <span class="score-badge" style="background:${resume.atsScore.overallScore >= 80 ? '#dcfce7;color:#166534;border:1px solid:#bbf7d0' : resume.atsScore.overallScore >= 60 ? '#fef9c3;color:#854d0e;border:1px solid:#fde68a' : '#fee2e2;color:#991b1b;border:1px solid:#fecaca'}">
-    ${resume.atsScore.overallScore}/100
+  <span class="score-badge" style="background:${resume.atsScore.overallScore >= 80 ? "#dcfce7;color:#166534;border:1px solid #bbf7d0" : resume.atsScore.overallScore >= 60 ? "#fef9c3;color:#854d0e;border:1px solid #fde68a" : "#fee2e2;color:#991b1b;border:1px solid #fecaca"}">
+    ${Number(resume.atsScore.overallScore) || 0}/100
   </span>
 </div>
 <ul style="list-style:none;padding:0;display:flex;gap:16pt;font-size:9pt;color:#6b7280;margin-bottom:12pt;">
-  <li>Keywords: ${resume.atsScore.keywordMatchScore}%</li>
-  <li>Semantic: ${resume.atsScore.semanticMatchScore}%</li>
-  <li>Format: ${resume.atsScore.formatScore}%</li>
+  <li>Keywords: ${Number(resume.atsScore.keywordMatchScore) || 0}%</li>
+  <li>Semantic: ${Number(resume.atsScore.semanticMatchScore) || 0}%</li>
+  <li>Format: ${Number(resume.atsScore.formatScore) || 0}%</li>
 </ul>
-` : ''}
+`
+    : ""
+}
 
 <h2>Skills</h2>
 <div class="skills-container">${skills}</div>
 
-${experienceHTML ? '<h2>Experience</h2>' + experienceHTML : ''}
+${experienceHTML ? "<h2>Experience</h2>" + experienceHTML : ""}
 
-${projectsHTML ? '<h2>Projects</h2>' + projectsHTML : ''}
+${projectsHTML ? "<h2>Projects</h2>" + projectsHTML : ""}
 
 </body>
 </html>`;
 }
 
+// ─── Shared Browser ──────────────────────────────────────────
+
+let browserPromise: Promise<Browser> | null = null;
+
+/**
+ * Lazily launch (and cache) a single Chromium instance for the process.
+ * Relaunches automatically if the previous instance disconnected.
+ */
+async function getBrowser(): Promise<Browser> {
+  if (browserPromise) {
+    const existing = await browserPromise.catch(() => null);
+    if (existing && existing.connected) return existing;
+    browserPromise = null;
+  }
+
+  const puppeteer = await import("puppeteer");
+  browserPromise = puppeteer.default.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+    ],
+  });
+  return browserPromise;
+}
+
+/**
+ * Graceful shutdown hook — call on SIGTERM/SIGINT.
+ */
+export async function closePdfBrowser(): Promise<void> {
+  if (!browserPromise) return;
+  const browser = await browserPromise.catch(() => null);
+  browserPromise = null;
+  if (browser) await browser.close().catch(() => {});
+}
+
 // ─── PDF Generation ──────────────────────────────────────────
 
-export async function generatePDF(resume: IResume): Promise<{ pdfUrl: string; pdfBuffer?: Buffer }> {
-  // Build HTML from resume data
+export async function generatePDF(
+  resume: IResume,
+): Promise<{ pdfUrl: string; pdfBuffer?: Buffer }> {
+  // Build HTML from resume data (all user content escaped)
   const html = buildResumeHTML(resume);
 
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+
   try {
-    // Try Puppeteer first
-    const puppeteer = await import('puppeteer');
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
+    await page.setContent(html, { waitUntil: "load" });
 
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-
-    const pdfBuffer = Buffer.from(await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '0.5in', bottom: '0.5in', left: '0.65in', right: '0.65in' },
-      preferCSSPageSize: false,
-      displayHeaderFooter: false,
-    }));
-
-    await browser.close();
+    const pdfBuffer = Buffer.from(
+      await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: {
+          top: "0.5in",
+          bottom: "0.5in",
+          left: "0.65in",
+          right: "0.65in",
+        },
+        preferCSSPageSize: false,
+        displayHeaderFooter: false,
+      }),
+    );
 
     // If Cloudinary is configured, upload
     if (config.cloudinary.cloudName && config.cloudinary.apiKey) {
-      const cloudinaryUrl = await uploadToCloudinary(pdfBuffer, resume.versionLabel);
+      const cloudinaryUrl = await uploadToCloudinary(
+        pdfBuffer,
+        resume.versionLabel,
+      );
       return { pdfUrl: cloudinaryUrl, pdfBuffer };
     }
 
-    // Fallback: Return as data URL for direct download
-    const dataUrl = `data:application/pdf;base64:${pdfBuffer.toString('base64')}`;
+    // Fallback: return as data URL for direct download
+    const dataUrl = `data:application/pdf;base64,${pdfBuffer.toString("base64")}`;
     return { pdfUrl: dataUrl, pdfBuffer };
-  } catch (puppeteerError) {
-    console.warn('Puppeteer PDF generation failed, returning HTML fallback:', puppeteerError);
-    
-    // Fallback: return HTML as URL (client can print-to-PDF)
-    const htmlDataUrl = `data:text/html;base64,${Buffer.from(html).toString('base64')}`;
-    return { pdfUrl: htmlDataUrl };
+  } finally {
+    // Always release the page so the shared browser never leaks tabs
+    await page.close().catch(() => {});
   }
 }
 
 // ─── Cloudinary Upload ───────────────────────────────────────
 
-export async function uploadToCloudinary(buffer: Buffer, publicId: string): Promise<string> {
+export async function uploadToCloudinary(
+  buffer: Buffer,
+  publicId: string,
+): Promise<string> {
   cloudinary.config({
     cloud_name: config.cloudinary.cloudName,
     api_key: config.cloudinary.apiKey,
@@ -190,16 +248,19 @@ export async function uploadToCloudinary(buffer: Buffer, publicId: string): Prom
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder: config.cloudinary.folder,
-        resource_type: 'raw',
+        resource_type: "raw",
         public_id: `${publicId}_${Date.now()}`,
-        format: 'pdf',
-        type: 'upload',
+        format: "pdf",
+        type: "upload",
       },
-      (error: Error | undefined, result: { secure_url: string } | undefined) => {
+      (
+        error: Error | undefined,
+        result: { secure_url: string } | undefined,
+      ) => {
         if (error) reject(error);
         else if (result) resolve(result.secure_url);
-        else reject(new Error('Cloudinary upload returned no result'));
-      }
+        else reject(new Error("Cloudinary upload returned no result"));
+      },
     );
 
     uploadStream.end(buffer);

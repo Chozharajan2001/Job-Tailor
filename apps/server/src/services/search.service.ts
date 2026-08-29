@@ -1,16 +1,15 @@
-import { CanonicalJob } from '../models/CanonicalJob.model.js';
-import { SourceRegistry } from '../models/SourceRegistry.model.js';
-import { Profile } from '../models/Profile.model.js';
-import { ICanonicalJob } from '@jobtailor/shared-types';
+import { CanonicalJob } from "../models/CanonicalJob.model.js";
+import { Profile } from "../models/Profile.model.js";
+import { getSynonymRegexString, escapeRegex } from "../utils/skill-matcher.js";
 
 export interface ISearchParams {
   q?: string;
   location?: string;
-  workType?: 'all' | 'remote' | 'hybrid' | 'onsite';
+  workType?: "all" | "remote" | "hybrid" | "onsite";
   sourceId?: string;
   isActive?: boolean;
   freshnessDays?: number;
-  sortBy?: 'relevance' | 'date';
+  sortBy?: "relevance" | "date";
   page?: number;
   limit?: number;
   userId?: string;
@@ -19,28 +18,11 @@ export interface ISearchParams {
 }
 
 /**
- * Maps common tech synonyms to regex pattern strings
+ * Upper bound on documents pulled into memory for in-app relevance scoring.
+ * Candidates are taken newest-first; this keeps scoring cost O(cap) instead
+ * of O(collection) while fresh jobs (the useful ones) are always included.
  */
-function getSynonymRegexString(word: string): string {
-  const lower = word.toLowerCase();
-  if (lower === 'react' || lower === 'reactjs' || lower === 'react.js') {
-    return '\\b(react(js|\\.js)?)\\b';
-  }
-  if (lower === 'node' || lower === 'node.js' || lower === 'nodejs') {
-    return '\\b(node(\\.js|js)?)\\b';
-  }
-  if (lower === 'devops' || lower === 'sre' || lower === 'site reliability') {
-    return '\\b(devops|sre|site reliability)\\b';
-  }
-  if (lower === 'typescript' || lower === 'ts') {
-    return '\\b(typescript|ts)\\b';
-  }
-  if (lower === 'javascript' || lower === 'js') {
-    return '\\b(javascript|js)\\b';
-  }
-  // Escape regex special characters for safety
-  return '\\b' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b';
-}
+const SCORING_CANDIDATE_CAP = 500;
 
 export class SearchService {
   /**
@@ -49,11 +31,11 @@ export class SearchService {
   static async searchJobs(params: ISearchParams) {
     const q = params.q?.trim();
     const location = params.location?.trim();
-    const workType = params.workType || 'all';
+    const workType = params.workType || "all";
     const sourceId = params.sourceId;
     const isActive = params.isActive !== false; // default to true
     const freshnessDays = params.freshnessDays;
-    const sortBy = params.sortBy || 'relevance';
+    const sortBy = params.sortBy || "relevance";
     const page = params.page || 1;
     const limit = params.limit || 20;
     const userId = params.userId;
@@ -62,42 +44,45 @@ export class SearchService {
 
     const query: Record<string, any> = {
       isActive,
-      verificationState: { $nin: ['failed', 'suspicious'] }
+      verificationState: { $nin: ["failed", "suspicious"] },
     };
 
-    // Apply location regex filter
+    // Apply location regex filter (escaped — user input must never be
+    // interpreted as raw regex)
     if (location) {
-      query.location = { $regex: location, $options: 'i' };
+      query.location = { $regex: escapeRegex(location), $options: "i" };
     }
 
     // Apply work type filter
-    if (workType && workType !== 'all') {
+    if (workType && workType !== "all") {
       query.workType = workType;
     }
 
     // Apply sourceId registry filter
-    if (sourceId && sourceId !== 'all') {
+    if (sourceId && sourceId !== "all") {
       query.sourceId = sourceId;
     }
 
     // Apply freshness filter (lastSeenAt within X days)
     if (freshnessDays) {
-      const cutOffDate = new Date(Date.now() - freshnessDays * 24 * 60 * 60 * 1000);
+      const cutOffDate = new Date(
+        Date.now() - freshnessDays * 24 * 60 * 60 * 1000,
+      );
       query.lastSeenAt = { $gte: cutOffDate };
     }
 
     // Apply employment type filter
-    if (employmentType && employmentType !== 'all') {
+    if (employmentType && employmentType !== "all") {
       query.employmentType = employmentType;
     }
 
     // Keyword filtering with synonym expansion
     if (q) {
-      const words = q.split(/\s+/).filter(w => w.trim().length > 0);
-      const regexPatterns = words.map(w => getSynonymRegexString(w));
-      const pattern = regexPatterns.join('|');
-      const regex = new RegExp(pattern, 'i');
-      
+      const words = q.split(/\s+/).filter((w) => w.trim().length > 0);
+      const regexPatterns = words.map((w) => getSynonymRegexString(w));
+      const pattern = regexPatterns.join("|");
+      const regex = new RegExp(pattern, "i");
+
       query.$or = [
         { jobTitle: regex },
         { companyName: regex },
@@ -109,9 +94,9 @@ export class SearchService {
     if (salaryMin) {
       const salaryFilter = {
         $or: [
-          { 'salaryRange.min': { $gte: salaryMin } },
-          { 'salaryRange.max': { $gte: salaryMin } }
-        ]
+          { "salaryRange.min": { $gte: salaryMin } },
+          { "salaryRange.max": { $gte: salaryMin } },
+        ],
       };
       if (query.$or) {
         const keywordFilter = { $or: query.$or };
@@ -122,9 +107,13 @@ export class SearchService {
       }
     }
 
-    // Fetch matching jobs and populate source trust score
+    // Fetch matching jobs and populate source trust score.
+    // Bounded candidate set (newest first) so in-app scoring stays cheap;
+    // for `date` sort the DB sort+pagination below is exact.
     const rawJobs = await CanonicalJob.find(query)
-      .populate('sourceId')
+      .populate("sourceId")
+      .sort({ lastSeenAt: -1 })
+      .limit(SCORING_CANDIDATE_CAP)
       .lean()
       .exec();
 
@@ -133,19 +122,21 @@ export class SearchService {
     if (userId) {
       const profile = await Profile.findOne({ userId }).lean().exec();
       if (profile && profile.skills) {
-        userSkills = profile.skills.map((s: any) => s.name.toLowerCase().trim());
+        userSkills = profile.skills.map((s: any) =>
+          s.name.toLowerCase().trim(),
+        );
       }
     }
 
     // Score jobs
     const scoredJobs = rawJobs.map((job: any) => {
       let score = 0;
-      
+
       if (q) {
         const qLower = q.toLowerCase();
-        const titleLower = (job.jobTitle || '').toLowerCase();
-        const companyLower = (job.companyName || '').toLowerCase();
-        const descLower = (job.description || '').toLowerCase();
+        const titleLower = (job.jobTitle || "").toLowerCase();
+        const companyLower = (job.companyName || "").toLowerCase();
+        const descLower = (job.description || "").toLowerCase();
 
         // 1. Exact / inclusion title match
         if (titleLower === qLower) {
@@ -162,18 +153,18 @@ export class SearchService {
         }
 
         // 3. Keyword / Synonym overlap
-        const words = q.split(/\s+/).filter(w => w.trim().length >= 2);
+        const words = q.split(/\s+/).filter((w) => w.trim().length >= 2);
         for (const word of words) {
           const patternStr = getSynonymRegexString(word);
-          const regex = new RegExp(patternStr, 'i');
-          
+          const regex = new RegExp(patternStr, "i");
+
           if (regex.test(titleLower)) score += 15;
           if (regex.test(companyLower)) score += 10;
           if (regex.test(descLower)) score += 2;
 
           if (job.structuredJD?.requiredSkills) {
-            const hasSkill = job.structuredJD.requiredSkills.some(
-              (s: string) => regex.test(s)
+            const hasSkill = job.structuredJD.requiredSkills.some((s: string) =>
+              regex.test(s),
             );
             if (hasSkill) score += 10;
           }
@@ -183,17 +174,17 @@ export class SearchService {
       // 4. Personalized Profile Skill Match Boost (determinstic, no LLM)
       let skillsMatchedCount = 0;
       if (userSkills.length > 0) {
-        const titleLower = (job.jobTitle || '').toLowerCase();
-        const descLower = (job.description || '').toLowerCase();
+        const titleLower = (job.jobTitle || "").toLowerCase();
+        const descLower = (job.description || "").toLowerCase();
 
         for (const skill of userSkills) {
-          const escapedSkill = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const skillRegex = new RegExp(`\\b${escapedSkill}\\b`, 'i');
-          
+          const escapedSkill = skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const skillRegex = new RegExp(`\\b${escapedSkill}\\b`, "i");
+
           const inTitle = skillRegex.test(titleLower);
           const inDesc = skillRegex.test(descLower);
           const inRequiredSkills = job.structuredJD?.requiredSkills?.some(
-            (s: string) => s.toLowerCase().trim() === skill
+            (s: string) => s.toLowerCase().trim() === skill,
           );
 
           if (inTitle) {
@@ -214,12 +205,12 @@ export class SearchService {
       const ageInMs = Date.now() - new Date(postedDate).getTime();
       const ageInDays = Math.max(0, ageInMs / (24 * 60 * 60 * 1000));
       if (ageInDays < 30) {
-        score += (30 - ageInDays);
+        score += 30 - ageInDays;
       }
 
       // 6. Source trust boost
       const sourceRegistry = job.sourceId;
-      if (sourceRegistry && typeof sourceRegistry.trustScore === 'number') {
+      if (sourceRegistry && typeof sourceRegistry.trustScore === "number") {
         score += sourceRegistry.trustScore * 10;
       }
 
@@ -231,7 +222,7 @@ export class SearchService {
     });
 
     // Sort according to requested strategy
-    if (sortBy === 'date') {
+    if (sortBy === "date") {
       scoredJobs.sort((a, b) => {
         const dateA = new Date(a.postedDate || a.lastSeenAt || 0).getTime();
         const dateB = new Date(b.postedDate || b.lastSeenAt || 0).getTime();

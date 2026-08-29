@@ -1,6 +1,7 @@
-import { CanonicalJob } from '../models/CanonicalJob.model.js';
-import { SourceRegistry } from '../models/SourceRegistry.model.js';
-import { URL } from 'url';
+import { CanonicalJob } from "../models/CanonicalJob.model.js";
+import { SourceRegistry } from "../models/SourceRegistry.model.js";
+import { safeFetchText } from "../utils/url-guard.js";
+import { URL } from "url";
 
 export class CleanupService {
   /**
@@ -14,10 +15,15 @@ export class CleanupService {
         const newScore = Math.max(0, source.trustScore - amount);
         source.trustScore = parseFloat(newScore.toFixed(4));
         await source.save();
-        console.log(`📉 TrustDecay: Source "${source.name}" trust score decayed by ${amount} to ${source.trustScore}`);
+        console.log(
+          `📉 TrustDecay: Source "${source.name}" trust score decayed by ${amount} to ${source.trustScore}`,
+        );
       }
     } catch (err) {
-      console.error(`⚠️ TrustDecay: Failed to decay trust for source ${sourceId}:`, err);
+      console.error(
+        `⚠️ TrustDecay: Failed to decay trust for source ${sourceId}:`,
+        err,
+      );
     }
   }
 
@@ -32,10 +38,15 @@ export class CleanupService {
         const newScore = Math.min(1.0, source.trustScore + amount);
         source.trustScore = parseFloat(newScore.toFixed(4));
         await source.save();
-        console.log(`📈 TrustBoost: Source "${source.name}" trust score boosted by ${amount} to ${source.trustScore}`);
+        console.log(
+          `📈 TrustBoost: Source "${source.name}" trust score boosted by ${amount} to ${source.trustScore}`,
+        );
       }
     } catch (err) {
-      console.error(`⚠️ TrustBoost: Failed to boost trust for source ${sourceId}:`, err);
+      console.error(
+        `⚠️ TrustBoost: Failed to boost trust for source ${sourceId}:`,
+        err,
+      );
     }
   }
 
@@ -45,7 +56,9 @@ export class CleanupService {
    * Returns the count of deactivated jobs.
    */
   static async cleanupStaleJobs(thresholdDays: number = 30): Promise<number> {
-    const cutoffDate = new Date(Date.now() - thresholdDays * 24 * 60 * 60 * 1000);
+    const cutoffDate = new Date(
+      Date.now() - thresholdDays * 24 * 60 * 60 * 1000,
+    );
 
     // 1. Simple time-based stale cutoff
     const result = await CanonicalJob.updateMany(
@@ -57,29 +70,35 @@ export class CleanupService {
         $set: {
           isActive: false,
           expiredAt: new Date(),
-          verificationState: 'failed',
-          verificationError: 'Time-based stale cutoff',
+          verificationState: "failed",
+          verificationError: "Time-based stale cutoff",
         },
-      }
+      },
     );
 
     let deactivatedCount = result.modifiedCount;
 
     // 2. Asynchronous link health verification for active jobs older than thresholdDays / 2 (default 15 days)
-    const linkCheckCutoff = new Date(Date.now() - Math.floor(thresholdDays / 2) * 24 * 60 * 60 * 1000);
+    const linkCheckCutoff = new Date(
+      Date.now() - Math.floor(thresholdDays / 2) * 24 * 60 * 60 * 1000,
+    );
     const activeJobsToCheck = await CanonicalJob.find({
       isActive: true,
       lastSeenAt: { $lt: linkCheckCutoff },
       $or: [
-        { applyUrl: { $exists: true, $ne: '' } },
-        { sourceUrl: { $exists: true, $ne: '' } },
+        { applyUrl: { $exists: true, $ne: "" } },
+        { sourceUrl: { $exists: true, $ne: "" } },
       ],
     }).exec();
 
     if (activeJobsToCheck.length > 0) {
       for (const job of activeJobsToCheck) {
         const urlStr = job.applyUrl || job.sourceUrl;
-        if (!urlStr || urlStr.startsWith('local://') || urlStr.startsWith('http://127.0.0.1')) {
+        if (
+          !urlStr ||
+          urlStr.startsWith("local://") ||
+          urlStr.startsWith("http://127.0.0.1")
+        ) {
           continue;
         }
 
@@ -87,32 +106,37 @@ export class CleanupService {
         await new Promise((resolve) => setTimeout(resolve, 200));
 
         try {
-          // Perform lightweight request to check URL status
-          const response = await fetch(urlStr, {
-            method: 'GET',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            },
+          // Perform lightweight SSRF-guarded request to check URL status
+          // (scheme/private-IP validation, timeout, redirect re-validation)
+          const { status, finalUrl } = await safeFetchText(urlStr, {
+            allowNonOk: true,
+            skipBody: true,
           });
 
           let shouldDeactivate = false;
-          let deactivationReason = '';
+          let deactivationReason = "";
 
-          if (response.status === 404) {
+          if (status === 404) {
             shouldDeactivate = true;
-            deactivationReason = 'HTTP 404';
-            console.log(`🔗 LinkVerifier: Job "${job.jobTitle}" URL returned 404. Deactivating.`);
+            deactivationReason = "HTTP 404";
+            console.log(
+              `🔗 LinkVerifier: Job "${job.jobTitle}" URL returned 404. Deactivating.`,
+            );
           } else {
             // Check for homepage redirects (expired listings redirecting back to search portals)
-            const finalUrl = response.url;
             if (finalUrl && finalUrl !== urlStr) {
               try {
                 const origParsed = new URL(urlStr);
                 const finalParsed = new URL(finalUrl);
-                if (origParsed.pathname.length > 2 && (finalParsed.pathname === '/' || finalParsed.pathname === '')) {
+                if (
+                  origParsed.pathname.length > 2 &&
+                  (finalParsed.pathname === "/" || finalParsed.pathname === "")
+                ) {
                   shouldDeactivate = true;
-                  deactivationReason = 'Homepage Redirect';
-                  console.log(`🔗 LinkVerifier: Job "${job.jobTitle}" redirected to homepage: "${finalUrl}". Deactivating.`);
+                  deactivationReason = "Homepage Redirect";
+                  console.log(
+                    `🔗 LinkVerifier: Job "${job.jobTitle}" redirected to homepage: "${finalUrl}". Deactivating.`,
+                  );
                 }
               } catch (e) {
                 // Ignore URL parse error
@@ -123,7 +147,7 @@ export class CleanupService {
           if (shouldDeactivate) {
             job.isActive = false;
             job.expiredAt = new Date();
-            job.verificationState = 'failed';
+            job.verificationState = "failed";
             job.verificationAttempts += 1;
             job.lastVerifiedAt = new Date();
             job.verificationError = deactivationReason;
@@ -134,7 +158,7 @@ export class CleanupService {
             await this.decaySourceTrust(job.sourceId, 0.05);
           } else {
             // Link is verified successfully
-            job.verificationState = 'verified';
+            job.verificationState = "verified";
             job.verificationAttempts = 0;
             job.lastVerifiedAt = new Date();
             job.verificationError = undefined;
@@ -144,8 +168,11 @@ export class CleanupService {
             await this.boostSourceTrust(job.sourceId, 0.01);
           }
         } catch (err: any) {
-          console.warn(`⚠️ LinkVerifier: Non-fatal ping check error for "${urlStr}" (Job: "${job.jobTitle}"):`, err);
-          
+          console.warn(
+            `⚠️ LinkVerifier: Non-fatal ping check error for "${urlStr}" (Job: "${job.jobTitle}"):`,
+            err,
+          );
+
           job.verificationAttempts += 1;
           job.lastVerifiedAt = new Date();
           job.verificationError = err.message || String(err);
@@ -153,7 +180,7 @@ export class CleanupService {
           if (job.verificationAttempts >= 3) {
             job.isActive = false;
             job.expiredAt = new Date();
-            job.verificationState = 'failed';
+            job.verificationState = "failed";
             deactivatedCount++;
             await job.save();
 

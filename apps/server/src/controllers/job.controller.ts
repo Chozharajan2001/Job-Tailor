@@ -1,7 +1,8 @@
-import { Request, Response } from 'express';
-import { Job, IJob } from '../models/Job.model.js';
-import { Resume } from '../models/Resume.model.js';
-import { parseJD } from '../services/jd-parser.service.js';
+import { Request, Response } from "express";
+import { Job, IJob } from "../models/Job.model.js";
+import { Resume } from "../models/Resume.model.js";
+import { parseJD } from "../services/jd-parser.service.js";
+import { escapeRegex } from "../utils/skill-matcher.js";
 
 /**
  * POST /api/v1/jobs — Create a new job entry with JD text.
@@ -14,14 +15,14 @@ export async function createJob(req: Request, res: Response): Promise<void> {
     companyName: req.body.companyName,
     jobTitle: req.body.jobTitle,
     jobLink: req.body.jobLink,
-    location: req.body.location || '',
-    workType: req.body.workType || 'remote',
-    employmentType: req.body.employmentType || 'full-time',
+    location: req.body.location || "",
+    workType: req.body.workType || "remote",
+    employmentType: req.body.employmentType || "full-time",
     salaryRange: req.body.salaryRange,
     postedDate: req.body.postedDate,
     jdRawText: req.body.jdRawText,
     attachedResumeId: req.body.attachedResumeId || null, // Support job-specific resume attachment
-    status: 'saved',
+    status: "saved",
   });
 
   res.status(201).json({ success: true, data: { job } });
@@ -41,17 +42,19 @@ export async function listJobs(req: Request, res: Response): Promise<void> {
   const query: Record<string, unknown> = { userId };
   if (status) query.status = status;
   if (search) {
+    // Escape user input — it must never be interpreted as raw regex
+    const escaped = escapeRegex(search);
     query.$or = [
-      { companyName: { $regex: search, $options: 'i' } },
-      { jobTitle: { $regex: search, $options: 'i' } },
-      { jdRawText: { $regex: search, $options: 'i' } },
+      { companyName: { $regex: escaped, $options: "i" } },
+      { jobTitle: { $regex: escaped, $options: "i" } },
+      { jdRawText: { $regex: escaped, $options: "i" } },
     ];
   }
 
   // Sorting
-  let sortBy = '-savedAt';
-  if (req.query.sortBy === 'company') sortBy = 'companyName';
-  if (req.query.sortBy === 'atsScore') sortBy = '-savedAt'; // ATS score is on resume, not job
+  let sortBy = "-savedAt";
+  if (req.query.sortBy === "company") sortBy = "companyName";
+  if (req.query.sortBy === "atsScore") sortBy = "-savedAt"; // ATS score is on resume, not job
 
   const [jobs, total] = await Promise.all([
     Job.find(query)
@@ -77,10 +80,17 @@ export async function listJobs(req: Request, res: Response): Promise<void> {
  */
 export async function getJob(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  const job = await Job.findOne({ _id: req.params.id, userId }).lean<IJob>().exec();
+  const job = await Job.findOne({ _id: req.params.id, userId })
+    .lean<IJob>()
+    .exec();
 
   if (!job) {
-    res.status(404).json({ success: false, error: { code: 'JOB_NOT_FOUND', message: 'Job not found.' } });
+    res
+      .status(404)
+      .json({
+        success: false,
+        error: { code: "JOB_NOT_FOUND", message: "Job not found." },
+      });
     return;
   }
 
@@ -94,7 +104,17 @@ export async function updateJob(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
 
   // Only allow certain fields to be updated
-  const allowedUpdates = ['companyName', 'jobTitle', 'jobLink', 'location', 'workType', 'employmentType', 'salaryRange', 'jdRawText', 'status'];
+  const allowedUpdates = [
+    "companyName",
+    "jobTitle",
+    "jobLink",
+    "location",
+    "workType",
+    "employmentType",
+    "salaryRange",
+    "jdRawText",
+    "status",
+  ];
   const updates: Record<string, unknown> = {};
   allowedUpdates.forEach((field) => {
     if (req.body[field] !== undefined) {
@@ -105,11 +125,18 @@ export async function updateJob(req: Request, res: Response): Promise<void> {
   const job = await Job.findOneAndUpdate(
     { _id: req.params.id, userId },
     updates,
-    { new: true }
-  ).lean<IJob>().exec();
+    { new: true },
+  )
+    .lean<IJob>()
+    .exec();
 
   if (!job) {
-    res.status(404).json({ success: false, error: { code: 'JOB_NOT_FOUND', message: 'Job not found.' } });
+    res
+      .status(404)
+      .json({
+        success: false,
+        error: { code: "JOB_NOT_FOUND", message: "Job not found." },
+      });
     return;
   }
 
@@ -124,17 +151,25 @@ export async function deleteJob(req: Request, res: Response): Promise<void> {
   const result = await Job.deleteOne({ _id: req.params.id, userId });
 
   if (result.deletedCount === 0) {
-    res.status(404).json({ success: false, error: { code: 'JOB_NOT_FOUND', message: 'Job not found.' } });
+    res
+      .status(404)
+      .json({
+        success: false,
+        error: { code: "JOB_NOT_FOUND", message: "Job not found." },
+      });
     return;
   }
 
-  res.json({ success: true, data: { message: 'Job deleted successfully.' } });
+  res.json({ success: true, data: { message: "Job deleted successfully." } });
 }
 
 /**
  * PATCH /api/v1/jobs/:id/attach-resume — Attach a resume to an existing job.
  */
-export async function attachResumeToJob(req: Request, res: Response): Promise<void> {
+export async function attachResumeToJob(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
   const jobId = req.params.id;
   const { resumeId } = req.body;
@@ -142,7 +177,7 @@ export async function attachResumeToJob(req: Request, res: Response): Promise<vo
   if (!resumeId) {
     res.status(400).json({
       success: false,
-      error: { code: 'MISSING_RESUME_ID', message: 'resumeId is required.' },
+      error: { code: "MISSING_RESUME_ID", message: "resumeId is required." },
     });
     return;
   }
@@ -150,22 +185,28 @@ export async function attachResumeToJob(req: Request, res: Response): Promise<vo
   try {
     // Verify job exists and belongs to user
     const job = await Job.findOne({ _id: jobId, userId });
-    
+
     if (!job) {
       res.status(404).json({
         success: false,
-        error: { code: 'JOB_NOT_FOUND', message: 'Job not found or access denied.' },
+        error: {
+          code: "JOB_NOT_FOUND",
+          message: "Job not found or access denied.",
+        },
       });
       return;
     }
 
     // Verify resume exists and belongs to user
     const resume = await Resume.findOne({ _id: resumeId, userId });
-    
+
     if (!resume) {
       res.status(404).json({
         success: false,
-        error: { code: 'RESUME_NOT_FOUND', message: 'Resume not found or access denied.' },
+        error: {
+          code: "RESUME_NOT_FOUND",
+          message: "Resume not found or access denied.",
+        },
       });
       return;
     }
@@ -178,14 +219,17 @@ export async function attachResumeToJob(req: Request, res: Response): Promise<vo
       success: true,
       data: {
         job,
-        message: 'Resume successfully attached to job.',
+        message: "Resume successfully attached to job.",
       },
     });
   } catch (error) {
-    console.error('Attach resume error:', error);
+    console.error("Attach resume error:", error);
     res.status(500).json({
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to attach resume to job.' },
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Failed to attach resume to job.",
+      },
     });
   }
 }
@@ -198,7 +242,12 @@ export async function parseJobJD(req: Request, res: Response): Promise<void> {
 
   const job = await Job.findOne({ _id: req.params.id, userId });
   if (!job) {
-    res.status(404).json({ success: false, error: { code: 'JOB_NOT_FOUND', message: 'Job not found.' } });
+    res
+      .status(404)
+      .json({
+        success: false,
+        error: { code: "JOB_NOT_FOUND", message: "Job not found." },
+      });
     return;
   }
 
@@ -210,10 +259,11 @@ export async function parseJobJD(req: Request, res: Response): Promise<void> {
 
     res.json({ success: true, data: { parsedJD } });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to parse JD';
+    const message =
+      error instanceof Error ? error.message : "Failed to parse JD";
     res.status(502).json({
       success: false,
-      error: { code: 'JD_PARSE_FAILED', message },
+      error: { code: "JD_PARSE_FAILED", message },
     });
   }
 }
