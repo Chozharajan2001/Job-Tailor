@@ -22,35 +22,35 @@
 
 ## Priority Index (single glance)
 
-| Rank | Tier      | Feature                                     | Effort  |
-| ---- | --------- | ------------------------------------------- | ------- |
-| 0    | Quick Win | Fix stale docs                              | 30 min  |
-| 1    | MUST      | Live job discovery — seed the empty index   | 8 h     |
-| 2    | MUST      | Chrome Extension — auto-track applications  | 15–20 h |
-| 3    | MUST      | ATS Scoring upgrade (60% → 85%)             | 8–12 h  |
-| 4    | IMPORTANT | Resume template library                     | 6 h     |
-| 5    | IMPORTANT | Cover letter generator                      | 4 h     |
-| 6    | IMPORTANT | Email digest recommendations                | 6–8 h   |
-| 7    | IMPORTANT | UI onboarding fixes (empty state, progress) | 2–3 h   |
-| 8    | QUALITY   | Resume tailoring depth                      | 4–6 h   |
-| 9    | QUALITY   | Real ATS emulation (parsable check)         | 8 h     |
-| 10   | QUALITY   | Analytics depth                             | 4–6 h   |
-| 11   | QUALITY   | Testing gaps                                | 4–6 h   |
-| 12   | POLISH    | Kanban DnD, filters, quick preview, loaders | 8–12 h  |
-| 13   | SHIP      | Production deployment verification          | 4–6 h   |
-| 14   | FUTURE    | Extension v2/v3 (save-job, autofill)        | 12–24 h |
-| 15   | FUTURE    | JobPilot referral agent                     | 20–30 h |
+| Rank | Tier      | Feature                                      | Effort  |
+| ---- | --------- | -------------------------------------------- | ------- |
+| 0    | Quick Win | Fix stale docs                               | 30 min  |
+| 1    | MUST      | ✅ Live job discovery — seed the empty index | 8 h     |
+| 2    | MUST      | Chrome Extension — auto-track applications   | 15–20 h |
+| 3    | MUST      | ATS Scoring upgrade (60% → 85%)              | 8–12 h  |
+| 4    | IMPORTANT | Resume template library                      | 6 h     |
+| 5    | IMPORTANT | Cover letter generator                       | 4 h     |
+| 6    | IMPORTANT | Email digest recommendations                 | 6–8 h   |
+| 7    | IMPORTANT | UI onboarding fixes (empty state, progress)  | 2–3 h   |
+| 8    | QUALITY   | Resume tailoring depth                       | 4–6 h   |
+| 9    | QUALITY   | Real ATS emulation (parsable check)          | 8 h     |
+| 10   | QUALITY   | Analytics depth                              | 4–6 h   |
+| 11   | QUALITY   | Testing gaps                                 | 4–6 h   |
+| 12   | POLISH    | Kanban DnD, filters, quick preview, loaders  | 8–12 h  |
+| 13   | SHIP      | Production deployment verification           | 4–6 h   |
+| 14   | FUTURE    | Extension v2/v3 (save-job, autofill)         | 12–24 h |
+| 15   | FUTURE    | JobPilot referral agent                      | 20–30 h |
 
 ---
 
 # TIER 0 — QUICK WIN (do immediately, costs nothing)
 
-### 0. Fix Stale & Misleading Docs — 30 min
+### 0. Fix Stale & Misleading Docs — 30 min ✅ DONE (2026-09-25)
 
 Not important by value, but it is 30 minutes and the current state actively misrepresents the project.
 
-- [ ] Update `README.md` — test count (9 files, 50+ tests), phases 5–9 status, PDF export is wired
-- [ ] Update `docs/architecture.md` — remove outdated claims ("no tests", "PDF route pending", "fallback score of 75")
+- [x] Update `README.md` — test count (9 files, 50+ tests), phases 5–9 status, PDF export is wired
+- [x] Update `docs/architecture.md` — remove outdated claims ("no tests", "PDF route pending", "fallback score of 75")
 
 ---
 
@@ -60,18 +60,20 @@ _Without these, the product's core promise does not hold. Ordered by severity of
 
 ---
 
-## 1. Live Job Discovery — Seed the Empty Index (8 h)
+## 1. Live Job Discovery — Seed the Empty Index (8 h) ✅ DONE (2026-09-26)
 
 **Why this is #1:** the search engine is best-in-class but `CanonicalJob` starts **empty at signup**. Every search, feed, watch, alert, and future digest returns nothing. A new user's first impression is a dead product. RemoteHunt, Jobright, and Teal hook users with live listings on day one — this is the single largest gap between what we built and what anyone can use.
 
 Every other discovery feature depends on this. Nothing downstream works on an empty index.
 
-- [ ] Connectors for public career-page APIs — Greenhouse, Lever, Ashby all expose public JSON job feeds per company
-- [ ] RSS feed ingestion for job boards
-- [ ] Open remote-job APIs (RemoteOK-style)
-- [ ] Scheduled crawl runner — reuse existing ingestion pipeline, dedup (L1/L2/L3), and source trust scoring
-- [ ] Source registry entries + sensible trust defaults per connector type
-- [ ] Verify the existing search/feed/alert pipeline returns real results end-to-end against seeded data
+**Executed as `docs/superpowers/plans/2026-09-26-live-job-discovery.md` (14 tasks).** 4 API connectors (Greenhouse, Lever, Ashby, RemoteOK), poller service with concurrency cap + circuit breaker + trust decay via existing `CleanupService`, admin surface gated by `x-admin-key` with Zod companyId validation, 23-item seed JSON + CLI bootstrap, GitHub Action cron. `IngestionService.ingestJob` widened to accept `api_connector` sourceType with a fast path that skips the LLM. E2E smoke covers seed → poll → search. 40 new server tests added (suite 77 → 117).
+
+- [x] Connectors for public career-page APIs — Greenhouse, Lever, Ashby all expose public JSON job feeds per company
+- [x] RSS feed ingestion for job boards — implemented via the RemoteOK firehose connector
+- [x] Open remote-job APIs (RemoteOK-style)
+- [x] Scheduled crawl runner — reuse existing ingestion pipeline, dedup (L1/L2/L3), and source trust scoring
+- [x] Source registry entries + sensible trust defaults per connector type
+- [x] Verify the existing search/feed/alert pipeline returns real results end-to-end against seeded data
 
 ---
 

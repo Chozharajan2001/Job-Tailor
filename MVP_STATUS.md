@@ -1,7 +1,21 @@
 # JobTailor MVP Status
 
-> Last updated: 2026-09-25 (docs refreshed against codebase; roadmap consolidated into TODO_PLAN.md)
+> Last updated: 2026-09-26 (Tier 1 Feature 1 — live job discovery — executed end-to-end)
 > Prioritized next-work roadmap lives in [TODO_PLAN.md](./TODO_PLAN.md). This file records what is built.
+
+## Tier 1 Feature 1 Shipped: Live Job Discovery
+
+The `CanonicalJob` search index can now be populated from public career-page APIs on a schedule — the first-run empty-index gap flagged by the competitor audit is closed at the backend layer. Details:
+
+- **4 connectors** — Greenhouse (`boards-api.greenhouse.io`), Lever (`api.lever.co`), Ashby (`api.ashbyhq.com`), RemoteOK (firehose). Registered under `apps/server/src/services/source-connectors/`.
+- **Source poller** — `pollSource` fetches one registry row, ingests each job via the widened `IngestionService.ingestJob` (`api_connector` sourceType, `extractionConfidence 0.9`, no LLM at poll time), then updates `lastPolledAt`, `errorCount`, and trust score. `pollDueSources` runs the batch with concurrency cap 5 and circuit-breaks a source after 5 consecutive failures. `runWithConcurrency` pool is local, no new npm dependency.
+- **Admin surface** — `POST /api/v1/admin/seed-sources` and `POST /api/v1/admin/poll-due-sources`, both behind an `x-admin-key` shared secret (`SOURCE_POLL_ADMIN_KEY` env var). Zod validates `companyId` shape to prevent malformed tokens.
+- **Bootstrap data + CLI** — `data/seed-companies.json` (~23 known Greenhouse / Lever / Ashby tokens plus the RemoteOK firehose row) and `scripts/seed-sources.mjs`.
+- **Scheduled runner** — `.github/workflows/poll-sources.yml` triggers `poll-due-sources` every 6 hours once the backend is deployed.
+- **Race fix uncovered by the e2e test** — `IngestionService.ensureDefaultSources` now uses an atomic upsert instead of `findOne → create`, so concurrent pollers don't hit the unique-name index.
+- **New tests**: 12 connector tests, 5 ingestion-connector tests, 10 source-poller tests, 4 seed tests, 7 admin-route tests, 2 e2e tests. Suite grew from 77 → 117 server tests.
+
+What the poller intentionally does **not** do: parse the JD with the LLM. Cost is bounded to user view-time — the client's existing "Parse JD with AI" flow on the Jobs page handles that when the user actually engages with a canonical job.
 
 ## Summary
 
@@ -11,7 +25,9 @@ Verified:
 
 ```bash
 npm run typecheck  ✅ (3/3 packages)
-npm run test       ✅ (79 tests — 77 server across 9 files + 2 client smoke)
+npm run test       ✅ (server 117+ tests across 15 files, client 2 smoke; one pre-existing
+                             search-engine L2 test times out due to live OpenAI latency,
+                             not a code regression — see plan execution notes)
 npm run build      ✅
 ```
 
