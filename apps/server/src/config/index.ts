@@ -54,6 +54,13 @@ export const config = {
     | "gemini"
     | "nvidia",
 
+  /**
+   * Shared secret that gates the /api/v1/admin/* endpoints used by the
+   * external job-source poller (GitHub Action cron). When unset, the admin
+   * routes return 503 rather than silently running with no auth.
+   */
+  sourcePollAdminKey: process.env.SOURCE_POLL_ADMIN_KEY || "",
+
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
     apiKey: process.env.CLOUDINARY_API_KEY || "",
