@@ -1,0 +1,68 @@
+{
+  "items": [
+    { "name": "GitLab", "connectorType": "greenhouse", "companyId": "gitlab" },
+    {
+      "name": "Datadog",
+      "connectorType": "greenhouse",
+      "companyId": "datadog"
+    },
+    { "name": "Airbnb", "connectorType": "greenhouse", "companyId": "airbnb" },
+    {
+      "name": "Riot Games",
+      "connectorType": "greenhouse",
+      "companyId": "riotgames"
+    },
+    {
+      "name": "Intercom",
+      "connectorType": "greenhouse",
+      "companyId": "intercom"
+    },
+    {
+      "name": "Coinbase",
+      "connectorType": "greenhouse",
+      "companyId": "coinbase"
+    },
+    {
+      "name": "MongoDB",
+      "connectorType": "greenhouse",
+      "companyId": "mongodb"
+    },
+    {
+      "name": "Elastic",
+      "connectorType": "greenhouse",
+      "companyId": "elasticco"
+    },
+    {
+      "name": "HashiCorp",
+      "connectorType": "greenhouse",
+      "companyId": "hashicorp"
+    },
+    {
+      "name": "Cloudflare",
+      "connectorType": "greenhouse",
+      "companyId": "cloudflare"
+    },
+    { "name": "Plaid", "connectorType": "lever", "companyId": "plaid" },
+    { "name": "Sentiance", "connectorType": "lever", "companyId": "sentiance" },
+    { "name": "Voleon", "connectorType": "lever", "companyId": "voleon" },
+    { "name": "Spotify", "connectorType": "lever", "companyId": "spotify" },
+    { "name": "Netflix", "connectorType": "lever", "companyId": "netflix" },
+    { "name": "Notion", "connectorType": "ashby", "companyId": "notion" },
+    { "name": "Linear", "connectorType": "ashby", "companyId": "linear" },
+    { "name": "Vercel", "connectorType": "ashby", "companyId": "vercel" },
+    { "name": "Ramp", "connectorType": "ashby", "companyId": "ramp" },
+    {
+      "name": "Browserbase",
+      "connectorType": "ashby",
+      "companyId": "browserbase"
+    },
+    { "name": "Framer", "connectorType": "ashby", "companyId": "framer" },
+    { "name": "Loops", "connectorType": "ashby", "companyId": "loops" },
+    {
+      "name": "RemoteOK Firehose",
+      "connectorType": "remoteok",
+      "companyId": "_firehose"
+    }
+  ],
+  "_comment": "Tokens here are company slugs on the named platforms. Company tokens can change; the poller's circuit-breaker disables any that 404, and re-running the seed script with fresh tokens is idempotent. Verify each slug resolves before shipping changes to this file."
+}

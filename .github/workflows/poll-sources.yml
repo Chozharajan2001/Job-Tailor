@@ -1,0 +1,29 @@
+name: Poll job sources
+
+# Runs the source-poller every 6 hours. Requires the server to expose
+# /api/v1/admin/poll-due-sources and the SOURCE_POLL_ADMIN_KEY secret to
+# match its configured value. Add JOBTAILOR_API_BASE as a repository
+# secret pointing at the deployed backend (no trailing slash).
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger poll-due-sources
+        env:
+          API_BASE: ${{ secrets.JOBTAILOR_API_BASE }}
+          ADMIN_KEY: ${{ secrets.SOURCE_POLL_ADMIN_KEY }}
+        run: |
+          if [ -z "$API_BASE" ] || [ -z "$ADMIN_KEY" ]; then
+            echo "JOBTAILOR_API_BASE and SOURCE_POLL_ADMIN_KEY secrets are required" >&2
+            exit 1
+          fi
+          curl -fsS -X POST "$API_BASE/api/v1/admin/poll-due-sources" \
+            -H "x-admin-key: $ADMIN_KEY" \
+            -H "content-type: application/json"
