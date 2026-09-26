@@ -12,36 +12,41 @@ import { IJobIngestionInput } from "@jobtailor/shared-types";
 
 export class IngestionService {
   /**
-   * Helper to ensure basic sources exist in the SourceRegistry
+   * Helper to ensure basic sources exist in the SourceRegistry.
+   * Uses upsert so concurrent ingestJob calls (e.g. the source-poller
+   * fanning out across sources) do not race on the unique `name` index.
    */
   static async ensureDefaultSources() {
-    const manual = await SourceRegistry.findOne({ sourceType: "manual_paste" });
-    if (!manual) {
-      await SourceRegistry.create({
-        name: "Manual Paste Ingest",
-        sourceType: "manual_paste",
-        baseUrl: "local://manual",
-        crawlFrequency: 0,
-        extractionStrategy: "manual_input",
-        trustScore: 1.0,
-        isEnabled: true,
-      });
-    }
+    await SourceRegistry.updateOne(
+      { sourceType: "manual_paste" },
+      {
+        $setOnInsert: {
+          name: "Manual Paste Ingest",
+          sourceType: "manual_paste",
+          baseUrl: "local://manual",
+          crawlFrequency: 0,
+          extractionStrategy: "manual_input",
+          trustScore: 1.0,
+          isEnabled: true,
+        },
+      },
+      { upsert: true },
+    );
 
-    const publicPage = await SourceRegistry.findOne({
-      name: "Public Job Page Ingest",
-    });
-    if (!publicPage) {
-      await SourceRegistry.create({
-        name: "Public Job Page Ingest",
-        sourceType: "public_job_page",
-        baseUrl: "http://",
-        crawlFrequency: 1440,
-        extractionStrategy: "json_ld",
-        trustScore: 0.8,
-        isEnabled: true,
-      });
-    }
+    await SourceRegistry.updateOne(
+      { name: "Public Job Page Ingest" },
+      {
+        $setOnInsert: {
+          sourceType: "public_job_page",
+          baseUrl: "http://",
+          crawlFrequency: 1440,
+          extractionStrategy: "json_ld",
+          trustScore: 0.8,
+          isEnabled: true,
+        },
+      },
+      { upsert: true },
+    );
   }
 
   /**
