@@ -92,7 +92,7 @@ Files that change together live together: each platform has a detector and an ex
 **Consumes** (existing):
 
 - `Application` model at `apps/server/src/models/Application.model.ts` — unique `(userId, jobId)`, `status` enum includes `'applied'`
-- `Job` model at `apps/server/src/models/Job.model.ts` — has `jdRawText`, `sourceUrl?`, `companyName`, `jobTitle`, `userId` fields
+- `Job` model at `apps/server/src/models/Job.model.ts` — has `jdRawText`, `jobLink?`, `companyName`, `jobTitle`, `userId` fields (there is **no** `applyUrl` or `sourceUrl` on Job; those live on `CanonicalJob`)
 - `authenticate` middleware (JWT) at `apps/server/src/middleware/auth.middleware.ts:23` — same `req.user = { userId, email }` shape our API-key middleware will produce
 - Existing `createApplication` handler at `apps/server/src/controllers/application.controller.ts` — we'll reuse its "record a timeline event on creation" behaviour by calling it after our upsert, or by factoring a small helper
 
@@ -401,42 +401,36 @@ git commit -am "feat(server): API-key issue/list/revoke endpoints (JWT-protected
 **Interfaces:**
 
 - Consumes: `Job` model, existing `parseJD` service (do NOT auto-invoke — the user can trigger parse from the UI)
-- Produces: `findOrCreateJob(userId, draft: ApplicationDraft): Promise<{ job: IJobDocument; created: boolean }>`
+- Produces: `findOrCreateJob(userId, draft: ApplicationDraft): Promise<{ job: IJob; created: boolean }>`
 
 Rationale: the extension has a URL, a company name, and a job title (from the DOM). It does not know whether the user already added this job manually. Match strategy:
 
-1. **Primary:** exact `applyUrl` or `sourceUrl` match for the same `userId` → reuse
-2. **Secondary:** normalized `(companyName + jobTitle)` match within last 60 days → reuse (with a warning log so the user can inspect)
-3. **Fallback:** create a new Job with `source: 'extension'`, `jdRawText` from the extractor, no `parsedJD`
+1. **Primary:** exact `jobLink` match for the same `userId` → reuse
+2. **Secondary:** same company + job title within last 60 days → reuse (with a warning log so the user can inspect)
+3. **Fallback:** create a new Job with `jobLink = draft.sourceUrl`, `jdRawText` from the extractor, `parsedJD` unset
+
+Note: `Job` has `jobLink` for the posting URL — **not** `applyUrl` or `sourceUrl` (those names belong to `CanonicalJob`). No new Job field is added; provenance lives on the Application's timeline event, not on the Job schema.
 
 - [ ] **Step 1: Write the failing tests**
 
-Cover: URL match hit, URL miss + title+company hit within 60d, both miss → create, subsequent identical calls return the same jobId (idempotency).
+Cover: `jobLink` match hit, `jobLink` miss + title+company hit within 60d, both miss → create with `jobLink`, subsequent identical calls return the same `jobId` (idempotency).
 
 - [ ] **Step 2: Implement `job-upsert.service.ts`**
 
 ```typescript
-import { Job, IJobDocument } from "../models/Job.model.js";
+import { Job, IJob } from "../models/Job.model.js";
 import type { ApplicationDraft } from "./application-draft.types.js";
-
-function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .trim();
-}
 
 export async function findOrCreateJob(
   userId: string,
   draft: ApplicationDraft,
-): Promise<{ job: IJobDocument; created: boolean }> {
-  const byUrl = await Job.findOne({
-    userId,
-    $or: [{ applyUrl: draft.sourceUrl }, { sourceUrl: draft.sourceUrl }],
-  });
+): Promise<{ job: IJob; created: boolean }> {
+  // Primary: exact URL match on jobLink
+  const byUrl = await Job.findOne({ userId, jobLink: draft.sourceUrl });
   if (byUrl) return { job: byUrl, created: false };
 
-  // Secondary match: same company + title within 60 days
+  // Secondary: same company + title within 60 days (extension users
+  // often re-visit the same role from a slightly different URL)
   const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
   const byTitle = await Job.findOne({
     userId,
@@ -446,16 +440,20 @@ export async function findOrCreateJob(
     jobTitle: { $regex: new RegExp(`^${escapeRegex(draft.jobTitle)}$`, "i") },
     createdAt: { $gte: cutoff },
   });
-  if (byTitle) return { job: byTitle, created: false };
+  if (byTitle) {
+    console.warn(
+      `job-upsert: matched existing Job ${byTitle._id} by company+title (not URL). ` +
+        `Draft URL ${draft.sourceUrl} differs from stored jobLink ${byTitle.jobLink}.`,
+    );
+    return { job: byTitle, created: false };
+  }
 
   const created = await Job.create({
     userId,
     companyName: draft.companyName,
     jobTitle: draft.jobTitle,
     jdRawText: draft.jdRawText,
-    applyUrl: draft.sourceUrl,
-    sourceUrl: draft.sourceUrl,
-    source: "extension",
+    jobLink: draft.sourceUrl,
   });
   return { job: created, created: true };
 }
@@ -464,8 +462,6 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 ```
-
-Also add `normalize` usage if the tests need whitespace-insensitive match — but the primary is exact URL and exact (case-insensitive) company+title, so `escapeRegex` on the full string suffices.
 
 Add `ApplicationDraft` shared type at `apps/server/src/services/application-draft.types.ts`:
 
@@ -515,12 +511,10 @@ export async function createFromExtension(
 ): Promise<void> {
   const parsed = extensionDraftSchema.safeParse(req.body);
   if (!parsed.success) {
-    res
-      .status(400)
-      .json({
-        success: false,
-        error: { code: "INVALID_DRAFT", details: parsed.error.issues },
-      });
+    res.status(400).json({
+      success: false,
+      error: { code: "INVALID_DRAFT", details: parsed.error.issues },
+    });
     return;
   }
   const userId = req.user!.userId;
@@ -553,17 +547,15 @@ export async function createFromExtension(
       },
     ],
   });
-  res
-    .status(201)
-    .json({
-      success: true,
-      data: {
-        jobId: job._id,
-        applicationId: app._id,
-        jobCreated,
-        applicationCreated: true,
-      },
-    });
+  res.status(201).json({
+    success: true,
+    data: {
+      jobId: job._id,
+      applicationId: app._id,
+      jobCreated,
+      applicationCreated: true,
+    },
+  });
 }
 ```
 
