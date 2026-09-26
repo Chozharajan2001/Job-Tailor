@@ -86,7 +86,19 @@ export class IngestionService {
 
     // 2. Resolve the source registry document
     let source = null;
-    if (input.sourceType === "manual_paste") {
+    if (input.sourceType === "api_connector") {
+      if (!input.sourceId) {
+        throw new Error(
+          "api_connector ingest requires a sourceId referencing an existing SourceRegistry entry",
+        );
+      }
+      source = await SourceRegistry.findById(input.sourceId).lean();
+      if (!source) {
+        throw new Error(
+          `api_connector ingest: SourceRegistry ${input.sourceId} not found`,
+        );
+      }
+    } else if (input.sourceType === "manual_paste") {
       source = await SourceRegistry.findOne({ sourceType: "manual_paste" });
     } else {
       if (sourceUrl) {
@@ -141,16 +153,20 @@ export class IngestionService {
     const confidence =
       input.sourceType === "manual_paste"
         ? 1.0
-        : input.rawHtmlSnapshot
-          ? 0.8
-          : 0.4;
+        : input.sourceType === "api_connector"
+          ? 0.9
+          : input.rawHtmlSnapshot
+            ? 0.8
+            : 0.4;
     const canonicalJob = await CanonicalJob.create({
       sourceId: source?._id,
       sourceName:
         source?.name ||
         (input.sourceType === "manual_paste"
           ? "Manual Paste Ingest"
-          : "Public URL Ingest"),
+          : input.sourceType === "api_connector"
+            ? input.sourceName
+            : "Public URL Ingest"),
       sourceUrl,
       companyName,
       jobTitle,

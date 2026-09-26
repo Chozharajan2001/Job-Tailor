@@ -413,8 +413,10 @@ export interface ISavedSearch {
 }
 
 export interface IJobIngestionInput {
-  sourceType: "manual_paste" | "public_job_page";
+  sourceType: "manual_paste" | "public_job_page" | "api_connector";
   sourceName: string;
+  /** Required when sourceType is 'api_connector': the SourceRegistry _id. */
+  sourceId?: string;
   sourceUrl?: string;
   applyUrl?: string;
   companyName: string;
