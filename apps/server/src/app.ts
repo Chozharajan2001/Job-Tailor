@@ -95,6 +95,15 @@ app.use(
 );
 app.use("/api/v1/jobs", (await import("./routes/job.routes.js")).default);
 app.use("/api/v1/resumes", (await import("./routes/resume.routes.js")).default);
+// Extension endpoint. Registered BEFORE the JWT-protected /applications
+// router so the `authenticate` middleware does not gate it; instead the
+// request is guarded by `authenticateByApiKey` inline here.
+app.post(
+  "/api/v1/applications/from-extension",
+  (await import("./middleware/api-key-auth.js")).authenticateByApiKey,
+  (await import("./controllers/application-extension.controller.js"))
+    .createFromExtension,
+);
 app.use(
   "/api/v1/applications",
   (await import("./routes/application.routes.js")).default,
