@@ -104,6 +104,7 @@ app.use(
   (await import("./routes/analytics.routes.js")).default,
 );
 app.use("/api/v1/search", (await import("./routes/search.routes.js")).default);
+app.use("/api/v1/apikeys", (await import("./routes/apikey.routes.js")).default);
 app.use("/api/v1/admin", (await import("./routes/admin.routes.js")).default);
 
 // ─── 404 Handler ───────────────────────────────────────────────────

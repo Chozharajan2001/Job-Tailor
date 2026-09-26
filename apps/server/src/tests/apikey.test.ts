@@ -7,6 +7,11 @@ import { generateApiKey, hashApiKey } from "../utils/api-key.js";
 import { ApiKey } from "../models/ApiKey.model.js";
 import { User } from "../models/User.model.js";
 import { authenticateByApiKey } from "../middleware/api-key-auth.js";
+import {
+  issueApiKey,
+  listApiKeys,
+  revokeApiKey,
+} from "../controllers/apikey.controller.js";
 import { connectTestDb, disconnectTestDb } from "./helpers/test-db.js";
 
 process.env.NODE_ENV = "test";
@@ -133,5 +138,104 @@ describe("authenticateByApiKey", () => {
     await new Promise((r) => setTimeout(r, 50));
     const found = await ApiKey.findById(doc._id).lean();
     expect(found?.lastUsedAt).toBeInstanceOf(Date);
+  });
+});
+
+/**
+ * Controller tests use a minimal Express app with a `stubUser` middleware
+ * that injects req.user directly. This exercises the controller handlers
+ * without running the full JWT stack.
+ */
+function makeKeyApp(userId: string) {
+  const app = express();
+  app.use(express.json());
+  const stubUser = (
+    _req: express.Request,
+    _res: express.Response,
+    next: express.NextFunction,
+  ) => {
+    _req.user = { userId, email: "stub@x.co" };
+    next();
+  };
+  app.post("/keys", stubUser, issueApiKey);
+  app.get("/keys", stubUser, listApiKeys);
+  app.patch("/keys/:id/revoke", stubUser, revokeApiKey);
+  return app;
+}
+
+describe("apikey controller", () => {
+  let userId: string;
+
+  beforeAll(async () => {
+    if (mongoose.connection.readyState !== 1) await connectTestDb();
+  });
+
+  beforeEach(async () => {
+    const u = await User.create({
+      email: `owner-${Date.now()}@x.co`,
+      passwordHash: validHash,
+      firstName: "Owner",
+      lastName: "T",
+      emailVerified: true,
+    });
+    userId = String(u._id);
+  });
+
+  it("POST /keys issues a raw key with jtk_ prefix", async () => {
+    const r = await request(makeKeyApp(userId))
+      .post("/keys")
+      .send({ name: "laptop" });
+    expect(r.status).toBe(201);
+    expect(r.body.data.key).toMatch(/^jtk_[a-f0-9]{40}$/);
+    expect(r.body.data.name).toBe("laptop");
+    expect(r.body.data.prefix).toBe(r.body.data.key.slice(0, 8));
+  });
+
+  it("GET /keys returns list without ever exposing the raw or hash", async () => {
+    const a = await request(makeKeyApp(userId))
+      .post("/keys")
+      .send({ name: "k1" });
+    const b = await request(makeKeyApp(userId))
+      .post("/keys")
+      .send({ name: "k2" });
+    const r = await request(makeKeyApp(userId)).get("/keys");
+    expect(r.status).toBe(200);
+    expect(r.body.data.keys).toHaveLength(2);
+    const json = JSON.stringify(r.body);
+    // The 8-char prefix ("jtk_xxx") IS intentionally shown so users can
+    // recognise their keys. The full raw value (44 chars) must never appear.
+    expect(json).not.toContain(a.body.data.key);
+    expect(json).not.toContain(b.body.data.key);
+    expect(json).not.toMatch(/keyHash/);
+  });
+
+  it("PATCH /keys/:id/revoke sets revokedAt and makes auth calls fail", async () => {
+    const issued = await request(makeKeyApp(userId))
+      .post("/keys")
+      .send({ name: "revoke-me" });
+    const id = issued.body.data.id;
+    const rawKey = issued.body.data.key;
+
+    // Confirm auth works with the raw key before revocation
+    const ping1 = await request(makePingApp())
+      .get("/ping")
+      .set("x-api-key", rawKey);
+    expect(ping1.status).toBe(200);
+
+    const rev = await request(makeKeyApp(userId)).patch(`/keys/${id}/revoke`);
+    expect(rev.status).toBe(200);
+    expect(rev.body.data.revokedAt).toBeTruthy();
+
+    const ping2 = await request(makePingApp())
+      .get("/ping")
+      .set("x-api-key", rawKey);
+    expect(ping2.status).toBe(401);
+  });
+
+  it("rejects empty key name with 400", async () => {
+    const r = await request(makeKeyApp(userId))
+      .post("/keys")
+      .send({ name: "" });
+    expect(r.status).toBe(400);
   });
 });
