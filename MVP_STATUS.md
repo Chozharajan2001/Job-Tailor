@@ -1,6 +1,7 @@
 # JobTailor MVP Status
 
-> Last updated: 2026-07-03 (Release & UI Wiring complete)
+> Last updated: 2026-09-25 (docs refreshed against codebase; roadmap consolidated into TODO_PLAN.md)
+> Prioritized next-work roadmap lives in [TODO_PLAN.md](./TODO_PLAN.md). This file records what is built.
 
 ## Summary
 
@@ -9,8 +10,8 @@ JobTailor is an advanced MVP. The resume tailoring loop, job search engine, prof
 Verified:
 
 ```bash
-npm run typecheck  ✅
-npm run test       ✅ (48 tests, 5 test files)
+npm run typecheck  ✅ (3/3 packages)
+npm run test       ✅ (79 tests — 77 server across 9 files + 2 client smoke)
 npm run build      ✅
 ```
 
@@ -56,7 +57,7 @@ npm run build      ✅
   - **Reusable Resume Selection**: Automatically queries `GET /resumes/reuse` to pre-populate default tailored resume selection dropdown in tracker card creation modal.
   - **Attach Resume to Job**: Exposes inline Link Resume selectors on the `JobsPage` details view calling `PATCH /jobs/:id/attach-resume`.
   - **Crawl Source Registration**: Exposes a "Register Source" form modal and trigger in the health matrix panel calling `POST /search/sources`.
-- **Test Suite**: 48 integration tests (36 search engine, 6 auth, 4 jobs, 2 resumes) + 7 profile tests + 2 client smoke tests covering all main routes, schemas, and UI mounting.
+- **Test Suite**: 79 tests — 77 server (search engine 21, auth 11, security-utils 11, http-auth 9, application-workflow 7, profile-workflow 7, ATS scoring 5, jobs 4, resumes 2) + 2 client smoke tests covering the main routes, schemas, and UI mounting.
 
 ## Partially Done
 
@@ -67,11 +68,15 @@ npm run build      ✅
 
 ## Remaining MVP Work
 
+> The authoritative, prioritized list is [TODO_PLAN.md](./TODO_PLAN.md). The items below are the small residual gaps noted during the MVP build; the roadmap there supersedes and expands them.
+
 1. **Tag editing visual enhancements**
    - Further CSS style matching for custom tag layouts.
 
 2. **Add more mock tests**.
    - Edge case crawler failure scenarios.
+
+Largest strategic gaps (from the competitor audit): empty search index at first run, no browser extension for auto-tracking/capture, single resume template, no cover letter. See TODO_PLAN.md Tiers 1–2.
 
 ## Out Of Scope For MVP
 
@@ -83,51 +88,51 @@ npm run build      ✅
 
 ## Feature Status Matrix
 
-| Area | Planned / In Scope | Present in Code | User Can Access via UI | Notes |
-|---|---|---:|---:|---|
-| Authentication | Register, login, refresh, logout, current user | Yes | Yes | Works through `LoginPage`, `RegisterPage`, and silent refresh handling |
-| Dashboard | Main landing dashboard | Yes | Yes | `DashboardPage` is present |
-| Profile basics | Skills, experience, projects | Yes | Yes | Fully editable in `ProfilePage` |
-| Profile education | Education CRUD | Yes | Yes | Fully functional in `ProfilePage` tabs |
-| Profile certifications | Certification CRUD | Yes | Yes | Fully functional in `ProfilePage` tabs |
-| Job creation | Manual JD entry | Yes | Yes | `JobsPage` / job route UI |
-| Job parsing | AI JD parsing | Yes | Yes | Accessible through job/resume workflows |
-| Resume tailoring | Tailored resume generation | Yes | Yes | `ResumeTailorPage` |
-| ATS scoring | Match score, missing skills, action items | Yes | Yes | Visible in tailor flow and resume views |
-| PDF export | Generate and download resume PDF | Yes | Yes | Available from tracker and tailor pages |
-| Application tracker | Create application, Kanban board, status updates | Yes | Yes | `TrackerPage` and `CreateApplicationModal` |
-| Tracker outcomes | Callback, rejection reason, offer details | Yes | Yes | Outcomes tab is in the detail modal |
-| Reminder completion | Mark reminders complete | Yes | Yes | In tracker modal |
-| Interview mode page | Split interview preparation page | Yes | Yes | Fully wired via Detail Modal and Kanban card links |
-| Analytics dashboard | KPI tiles and metrics | Yes | Yes | `AnalyticsPage` |
-| Search engine ingestion | URL ingestion and paste ingestion | Yes | Yes | Accessible via Jobs search page |
-| Search deduplication | L1/L2/L3 dedupe | Yes | No direct UI control | Internal pipeline behavior |
-| Search ranking | Relevance ranking, skill match boosts | Yes | Yes | Visible through search results |
-| Saved searches | Save search criteria | Yes | Yes | Search alerts/settings UI |
-| Alerts inbox | User alerts and unread state | Yes | Yes | Present in jobs/search UI |
-| Watches | Custom company/title watches | Yes | Yes | Exposed in search settings UI |
-| Discover feed | Curated feed | Yes | Yes | Search/discovery area |
-| Cleanup / stale job verification | Link checks, stale deactivation | Yes | Yes | Triggered from jobs/search quality UI |
-| Quality dashboard | Source trust, verification, metrics | Yes | Yes | In `JobsPage` quality dashboard tab |
-| Manual Resume Editing | Edit tailored summary content | Yes | Yes | Editable from Resume Card inside ResumeTailorPage |
-| Reusable Resume Lookup | Automatically fetch recent resume | Yes | Yes | Pre-populates default option in Tracker modal |
-| Attach Resume to Job | Link tailored resume to ingestion job | Yes | Yes | Embedded selector inside Job detail panel |
-| Create Search Source | Form to add crawler registry sources | Yes | Yes | Registered from Quality Dashboard matrix header |
-| Test coverage | Integration tests for search/workflow | Yes | No | Internal verification only |
+| Area                             | Planned / In Scope                               | Present in Code | User Can Access via UI | Notes                                                                  |
+| -------------------------------- | ------------------------------------------------ | --------------: | ---------------------: | ---------------------------------------------------------------------- |
+| Authentication                   | Register, login, refresh, logout, current user   |             Yes |                    Yes | Works through `LoginPage`, `RegisterPage`, and silent refresh handling |
+| Dashboard                        | Main landing dashboard                           |             Yes |                    Yes | `DashboardPage` is present                                             |
+| Profile basics                   | Skills, experience, projects                     |             Yes |                    Yes | Fully editable in `ProfilePage`                                        |
+| Profile education                | Education CRUD                                   |             Yes |                    Yes | Fully functional in `ProfilePage` tabs                                 |
+| Profile certifications           | Certification CRUD                               |             Yes |                    Yes | Fully functional in `ProfilePage` tabs                                 |
+| Job creation                     | Manual JD entry                                  |             Yes |                    Yes | `JobsPage` / job route UI                                              |
+| Job parsing                      | AI JD parsing                                    |             Yes |                    Yes | Accessible through job/resume workflows                                |
+| Resume tailoring                 | Tailored resume generation                       |             Yes |                    Yes | `ResumeTailorPage`                                                     |
+| ATS scoring                      | Match score, missing skills, action items        |             Yes |                    Yes | Visible in tailor flow and resume views                                |
+| PDF export                       | Generate and download resume PDF                 |             Yes |                    Yes | Available from tracker and tailor pages                                |
+| Application tracker              | Create application, Kanban board, status updates |             Yes |                    Yes | `TrackerPage` and `CreateApplicationModal`                             |
+| Tracker outcomes                 | Callback, rejection reason, offer details        |             Yes |                    Yes | Outcomes tab is in the detail modal                                    |
+| Reminder completion              | Mark reminders complete                          |             Yes |                    Yes | In tracker modal                                                       |
+| Interview mode page              | Split interview preparation page                 |             Yes |                    Yes | Fully wired via Detail Modal and Kanban card links                     |
+| Analytics dashboard              | KPI tiles and metrics                            |             Yes |                    Yes | `AnalyticsPage`                                                        |
+| Search engine ingestion          | URL ingestion and paste ingestion                |             Yes |                    Yes | Accessible via Jobs search page                                        |
+| Search deduplication             | L1/L2/L3 dedupe                                  |             Yes |   No direct UI control | Internal pipeline behavior                                             |
+| Search ranking                   | Relevance ranking, skill match boosts            |             Yes |                    Yes | Visible through search results                                         |
+| Saved searches                   | Save search criteria                             |             Yes |                    Yes | Search alerts/settings UI                                              |
+| Alerts inbox                     | User alerts and unread state                     |             Yes |                    Yes | Present in jobs/search UI                                              |
+| Watches                          | Custom company/title watches                     |             Yes |                    Yes | Exposed in search settings UI                                          |
+| Discover feed                    | Curated feed                                     |             Yes |                    Yes | Search/discovery area                                                  |
+| Cleanup / stale job verification | Link checks, stale deactivation                  |             Yes |                    Yes | Triggered from jobs/search quality UI                                  |
+| Quality dashboard                | Source trust, verification, metrics              |             Yes |                    Yes | In `JobsPage` quality dashboard tab                                    |
+| Manual Resume Editing            | Edit tailored summary content                    |             Yes |                    Yes | Editable from Resume Card inside ResumeTailorPage                      |
+| Reusable Resume Lookup           | Automatically fetch recent resume                |             Yes |                    Yes | Pre-populates default option in Tracker modal                          |
+| Attach Resume to Job             | Link tailored resume to ingestion job            |             Yes |                    Yes | Embedded selector inside Job detail panel                              |
+| Create Search Source             | Form to add crawler registry sources             |             Yes |                    Yes | Registered from Quality Dashboard matrix header                        |
+| Test coverage                    | Integration tests for search/workflow            |             Yes |                     No | Internal verification only                                             |
 
 ## Honest Completion Estimate
 
-| Area | Completion |
-| --- | --- |
-| Project setup | 95% |
-| Auth & Sessions | 95% |
-| Profile | 92% |
-| JD Ingestion / Search | 95% |
-| Resume tailoring | 85% |
-| ATS scoring | 60% |
-| Application tracker | 95% |
-| PDF export | 90% |
-| Analytics | 75% |
-| Tests | 80% |
+| Area                  | Completion |
+| --------------------- | ---------- |
+| Project setup         | 95%        |
+| Auth & Sessions       | 95%        |
+| Profile               | 92%        |
+| JD Ingestion / Search | 95%        |
+| Resume tailoring      | 85%        |
+| ATS scoring           | 60%        |
+| Application tracker   | 95%        |
+| PDF export            | 90%        |
+| Analytics             | 75%        |
+| Tests                 | 80%        |
 
 Overall MVP completion: approximately **91%**.

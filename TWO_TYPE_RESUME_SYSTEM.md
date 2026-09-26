@@ -1,7 +1,9 @@
 # JobTailor Two-Type Resume System - Implementation Summary
 
-**Date:** 2026-05-26  
-**Status:** Backend Complete - Frontend Integration Required
+**Date:** 2026-05-26 (written) · refreshed 2026-09-25
+**Status:** ✅ Complete — backend and frontend both shipped (frontend closed in Sprint 6)
+
+> The "Frontend Integration TODOs" below are the original design notes and are now implemented: Quick ATS button + modal on `JobsPage`, resume-type handling in the create-application flow, attached-resume selector on the job detail panel, and master/profile resume handling. They are retained for design context, not as open work. See [TODO_PLAN.md](./TODO_PLAN.md) for actual next steps.
 
 ---
 
@@ -10,12 +12,14 @@
 ### ✅ **Requirement 1: Two Types of Resumes**
 
 **Profile-Based Resume (Master Resume)**
+
 - Represents user's complete professional profile
 - Stored with `isProfileResume: true` and no [jobId](file://d:\PROJECT_GIT\JOB%20TAILOR\packages\shared-types\src\index.ts#L176-L176)
 - Downloadable from Profile page
 - Used as fallback for ATS scoring when no job-specific resume exists
 
 **Job-Specific Resume (Attached Resume)**
+
 - Uploaded/attached when creating or editing a job
 - Linked via Job model's `attachedResumeId` field
 - Downloadable directly from job card/list view
@@ -26,6 +30,7 @@
 ### ✅ **Requirement 2: Smart ATS Scoring Logic**
 
 **Priority System:**
+
 ```
 IF job has attachedResumeId → Use that resume for ATS scoring
 ELSE IF user has profile-based resume → Use profile resume
@@ -33,6 +38,7 @@ ELSE → Return error with suggestion to upload resume
 ```
 
 **Implementation:**
+
 - New endpoint: `POST /api/v1/resumes/quick-ats-check`
 - Returns ATS score + recommendations + resume source indicator
 - Response includes which resume was used (`resumeSource: 'attached' | 'profile'`)
@@ -42,15 +48,21 @@ ELSE → Return error with suggestion to upload resume
 ### ✅ **Requirement 3: Quick ATS Check from Jobs List**
 
 **New Feature:**
+
 - Each job card will have small ATS icon/button
 - Click → Instant ATS score without generating full tailored resume
 - Shows modal with score breakdown and recommendations
 
 **Backend Endpoint:**
+
 ```typescript
-POST /api/v1/resumes/quick-ats-check
-Body: { jobId: string }
-Response: { atsScore, resumeSource, resumeId, pdfUrl, message }
+POST / api / v1 / resumes / quick - ats - check;
+Body: {
+  jobId: string;
+}
+Response: {
+  (atsScore, resumeSource, resumeId, pdfUrl, message);
+}
 ```
 
 ---
@@ -58,10 +70,12 @@ Response: { atsScore, resumeSource, resumeId, pdfUrl, message }
 ### ✅ **Requirement 4: Downloadable Resumes**
 
 **Profile Resume Download:**
+
 - Accessible from Profile page
 - Uses existing endpoint: `POST /api/v1/resumes/:id/pdf`
 
 **Job-Specific Resume Download:**
+
 - One-click download from job card
 - Same endpoint, different context
 - Button appears on job cards with attached resumes
@@ -73,6 +87,7 @@ Response: { atsScore, resumeSource, resumeId, pdfUrl, message }
 ### **1. Database Schema Updates**
 
 #### **Job Model** ([Job.model.ts](file://d:\PROJECT_GIT\JOB%20TAILOR\apps\server\src\models\Job.model.ts))
+
 ```typescript
 // NEW FIELD
 attachedResumeId: { type: Schema.Types.ObjectId, ref: 'Resume' }
@@ -83,6 +98,7 @@ attachedResumeId: { type: Schema.Types.ObjectId, ref: 'Resume' }
 ---
 
 #### **Resume Model** ([Resume.model.ts](file://d:\PROJECT_GIT\JOB%20TAILOR\apps\server\src\models\Resume.model.ts))
+
 ```typescript
 // CHANGED: jobId is now optional
 jobId: { type: Schema.Types.ObjectId, ref: 'Job' } // Removed "required: true"
@@ -100,11 +116,13 @@ resumeSchema.index({ userId: 1, isProfileResume: 1 })
 
 ### **2. New API Endpoints**
 
-#### **Quick ATS Check** 
+#### **Quick ATS Check**
+
 **Route:** `POST /api/v1/resumes/quick-ats-check`  
 **Controller:** [resume.controller.ts](file://d:\PROJECT_GIT\JOB%20TAILOR\apps\server\src\controllers\resume.controller.ts) - `quickATSCheck()`
 
 **Logic:**
+
 ```typescript
 1. Validate jobId
 2. Fetch job with parsed JD
@@ -115,6 +133,7 @@ resumeSchema.index({ userId: 1, isProfileResume: 1 })
 ```
 
 **Response Example:**
+
 ```json
 {
   "success": true,
@@ -141,10 +160,12 @@ resumeSchema.index({ userId: 1, isProfileResume: 1 })
 ---
 
 #### **Attach Resume to Job**
+
 **Route:** `PATCH /api/v1/jobs/:id/attach-resume`  
 **Controller:** [job.controller.ts](file://d:\PROJECT_GIT\JOB%20TAILOR\apps\server\src\controllers\job.controller.ts) - `attachResumeToJob()`
 
 **Request:**
+
 ```json
 {
   "resumeId": "64f8a9b2c1d2e3f4g5h6i7j8"
@@ -152,6 +173,7 @@ resumeSchema.index({ userId: 1, isProfileResume: 1 })
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -167,16 +189,18 @@ resumeSchema.index({ userId: 1, isProfileResume: 1 })
 ### **3. Updated Existing Endpoints**
 
 #### **Create Job**
+
 **Route:** `POST /api/v1/jobs`  
 **Change:** Now accepts `attachedResumeId` in request body
 
 **Request:**
+
 ```json
 {
   "companyName": "Tech Corp",
   "jobTitle": "Senior Developer",
   "jdRawText": "...",
-  "attachedResumeId": "64f8a9b2c1d2e3f4g5h6i7j8"  // ← NEW
+  "attachedResumeId": "64f8a9b2c1d2e3f4g5h6i7j8" // ← NEW
 }
 ```
 
@@ -189,6 +213,7 @@ resumeSchema.index({ userId: 1, isProfileResume: 1 })
 **File to Modify:** [JobsPage.tsx](file://d:\PROJECT_GIT\JOB%20TAILOR\apps\client\src\pages\JobsPage.tsx)
 
 **Changes Needed:**
+
 ```tsx
 // In job card component, add:
 <button
@@ -197,12 +222,12 @@ resumeSchema.index({ userId: 1, isProfileResume: 1 })
   title="Quick ATS Check"
 >
   <Target className="w-4 h-4 text-primary" /> {/* Lucide icon */}
-</button>
+</button>;
 
 // Handler function:
 const quickATSModal = useMutation({
-  mutationFn: (jobId: string) => 
-    api.post('/resumes/quick-ats-check', { jobId }),
+  mutationFn: (jobId: string) =>
+    api.post("/resumes/quick-ats-check", { jobId }),
   onSuccess: (response) => {
     // Show modal with ATS score
     setATSScoreData(response.data);
@@ -218,27 +243,30 @@ const quickATSModal = useMutation({
 **File to Modify:** [JDPasteModal](file://d:\PROJECT_GIT\JOB%20TAILOR\apps\client\src\pages\JobsPage.tsx#L369-L473) component in JobsPage.tsx
 
 **Changes Needed:**
+
 ```tsx
 // Add resume selection dropdown
 <div>
   <label>Attach Resume (Optional)</label>
   <select
-    value={form.attachedResumeId || ''}
-    onChange={(e) => setForm(f => ({...f, attachedResumeId: e.target.value}))}
+    value={form.attachedResumeId || ""}
+    onChange={(e) =>
+      setForm((f) => ({ ...f, attachedResumeId: e.target.value }))
+    }
   >
     <option value="">No resume attached</option>
-    {resumes.map(resume => (
+    {resumes.map((resume) => (
       <option key={resume._id} value={resume._id}>
         {resume.versionLabel}
       </option>
     ))}
   </select>
-</div>
+</div>;
 
 // Also fetch resumes in JobsPage:
 const { data: resumesRes } = useQuery({
-  queryKey: ['resumes'],
-  queryFn: () => api.get('/resumes'),
+  queryKey: ["resumes"],
+  queryFn: () => api.get("/resumes"),
 });
 ```
 
@@ -249,22 +277,25 @@ const { data: resumesRes } = useQuery({
 **File to Modify:** [JobDetailPanel](file://d:\PROJECT_GIT\JOB%20TAILOR\apps\client\src\pages\JobsPage.tsx#L228-L367) component
 
 **Changes Needed:**
+
 ```tsx
 // After job header, add:
-{job.attachedResumeId && (
-  <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-    <FileText className="w-4 h-4 text-blue-600" />
-    <span className="text-sm text-blue-700 font-medium">
-      Job-specific resume attached
-    </span>
-    <button
-      onClick={() => downloadPDF(job.attachedResumeId)}
-      className="ml-auto px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
-    >
-      Download PDF
-    </button>
-  </div>
-)}
+{
+  job.attachedResumeId && (
+    <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+      <FileText className="w-4 h-4 text-blue-600" />
+      <span className="text-sm text-blue-700 font-medium">
+        Job-specific resume attached
+      </span>
+      <button
+        onClick={() => downloadPDF(job.attachedResumeId)}
+        className="ml-auto px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+      >
+        Download PDF
+      </button>
+    </div>
+  );
+}
 ```
 
 ---
@@ -274,6 +305,7 @@ const { data: resumesRes } = useQuery({
 **File to Modify:** [ProfilePage.tsx](file://d:\PROJECT_GIT\JOB%20TAILOR\apps\client\src\pages\ProfilePage.tsx)
 
 **Changes Needed:**
+
 ```tsx
 // Add section for profile resume
 <section>
@@ -298,7 +330,7 @@ const { data: resumesRes } = useQuery({
   ) : (
     <div className="text-center py-8 border-2 border-dashed rounded-lg">
       <p>No profile resume yet</p>
-      <button onClick={() => navigate('/tailor')}>
+      <button onClick={() => navigate("/tailor")}>
         Create Your Master Resume
       </button>
     </div>
@@ -313,13 +345,14 @@ const { data: resumesRes } = useQuery({
 **File to Modify:** [ResumeTailorPage.tsx](file://d:\PROJECT_GIT\JOB%20TAILOR\apps\client\src\pages\ResumeTailorPage.tsx) - ATSDashboard component
 
 **Changes Needed:**
+
 ```tsx
 // At top of ATSDashboard:
 <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
   <p className="text-sm text-green-700">
-    {score.resumeSource === 'attached' 
-      ? '✓ Using job-specific attached resume'
-      : 'ℹ️ Using your profile-based master resume'}
+    {score.resumeSource === "attached"
+      ? "✓ Using job-specific attached resume"
+      : "ℹ️ Using your profile-based master resume"}
   </p>
 </div>
 ```
@@ -330,31 +363,32 @@ const { data: resumesRes } = useQuery({
 
 ### **New Endpoints**
 
-| Method | Endpoint | Purpose | Auth |
-|--------|----------|---------|------|
-| POST | `/api/v1/resumes/quick-ats-check` | Quick ATS score without full generation | ✅ JWT |
-| PATCH | `/api/v1/jobs/:id/attach-resume` | Attach existing resume to job | ✅ JWT |
+| Method | Endpoint                          | Purpose                                 | Auth   |
+| ------ | --------------------------------- | --------------------------------------- | ------ |
+| POST   | `/api/v1/resumes/quick-ats-check` | Quick ATS score without full generation | ✅ JWT |
+| PATCH  | `/api/v1/jobs/:id/attach-resume`  | Attach existing resume to job           | ✅ JWT |
 
 ### **Modified Endpoints**
 
-| Method | Endpoint | Change |
-|--------|----------|--------|
-| POST | `/api/v1/jobs` | Now accepts `attachedResumeId` in body |
+| Method | Endpoint       | Change                                 |
+| ------ | -------------- | -------------------------------------- |
+| POST   | `/api/v1/jobs` | Now accepts `attachedResumeId` in body |
 
 ### **Existing Endpoints (Unchanged)**
 
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| POST | `/api/v1/resumes/generate` | Generate tailored resume |
-| POST | `/api/v1/resumes/:id/pdf` | Download resume as PDF |
-| POST | `/api/v1/resumes/upload` | Upload resume PDF |
-| GET | `/api/v1/resumes` | List all resumes |
+| Method | Endpoint                   | Purpose                  |
+| ------ | -------------------------- | ------------------------ |
+| POST   | `/api/v1/resumes/generate` | Generate tailored resume |
+| POST   | `/api/v1/resumes/:id/pdf`  | Download resume as PDF   |
+| POST   | `/api/v1/resumes/upload`   | Upload resume PDF        |
+| GET    | `/api/v1/resumes`          | List all resumes         |
 
 ---
 
 ## 🧪 **Testing Checklist**
 
 ### **Backend Testing**
+
 - [ ] Create job with attachedResumeId
 - [ ] Quick ATS check with job-specific resume
 - [ ] Quick ATS check with profile resume (fallback)
@@ -363,6 +397,7 @@ const { data: resumesRes } = useQuery({
 - [ ] Verify correct resume source in response
 
 ### **Frontend Testing**
+
 - [ ] ATS icon appears on each job card
 - [ ] Clicking ATS icon shows score modal
 - [ ] Modal indicates which resume was used
@@ -376,23 +411,26 @@ const { data: resumesRes } = useQuery({
 ## 📊 **Database Migration Notes**
 
 **For Existing Data:**
+
 ```javascript
 // Run this migration script if needed:
 db.resumes.updateMany(
   { jobId: { $exists: true } },
-  { $set: { isProfileResume: false } }
+  { $set: { isProfileResume: false } },
 );
 
 // Optionally mark one resume per user as profile resume:
-db.resumes.aggregate([
-  { $group: { _id: "$userId", latestResume: { $first: "$_id" } } },
-  { $project: { _id: 0, userId: "$_id", resumeId: "$latestResume" } }
-]).forEach(doc => {
-  db.resumes.updateOne(
-    { _id: doc.resumeId },
-    { $set: { isProfileResume: true, jobId: null } }
-  );
-});
+db.resumes
+  .aggregate([
+    { $group: { _id: "$userId", latestResume: { $first: "$_id" } } },
+    { $project: { _id: 0, userId: "$_id", resumeId: "$latestResume" } },
+  ])
+  .forEach((doc) => {
+    db.resumes.updateOne(
+      { _id: doc.resumeId },
+      { $set: { isProfileResume: true, jobId: null } },
+    );
+  });
 ```
 
 ---
@@ -400,16 +438,19 @@ db.resumes.aggregate([
 ## 🚀 **Next Steps**
 
 1. ✅ **Backend Complete** - All endpoints implemented and tested
-2. ⏳ **Frontend Integration** - Implement UI changes (Priorities 1-5 above)
-3. ⏳ **Testing** - End-to-end testing of complete workflow
-4. ⏳ **Documentation** - Update user guide with new features
-5. ⏳ **Migration Script** - Handle existing data gracefully
+2. ✅ **Frontend Integration** - Implemented (Quick ATS modal, attach-resume selector, profile resume handling — Sprint 6)
+3. ✅ **Testing** - ATS scoring + resume + workflow suites pass (see `MVP_STATUS.md`)
+4. ✅ **Documentation** - Design captured here; authoritative specs in `docs/ats-scoring-technical-design.md`
+5. ⏳ **Migration Script** - Optional, only if existing production data needs backfilling (single-user, so rarely needed)
+
+Forward-looking work for this area now lives in [TODO_PLAN.md](./TODO_PLAN.md) (notably Tier 1 Chrome Extension auto-track and Tier 2 email digest).
 
 ---
 
 ## 💡 **User Flow Examples**
 
 ### **Flow 1: Quick ATS Check from Jobs List**
+
 ```
 1. User goes to /jobs
 2. Sees list of jobs with ATS icons
@@ -422,6 +463,7 @@ db.resumes.aggregate([
 ```
 
 ### **Flow 2: Create Job with Attached Resume**
+
 ```
 1. User clicks "Add Job" button
 2. Fills in company name, job title, JD
@@ -432,6 +474,7 @@ db.resumes.aggregate([
 ```
 
 ### **Flow 3: ATS Scoring Priority in Action**
+
 ```
 Scenario A: Job has attached resume
 → Quick ATS check uses attached resume
@@ -471,4 +514,4 @@ Scenario C: Neither exists
 
 ---
 
-**Status:** Backend implementation complete. Ready for frontend integration! 🚀
+**Status:** Complete — backend and frontend both shipped. See [TODO_PLAN.md](./TODO_PLAN.md) for the forward roadmap. 🚀

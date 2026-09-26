@@ -48,6 +48,8 @@ OPENAI_API_KEY=sk-your-actual-openai-api-key-here
 
 **Note:** OpenAI offers $5 free credit for new accounts. JD parsing uses GPT-4o-mini (~$0.001 per request).
 
+> **Other providers:** OpenAI is not required. JobTailor supports Google Gemini and NVIDIA NIM as alternatives via a provider manager with fallback. Set `GEMINI_API_KEY` or `NVIDIA_NIM_API_KEY` (plus `NVIDIA_NIM_BASE_URL`) and choose the primary with `PREFERRED_AI_PROVIDER`. Any single key runs the full app.
+
 ---
 
 ### **3. JWT Secrets** (Generate Your Own)

@@ -1,7 +1,8 @@
 # JobTailor Architecture
 
-> Last updated: 2026-05-14  
-> Status: Buildable MVP foundation, not product-complete.
+> Last updated: 2026-09-25
+> Status: Advanced MVP — core workflows operational end-to-end.
+> Note: this is the original architecture overview. The authoritative, code-verified descriptions now live in `docs/system-design.md`, `docs/ai-jd-analysis-architecture.md`, and `docs/ats-scoring-technical-design.md`. This file is kept as a lightweight orientation and is corrected against the repo.
 
 ## System Overview
 
@@ -10,21 +11,17 @@ JobTailor is a MERN-style monorepo with:
 - React 19 + Vite client
 - Express + TypeScript API
 - MongoDB + Mongoose models
-- JWT auth
-- OpenAI-backed JD parsing and summary rewriting
-- Hybrid ATS scoring
-- Puppeteer PDF generation service, not yet wired to an API route
+- JWT auth with silent refresh
+- Multi-provider AI layer (OpenAI / Google Gemini / NVIDIA NIM) with fallback via a provider manager
+- Hybrid ATS scoring (keyword + LLM semantic + completeness + format)
+- Puppeteer PDF generation, wired to `POST /resumes/:id/pdf`
+- Advanced job search engine (ingestion, dedup, ranking, alerts, watches, feed, source-trust verification)
 
-Current strongest product loop:
+Product loop (all operational):
 
 ```text
 Create job -> Parse JD -> Generate tailored resume -> View ATS score and gaps
-```
-
-Full intended product loop still pending:
-
-```text
-Create job -> Parse JD -> Generate resume -> Create application -> Export PDF -> Track follow-up -> Record outcome -> Analyze performance
+-> Export PDF -> Create application -> Track follow-up -> Record outcome -> Analyze performance
 ```
 
 ## Actual Repository Structure
@@ -68,6 +65,8 @@ job-tailor/
         models/
         routes/
         services/
+          ai-provider/
+        tests/
         app.ts
       Dockerfile
       package.json
@@ -85,23 +84,23 @@ job-tailor/
 
 Not currently present:
 
-- `components/ui`
+- `components/ui` (shadcn/ui is not installed as a component system)
 - shared `validations`
 - shared `api-client`
 - client `hooks`
-- server `tests`
-- Playwright E2E tests
+- Playwright E2E tests (server and client unit/integration suites exist and pass — 79 tests)
 
 ## Backend Architecture
 
 The API is organized by domain:
 
-- `auth`: register, login, refresh, logout, current user
-- `profile`: master resume profile, skills, experience, projects
-- `jobs`: JD storage and parsing
-- `resumes`: tailored resume generation and resume CRUD
-- `applications`: Kanban-style status, notes, reminders
-- `analytics`: overview, status breakdown, skill gap reports
+- `auth`: register, login, refresh, logout, current user, email verification, password reset
+- `profile`: master resume profile — skills, experience, projects, education, certifications
+- `jobs`: JD storage, parsing, attach-resume, and the search/ingestion endpoints
+- `resumes`: tailored resume generation, resume CRUD, profile resume, PDF export, quick ATS check
+- `applications`: Kanban-style status, notes, reminders, outcome recording, reminder completion
+- `analytics`: overview, status breakdown, skill gap reports, search/interaction logs
+- `search`: ingestion, saved searches, alerts inbox, watches, curated feed, cleanup, quality dashboard
 
 Security and middleware:
 
@@ -124,11 +123,10 @@ The client is a page-oriented React app:
 
 Current pages:
 
-- Login
-- Register
+- Login, Register, Forgot Password, Reset Password, Verify Email, Resend Verification
 - Dashboard
 - Profile
-- Jobs
+- Jobs (includes Global Search, Curated Feed, Watches, Alerts, Quality Dashboard tabs)
 - Resume Tailor
 - Tracker
 - Analytics
@@ -136,26 +134,24 @@ Current pages:
 
 ## Data Model Summary
 
-Implemented Mongoose models:
+Implemented Mongoose models (13):
 
-- `User`
-- `Profile`
-- `Job`
-- `Resume`
-- `Application`
+- Core: `User`, `Profile`, `Job`, `Resume`, `Application`
+- Search engine: `CanonicalJob`, `SourceRegistry`, `SavedSearch`, `Alert`, `Watch`, `SearchQueryLog`, `JobInteractionLog`
+- Audit: `AuditLog`
 
-Current model reality:
+Model reality:
 
-- `Resume` stores tailored skills, experience, and projects content directly.
-- `Application` exists, but there is no create-application endpoint yet.
-- `Job` stores raw JD text and parsed JD result.
-- `Profile` supports certifications in the model, but there is no UI/API workflow for certification CRUD yet.
+- `Resume` stores tailored skills, experience, and projects content directly, plus the embedded `atsScore` subdocument. It supports two types via `isProfileResume` (master profile resume) vs a job-linked/attached resume.
+- `Job` stores raw JD text, the parsed JD result, and an optional `attachedResumeId`.
+- `Application` is fully wired: create, status updates, notes, reminders, reminder completion, and outcome recording (callback / rejection reason / offer amount) with timeline events.
+- `Profile` supports full CRUD for skills, experience, projects, education, and certifications through both API and UI.
 
 ## AI Services
 
 ### JD Parser
 
-`jd-parser.service.ts` calls OpenAI and expects structured JSON:
+`jd-parser.service.ts` calls the AI provider manager (OpenAI / Gemini / NVIDIA NIM, whichever is configured) and expects structured JSON:
 
 - summary
 - seniority level
@@ -166,7 +162,7 @@ Current model reality:
 - nice-to-haves
 - tone
 
-Current limitation: no regex fallback or JD-text cache is implemented.
+Validation is Zod-enforced; results with zero required skills are rejected. Current limitation: no regex fallback or JD-text cache is implemented.
 
 ### Resume Tailor
 
@@ -175,28 +171,27 @@ Current limitation: no regex fallback or JD-text cache is implemented.
 - sorts highlighted skills first
 - prioritizes bullets by top JD focus tag
 - selects projects by skill overlap
-- optionally rewrites summary with OpenAI
+- optionally rewrites the summary via the provider manager (temperature ≤ 0.2, truth-bounded — no fabricated skills)
 - calls ATS scoring
 
-Current limitation: skill ordering is simple and not deeply weighted by JD relevance.
+Current limitation: skill ordering is simple and not deeply weighted by JD relevance (roadmap Tier 3).
 
 ### ATS Scoring
 
-`ats-scoring.service.ts`:
+`ats-scoring.service.ts` — four phases run concurrently and combine with fixed weights `keyword 0.35 + semantic 0.45 + completeness 0.12 + format 0.08`:
 
-- keyword match
-- semantic score through OpenAI when configured
-- fallback semantic score of `75`
-- section completeness
-- format score based partly on quantified bullets
+- keyword match (weighted token match, required 2× / preferred 1×)
+- semantic score through the provider manager when available
+- **degraded mode**: if the LLM semantic phase fails, the score is renormalized over the three deterministic phases (`0.55 / 0.25 / 0.20`) and flagged — a constant is never substituted. (An earlier design used a fixed fallback of 75; that was replaced because it presented false confidence.)
+- section completeness and format score (the latter partly from quantified bullets)
 
-Current limitation: this is a useful heuristic, not a production ATS simulator.
+Current limitation: this is a useful heuristic, not a production ATS simulator. See `docs/ats-scoring-technical-design.md`.
 
 ## PDF Generation
 
-`pdf-generator.service.ts` can render resume HTML to PDF with Puppeteer and upload to Cloudinary or return a data URL.
+`pdf-generator.service.ts` renders resume HTML to PDF with Puppeteer and uploads to Cloudinary or returns a data URL.
 
-Current limitation: no route/controller calls this service yet, so users cannot download PDFs through the app.
+It is wired end-to-end: `POST /resumes/:id/pdf` (`downloadPDF`) exposes it, with download buttons on the Resume Tailor page and the tracker. Current limitation: a single template (template library is roadmap Tier 2).
 
 ## Deployment
 
@@ -211,17 +206,14 @@ Current limitation: production deployment has not been verified end-to-end in th
 
 ## Verification Status
 
-Known passing checks:
+Passing checks:
 
 ```bash
-npm run typecheck
-npm run build
+npm run typecheck   # 3/3 packages
+npm run build       # client + server
+npm run test        # 79 tests (77 server + 2 client smoke)
 ```
 
-Known gap:
+Tests cover auth, HTTP auth flows, profile CRUD concurrency, jobs, resume generation, ATS scoring math, the application workflow, the search engine (ingestion, dedup, ranking, synonyms, alerts, watches, feed, cleanup, trust decay), and security utilities. CI runs typecheck, lint, build, and both test suites on every push/PR (`.github/workflows/ci.yml`).
 
-```bash
-npm run test
-```
-
-The test command exists, but no meaningful tests are currently present.
+Remaining verification gap: production deployment (Vercel + Render + MongoDB Atlas) has not been exercised end-to-end.

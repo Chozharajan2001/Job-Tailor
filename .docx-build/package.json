@@ -1,0 +1,12 @@
+{
+  "name": "jobtailor-docx-build",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway build tool: converts docs/system-design.md to a submission-ready .docx",
+  "dependencies": {
+    "html-to-docx": "^1.8.0",
+    "marked": "^18.0.11",
+    "mermaid": "^11.17.2",
+    "puppeteer-core": "^25.9.0"
+  }
+}

@@ -13,6 +13,7 @@ build/
 .out/
 .next/
 .turbo/
+.docx-build/node_modules/
 
 # ============================================
 # Environment files (NEVER commit secrets)
