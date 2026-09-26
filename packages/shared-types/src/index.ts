@@ -45,15 +45,28 @@ export interface IUser {
 }
 
 export interface IAuthTokens {
-  user: Omit<IUser, 'passwordHash'>;
+  user: Omit<IUser, "passwordHash">;
   accessToken: string;
   refreshToken: string;
 }
 
 // ─── Profile / Skill Types ───────────────────────────────────
-type SkillCategory = 'frontend' | 'backend' | 'devops' | 'ai' | 'mobile' | 'database' | 'other';
-type SkillProficiency = 'beginner' | 'intermediate' | 'advanced' | 'expert';
-type ExperienceTag = 'frontend' | 'backend' | 'devops' | 'ai' | 'testing' | 'leadership';
+type SkillCategory =
+  | "frontend"
+  | "backend"
+  | "devops"
+  | "ai"
+  | "mobile"
+  | "database"
+  | "other";
+type SkillProficiency = "beginner" | "intermediate" | "advanced" | "expert";
+type ExperienceTag =
+  | "frontend"
+  | "backend"
+  | "devops"
+  | "ai"
+  | "testing"
+  | "leadership";
 
 export interface ISkill {
   _id?: ID;
@@ -136,11 +149,18 @@ export interface IProfile {
 }
 
 // ─── Job / JD Types ──────────────────────────────────────────
-type WorkType = 'remote' | 'hybrid' | 'onsite';
-type EmploymentType = 'full-time' | 'part-time' | 'contract' | 'internship';
-type SeniorityLevel = 'entry' | 'mid' | 'senior' | 'staff' | 'principal';
-type JDTone = 'formal' | 'casual' | 'technical' | 'corporate';
-type ApplicationStatus = 'saved' | 'applied' | 'screening' | 'interview' | 'offer' | 'rejected' | 'withdrawn';
+type WorkType = "remote" | "hybrid" | "onsite";
+type EmploymentType = "full-time" | "part-time" | "contract" | "internship";
+type SeniorityLevel = "entry" | "mid" | "senior" | "staff" | "principal";
+type JDTone = "formal" | "casual" | "technical" | "corporate";
+type ApplicationStatus =
+  | "saved"
+  | "applied"
+  | "screening"
+  | "interview"
+  | "offer"
+  | "rejected"
+  | "withdrawn";
 
 export interface IFocusWeights {
   frontend: number;
@@ -184,7 +204,7 @@ export interface IJob {
 }
 
 // ─── Resume Types ───────────────────────────────────────────
-type ResumeStatus = 'draft' | 'generated' | 'downloaded' | 'used';
+type ResumeStatus = "draft" | "generated" | "downloaded" | "used";
 
 export interface IMatchedSkill {
   skill: string;
@@ -250,7 +270,12 @@ export interface ITimelineEvent {
   event: string;
   description: string;
   eventDate: Date;
-  type: 'status_change' | 'note' | 'reminder' | 'follow_up' | 'interview_schedule';
+  type:
+    | "status_change"
+    | "note"
+    | "reminder"
+    | "follow_up"
+    | "interview_schedule";
 }
 
 export interface IReminder {
@@ -292,8 +317,14 @@ export interface IDashboardOverview {
 }
 
 // ─── Search Engine Types ─────────────────────────────────────
-export type SearchSourceType = 'manual_paste' | 'public_job_page';
-export type SearchExtractionStrategy = 'html_metadata' | 'json_ld' | 'manual_input';
+export type SearchSourceType =
+  | "manual_paste"
+  | "public_job_page"
+  | "api_connector";
+export type SearchExtractionStrategy =
+  | "html_metadata"
+  | "json_ld"
+  | "manual_input";
 
 export interface ISourceRegistry {
   _id?: ID;
@@ -309,7 +340,11 @@ export interface ISourceRegistry {
   updatedAt: Date;
 }
 
-export type VerificationState = 'unverified' | 'verified' | 'failed' | 'suspicious';
+export type VerificationState =
+  | "unverified"
+  | "verified"
+  | "failed"
+  | "suspicious";
 
 export interface ICanonicalJob {
   _id?: ID;
@@ -319,8 +354,8 @@ export interface ICanonicalJob {
   companyName: string;
   jobTitle: string;
   location: string;
-  workType: 'remote' | 'hybrid' | 'onsite';
-  employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
+  workType: "remote" | "hybrid" | "onsite";
+  employmentType?: "full-time" | "part-time" | "contract" | "internship";
   salaryRange?: { min: number; max: number; currency: string };
   postedDate?: Date;
   applyUrl?: string;
@@ -355,7 +390,12 @@ export interface IJobInteractionLog {
   _id?: ID;
   userId: ID;
   canonicalJobId: ID;
-  interactionType: 'click' | 'import' | 'flag_expired' | 'flag_spam' | 'dismiss';
+  interactionType:
+    | "click"
+    | "import"
+    | "flag_expired"
+    | "flag_spam"
+    | "dismiss";
   feedbackComment?: string;
   createdAt: Date;
 }
@@ -373,15 +413,15 @@ export interface ISavedSearch {
 }
 
 export interface IJobIngestionInput {
-  sourceType: 'manual_paste' | 'public_job_page';
+  sourceType: "manual_paste" | "public_job_page";
   sourceName: string;
   sourceUrl?: string;
   applyUrl?: string;
   companyName: string;
   jobTitle: string;
   location?: string;
-  workType?: 'remote' | 'hybrid' | 'onsite';
-  employmentType?: 'full-time' | 'part-time' | 'contract' | 'internship';
+  workType?: "remote" | "hybrid" | "onsite";
+  employmentType?: "full-time" | "part-time" | "contract" | "internship";
   description: string;
   rawHtmlSnapshot?: string;
   postedDate?: Date;
@@ -399,19 +439,16 @@ export interface IAlert {
   updatedAt: Date;
 }
 
-export interface IPopulatedAlert extends Omit<IAlert, 'canonicalJobId'> {
+export interface IPopulatedAlert extends Omit<IAlert, "canonicalJobId"> {
   canonicalJobId: ICanonicalJob;
 }
 
 export interface IWatch {
   _id?: ID;
   userId: ID;
-  type: 'company' | 'title';
+  type: "company" | "title";
   value: string;
   isEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
-
-
-
