@@ -27,7 +27,7 @@
 | 0    | Quick Win | Fix stale docs                                | 30 min  |
 | 1    | MUST      | ✅ Live job discovery — seed the empty index  | 8 h     |
 | 2    | MUST      | ✅ Chrome Extension — auto-track applications | 15–20 h |
-| 3    | MUST      | ATS Scoring upgrade (60% → 85%)               | 8–12 h  |
+| 3    | MUST      | ✅ ATS Scoring upgrade (60% → 85%)            | 8–12 h  |
 | 4    | IMPORTANT | Resume template library                       | 6 h     |
 | 5    | IMPORTANT | Cover letter generator                        | 4 h     |
 | 6    | IMPORTANT | Email digest recommendations                  | 6–8 h   |
@@ -98,15 +98,17 @@ Every other discovery feature depends on this. Nothing downstream works on an em
 
 ---
 
-## 3. ATS Scoring Upgrade — 60% → 85% (8–12 h)
+## 3. ATS Scoring Upgrade — 60% → 85% (8–12 h) ✅ DONE (2026-09-27)
 
 **Why this is #3:** this is the weakest feature in the core loop and the core loop's whole premise is "know how well you match before you apply." A weak score undermines every downstream decision — tailoring, comparison, analytics cohorts.
 
-- [ ] **Golden-score regression file first** — safety net before touching any formula
-- [ ] Replace token-set keyword match with TF-IDF/BM25 (keep required 2× / preferred 1× weights)
-- [ ] Share the search synonym map into scoring (exists in search only today)
-- [ ] Score caching keyed on (resume version, parsed JD) hash
-- [ ] Re-score endpoint — `POST /resumes/:id/rescore` to compare new weights against stored versions without overwriting
+**Executed as `docs/superpowers/plans/2026-09-27-ats-scoring-upgrade.md` (9 tasks).** Golden-score regression file pinned v1 first; keyword phase v2 = synonym-aware graded credit (exact 1.0 / synonym 0.9 / token-subset 0.75 + section-spread bonus) reusing the search feature's `skill-matcher.ts`, with IDF distinctiveness weighting from the CanonicalJob corpus (graceful empty-corpus degeneration). Recorded deltas: "TS"→TypeScript 50→95, "SRE"→Site Reliability 0→100, exact-match cases unchanged. In-process score cache (LRU 200 / TTL 1h, engine-version-keyed, degraded never cached) on quick-ats-check; `POST /resumes/:id/rescore` compares without overwriting. Latent bug fixed: `semanticScoreDegraded` was never persisted (missing from the Mongoose schema). Weights and the never-fabricate degraded policy untouched.
+
+- [x] **Golden-score regression file first** — safety net before touching any formula (`ats-golden-cases.json`, 4 cases, v1→v2 deltas recorded)
+- [x] Replace token-set keyword match with TF-IDF/BM25 — delivered as graded credit + corpus IDF (required 2× / preferred 1× weights kept)
+- [x] Share the search synonym map into scoring — `skill-matcher.ts` now used by search, alerts, AND scoring
+- [x] Score caching keyed on (resume version, parsed JD) hash — key also includes engine version
+- [x] Re-score endpoint — `POST /resumes/:id/rescore` compares new engine output against stored versions without overwriting
 
 ---
 

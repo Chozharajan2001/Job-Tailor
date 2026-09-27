@@ -83,12 +83,12 @@ npm run build      ✅
   - **Reusable Resume Selection**: Automatically queries `GET /resumes/reuse` to pre-populate default tailored resume selection dropdown in tracker card creation modal.
   - **Attach Resume to Job**: Exposes inline Link Resume selectors on the `JobsPage` details view calling `PATCH /jobs/:id/attach-resume`.
   - **Crawl Source Registration**: Exposes a "Register Source" form modal and trigger in the health matrix panel calling `POST /search/sources`.
-- **Test Suite**: 79 tests — 77 server (search engine 21, auth 11, security-utils 11, http-auth 9, application-workflow 7, profile-workflow 7, ATS scoring 5, jobs 4, resumes 2) + 2 client smoke tests covering the main routes, schemas, and UI mounting.
+- **Test Suite**: 215 tests — 187 server across 28 files (search engine, auth/HTTP-auth, security utils, profile/application workflows, ATS scoring v2 + golden regression + schema persistence, keyword scorer, skill IDF, score cache, rescore, live-discovery connectors/poller/seed/admin, API keys + extension flow, error correlation) + 26 extension (manifest, platform registry, detector/extractor fixtures) + 2 client smoke tests.
 
 ## Partially Done
 
 - Resume tailoring: summary rewrite, bullet prioritization, project selection exist; deeper skill relevance ordering is basic.
-- ATS scoring: useful heuristic exists; true TF-IDF and robust semantic evaluation are not production-grade yet.
+- ATS scoring: engine v2 (2026-09-27) — synonym-aware graded-credit keyword phase, IDF distinctiveness weighting, golden-score regression fixtures, score cache, `POST /resumes/:id/rescore`. Remaining gap: calibration against real application outcomes.
 - Analytics: outcome metrics now meaningful; deeper cohort analysis and time-series views not built.
 - Profile: project tag editing is functional and uses visual tag inputs.
 
@@ -155,7 +155,7 @@ Largest strategic gaps (from the competitor audit): empty search index at first 
 | Profile               | 92%        |
 | JD Ingestion / Search | 95%        |
 | Resume tailoring      | 85%        |
-| ATS scoring           | 60%        |
+| ATS scoring           | 85%        |
 | Application tracker   | 95%        |
 | PDF export            | 90%        |
 | Analytics             | 75%        |

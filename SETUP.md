@@ -126,8 +126,8 @@ apps/
 | `cd apps/extension && npm run dev`   | Rebuild the extension on file changes                      |
 
 **Verification baseline (2026-09-27):** `npm run typecheck` 4/4 tasks · `npm run lint` 3/3 tasks,
-0 errors · `npm test` 190 tests (162 server / 26 extension / 2 client) · server coverage
-67.3% stmts, above the declared 50/60/60 floor. Suites are hermetic (in-memory Mongo, stubbed
+0 errors · `npm test` 215 tests (187 server / 26 extension / 2 client) · server coverage
+68.7% stmts, above the declared 50/60/60 floor. Suites are hermetic (in-memory Mongo, stubbed
 AI providers) — they pass with or without real API keys.
 
 ## 7. Troubleshooting

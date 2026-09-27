@@ -1,16 +1,16 @@
 # ATS Scoring Engine — Technical Design Document
 
-|                    |                                                                              |
-| ------------------ | ---------------------------------------------------------------------------- |
-| **Document title** | ATS Scoring Engine — Technical Design Document                               |
-| **Subtitle**       | JobTailor                                                                    |
-| **Version**        | 1.0                                                                          |
-| **Author**         | JobTailor project owner (sole developer)                                     |
-| **Date**           | 2026-08-30                                                                   |
-| **Status**         | Draft                                                                        |
-| **Reviewers**      | None yet — draft for review                                                  |
-| **Classification** | Internal                                                                     |
-| **Change log**     | v1.0 — 2026-08-30 — Initial draft, written from direct codebase verification |
+|                    |                                                                                                                                                                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Document title** | ATS Scoring Engine — Technical Design Document                                                                                                                                                                               |
+| **Subtitle**       | JobTailor                                                                                                                                                                                                                    |
+| **Version**        | 1.1                                                                                                                                                                                                                          |
+| **Author**         | JobTailor project owner (sole developer)                                                                                                                                                                                     |
+| **Date**           | 2026-08-30                                                                                                                                                                                                                   |
+| **Status**         | Draft                                                                                                                                                                                                                        |
+| **Reviewers**      | None yet — draft for review                                                                                                                                                                                                  |
+| **Classification** | Internal                                                                                                                                                                                                                     |
+| **Change log**     | v1.1 — 2026-09-27 — Keyword phase v2 (synonyms, graded credit, IDF), score cache, rescore endpoint, engineVersion + degraded-flag persistence · v1.0 — 2026-08-30 — Initial draft, written from direct codebase verification |
 
 ## Table of Contents
 
@@ -151,17 +151,32 @@ ATS_Score = round( Keyword×0.55 + Completeness×0.25 + Format×0.20 )
 
 All dimension scores are integers 0–100. There are no penalty or bonus multipliers.
 
+Engine version: every score is stamped `engineVersion` (2 since the 2026-09 upgrade; scores stored before the field existed are v1). The weights above are identical across both versions — only the keyword phase's matching method changed (§4.3).
+
 ### 4.3 Dimension 1 — Keyword match (35%)
 
-Method: build a token set from the resume text (summary + skill names + all experience bullets + project tech stacks and highlights), lowercased, split on whitespace after stripping characters matching `[^\w\s+#.-]`, tokens shorter than 2 characters dropped. Each JD skill (required + preferred) is checked against that set, with a substring fallback on the full resume text. Weights: required skill = 2, preferred = 1.
+Method (engine v2, `keyword-scorer.ts`): the resume is split into 4 section texts (summary, skill names, experience bullets, project tech stacks + highlights). Each JD skill (required + preferred) is graded:
+
+| Credit | Match type   | Rule                                                                           |
+| ------ | ------------ | ------------------------------------------------------------------------------ |
+| 1.0    | exact        | bounded case-insensitive regex `(?<!\w)skill(?!\w)` hits the full resume text  |
+| 0.9    | synonym      | the shared `skill-matcher.ts` synonym groups (react/node/devops-sre/ts/js) hit |
+| 0.75   | token-subset | multi-word skill: all tokens (>2 chars) appear in the resume token set         |
+| 0      | none         | —                                                                              |
+
+A skill appearing in 2+ of the 4 sections earns a +0.1 spread bonus (credit capped at 1.0). Weights remain required = 2, preferred = 1, optionally scaled by a per-skill IDF factor (§4.3.1).
 
 ```text
-Keyword_Score = round( matched_weight / total_weight × 100 )   (0 when no skills listed)
+Keyword_Score = round( Σ(effectiveWeight × credit) / Σ(effectiveWeight) × 100 )   (0 when no skills listed)
 ```
 
-Worked example from the test suite: required `[React, Node.js]` both matched (2+2), preferred `[TypeScript]` unmatched (1) → (4/5)×100 = **80**.
+Worked example from the golden fixtures (`src/tests/fixtures/ats-golden-cases.json`): resume says "React.js"/"TS", JD requires `[React, TypeScript]` → React exact 1.0 (spread-capped), TypeScript synonym 0.9 → (2×1.0 + 2×0.9)/4 = **95** (v1 scored this 50 — it missed "TS" for "TypeScript"; the v1 token-set matcher is preserved in the golden file as recorded delta history).
 
-Known limitation: matching is token-set based; multi-word skills match via substring, and there is no synonym handling inside scoring (the 5-group synonym map exists in the search feature only — see AI/JD doc §4.4).
+#### 4.3.1 IDF distinctiveness weighting
+
+`skill-idf.service.ts` computes `idf(skill) = ln(1 + N/(1+df))` over the newest ≤500 `CanonicalJob` descriptions (df counted with synonym expansion), normalized so the rarest requested skill = 1. `effectiveWeight = weight × idfNorm`. The corpus is cached in-process for 1 hour; an empty corpus, a missing DB connection, or any error yields an empty map and plain weights — scoring never fails because IDF failed. Effect: distinctive skills ("Kubernetes") outweigh ubiquitous ones ("communication") once the live-discovery index has content.
+
+Historical note (v1, replaced 2026-09-27): matching was token-set based with a substring fallback and no synonym handling; the synonym map existed in the search feature only.
 
 ### 4.4 Dimension 2 — Semantic match (45%)
 
@@ -297,7 +312,9 @@ Rationale: for a personal tool with one user, configurability would add a settin
 
 Scores are embedded, not relational:
 
-- `Resume.atsScore` — an `_id: false` Mongoose subdocument: `overallScore`, `keywordMatchScore`, `semanticMatchScore`, `sectionCompletenessScore`, `formatScore`, optional `semanticScoreDegraded`, and `breakdown { matchedSkills[], missingSkills[], weakSkills[], actionItems[] }`.
+- `Resume.atsScore` — an `_id: false` Mongoose subdocument: `overallScore`, `keywordMatchScore`, `semanticMatchScore`, `sectionCompletenessScore`, `formatScore`, optional `semanticScoreDegraded`, optional `engineVersion` (2 for scores produced since the 2026-09 upgrade; absent = v1), and `breakdown { matchedSkills[], missingSkills[], weakSkills[], actionItems[] }`.
+- Persistence fix (2026-09-27): `semanticScoreDegraded` existed in the TypeScript interface but was missing from the Mongoose schema, so strict mode stripped it on every save. Both it and `engineVersion` are now declared in `atsSchema` and survive a round-trip (regression-tested in `ats-schema-persist.test.ts`).
+- The v1→v2 behavior delta is recorded permanently in the golden fixture `src/tests/fixtures/ats-golden-cases.json` (case B keyword 50→95, case C 0→100, cases A/D unchanged).
 - There is **no separate scoring_results table and no scoring audit log**. The score lives on the resume version it describes; re-scoring means generating a new version. Consequence: score history across versions exists (one score per version), but the inputs and config at scoring time are not snapshotted beyond the resume content itself.
 - Raw LLM replies (including the semantic `reasoning` text) are not persisted.
 - Indexes relevant to score consumers: `Resume (userId, jobId)` and `(userId, isProfileResume)`; the tracker reads scores via populated `Application.resumeId`.
@@ -310,10 +327,11 @@ Design consequence worth knowing before modifying: because the score is immutabl
 
 Two authenticated endpoints invoke scoring (envelope and error conventions in SDD §6):
 
-| Method | Endpoint                   | Behavior                                                                                                                                                                    |
-| ------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/resumes/generate`        | Requires `jobId` with `parsedJD` (else 400 `JD_NOT_PARSED`); tailors the master profile, scores, persists a versioned `Resume` with `atsScore`                              |
-| POST   | `/resumes/quick-ats-check` | Body `{ jobId }` (Zod-validated); scores without persisting; resume selection: attached resume → latest profile resume → 404 `NO_RESUME_AVAILABLE` with a suggestion string |
+| Method | Endpoint                   | Behavior                                                                                                                                                                                                                                               |
+| ------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/resumes/generate`        | Requires `jobId` with `parsedJD` (else 400 `JD_NOT_PARSED`); tailors the master profile, scores, persists a versioned `Resume` with `atsScore`                                                                                                         |
+| POST   | `/resumes/quick-ats-check` | Body `{ jobId }` (Zod-validated); scores without persisting; resume selection: attached resume → latest profile resume → 404 `NO_RESUME_AVAILABLE` with a suggestion string                                                                            |
+| POST   | `/resumes/:id/rescore`     | Re-runs the current engine on the resume's stored content + its job's parsedJD; returns `{ stored, fresh, delta, overwritten: false }`; **never writes** to the resume. Errors: `RESUME_NOT_FOUND` (404), `JOB_NOT_FOUND` (404), `JD_NOT_PARSED` (400) |
 
 Verified quick-check response (200):
 
@@ -356,7 +374,7 @@ Not measured — no latency benchmarks, throughput figures, or SLAs exist, and n
 Structural facts:
 
 - Scoring performs exactly one LLM call (the semantic phase) per run; the other three phases are pure in-memory computation. The phases run concurrently, so wall-clock time ≈ one LLM round-trip plus provider-fallback retries on failure.
-- No caching of scores or of LLM responses: identical inputs re-run the full pipeline. The deterministic phases would produce identical results; the semantic phase may vary between providers or model versions — so "100% reproducibility" is **not** a property of the current engine and is not claimed.
+- Score caching (2026-09-27): `quick-ats-check` reads/writes an in-process LRU cache (`score-cache.ts`, 200 entries, 1-hour TTL) keyed on sha256 of the deterministic serialization of (resume content, parsed JD, engine version) — a new engine version can never serve an old score. Degraded results are never cached, so a retry after provider recovery re-runs the full pipeline. `generateResume` bypasses the cache (tailored content is new per call); `rescore` bypasses the read but writes through. Single-instance deployment means no Redis; a restart starts cold. LLM responses themselves are still not cached, and the semantic phase may vary between providers or model versions — so "100% reproducibility" remains **not** a property of the engine and is not claimed.
 - Single server instance, single user (SDD §10). No queue, no workers, no GPU.
 
 ---
@@ -420,15 +438,18 @@ Not applicable — no migration is underway and no staged rollout is planned. Sc
 **Open questions:**
 
 - Should the semantic `reasoning` text be persisted and surfaced? It is produced today and discarded.
-- Is a golden-score regression file worth adding for the deterministic phases? (Cheap; likely yes.)
 - If weights ever become configurable, what snapshot format keeps old scores interpretable?
+
+**Implemented since v1.0 (2026-09-27, formerly listed here as future work):**
+
+- Keyword phase v2: synonym-aware graded credit sharing the search feature's `skill-matcher.ts`, plus IDF distinctiveness weighting from the CanonicalJob corpus (§4.3).
+- Golden-score regression file for the deterministic phases (`ats-golden-cases.json` + `ats-golden.test.ts`).
+- Score caching keyed on (resume content, parsed JD, engine version) hash (§13).
+- Re-score endpoint comparing new engine output against stored versions without overwriting (§12).
 
 **Future considerations (not committed):**
 
-- TF-IDF or BM25 keyword phase; synonym expansion shared with the search feature's matcher.
-- Score caching keyed on (resume version, parsed JD) hash.
 - Calibration study against the user's own application outcomes (interview rate per score band) — the one dataset this product could ethically build.
-- A re-score endpoint for comparing new weights against stored versions.
 
 ---
 
@@ -462,6 +483,7 @@ npm run typecheck
 
 ### 19.4 Revision history
 
-| Version | Date       | Change                                                   |
-| ------- | ---------- | -------------------------------------------------------- |
-| 1.0     | 2026-08-30 | Initial draft, written from direct codebase verification |
+| Version | Date       | Change                                                                                                                    |
+| ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 1.0     | 2026-08-30 | Initial draft, written from direct codebase verification                                                                  |
+| 1.1     | 2026-09-27 | Keyword phase v2 (synonyms, graded credit, IDF), score cache, rescore endpoint, engineVersion + degraded-flag persistence |

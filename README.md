@@ -95,9 +95,9 @@ Current verification baseline (2026-09-27, single source of truth):
 ```bash
 npm run typecheck   # 4/4 tasks
 npm run lint        # 3/3 tasks, 0 errors
-npm run test        # 190 tests: 162 server (22 files) + 26 extension (3 files) + 2 client
+npm run test        # 215 tests: 187 server (28 files) + 26 extension (3 files) + 2 client
 npm run test:coverage --workspace=job-tailor-server
-                    # 67.3% stmts / 69.1% branch / 74.2% funcs — above the 50/60/60 floor
+                    # 68.7% stmts / 71.3% branch / 75.6% funcs — above the 50/60/60 floor
 ```
 
 All suites are hermetic: tests use `mongodb-memory-server` and stub AI providers, so they

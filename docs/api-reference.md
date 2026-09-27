@@ -77,19 +77,20 @@ error log lines are correlated under the same id.
 
 ## Resumes — `/api/v1/resumes`
 
-| Method | Endpoint                   | Notes                                                                    |
-| ------ | -------------------------- | ------------------------------------------------------------------------ |
-| POST   | `/resumes/generate`        | Generates tailored resume content + ATS score for a parsed job           |
-| GET    | `/resumes`                 | Optional `jobId` filter                                                  |
-| POST   | `/resumes/profile`         | Creates/updates the profile-level (master) resume                        |
-| PUT    | `/resumes/profile`         | Updates the profile-level resume                                         |
-| GET    | `/resumes/profile`         | Returns the profile-level resume                                         |
-| GET    | `/resumes/reuse`           | Two-type system: returns the reusable resume when eligible               |
-| GET    | `/resumes/:id`             | Gets one resume                                                          |
-| PUT    | `/resumes/:id`             | Updates resume fields                                                    |
-| POST   | `/resumes/:id/pdf`         | Renders the resume to PDF via Puppeteer and returns it (wired in app.ts) |
-| POST   | `/resumes/upload`          | Multipart resume PDF upload                                              |
-| POST   | `/resumes/quick-ats-check` | Fast ATS check without full generation                                   |
+| Method | Endpoint                   | Notes                                                                                                |
+| ------ | -------------------------- | ---------------------------------------------------------------------------------------------------- |
+| POST   | `/resumes/generate`        | Generates tailored resume content + ATS score for a parsed job                                       |
+| GET    | `/resumes`                 | Optional `jobId` filter                                                                              |
+| POST   | `/resumes/profile`         | Creates/updates the profile-level (master) resume                                                    |
+| PUT    | `/resumes/profile`         | Updates the profile-level resume                                                                     |
+| GET    | `/resumes/profile`         | Returns the profile-level resume                                                                     |
+| GET    | `/resumes/reuse`           | Two-type system: returns the reusable resume when eligible                                           |
+| GET    | `/resumes/:id`             | Gets one resume                                                                                      |
+| PUT    | `/resumes/:id`             | Updates resume fields                                                                                |
+| POST   | `/resumes/:id/pdf`         | Renders the resume to PDF via Puppeteer and returns it (wired in app.ts)                             |
+| POST   | `/resumes/upload`          | Multipart resume PDF upload                                                                          |
+| POST   | `/resumes/quick-ats-check` | Fast ATS check without full generation (served from an in-process score cache when inputs repeat)    |
+| POST   | `/resumes/:id/rescore`     | Re-runs the current engine (v2) on stored content; returns stored vs fresh + delta; never overwrites |
 
 ## Applications — `/api/v1/applications`
 
