@@ -8,6 +8,7 @@
  * - Graceful degeneration: empty corpus or any DB error → empty map, and the
  *   keyword scorer falls back to plain required/preferred weights.
  */
+import mongoose from "mongoose";
 import { CanonicalJob } from "../models/CanonicalJob.model.js";
 import { getSynonymRegexString } from "../utils/skill-matcher.js";
 
@@ -24,6 +25,9 @@ async function loadCorpus(): Promise<string[]> {
   const now = Date.now();
   if (corpusCache && now - corpusCache.at < CACHE_TTL_MS)
     return corpusCache.docs;
+  // Not connected (unit tests, scripts) → no corpus; do NOT cache this state.
+  // Without the guard, mongoose would buffer the query indefinitely.
+  if (mongoose.connection.readyState !== 1) return [];
   const docs = await CanonicalJob.find()
     .sort({ createdAt: -1 })
     .limit(CORPUS_CAP)

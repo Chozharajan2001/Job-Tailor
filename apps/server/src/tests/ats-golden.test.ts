@@ -39,8 +39,9 @@ const cases = JSON.parse(
   readFileSync(path.join(here, "fixtures", "ats-golden-cases.json"), "utf-8"),
 ) as GoldenCase[];
 
-// Task 5 flips this to "v2" and fills the v2 expectations with recorded deltas.
-const ENGINE_UNDER_TEST = "v1" as "v1" | "v2";
+// Engine v2 (2026-09): synonym-aware graded-credit keyword phase. v1 values
+// stay in the fixture as the recorded delta history (B: 50→95, C: 0→100).
+const ENGINE_UNDER_TEST = "v2" as "v1" | "v2";
 
 describe("ATS golden-score regression (deterministic phases, provider mocked off)", () => {
   beforeEach(() => {

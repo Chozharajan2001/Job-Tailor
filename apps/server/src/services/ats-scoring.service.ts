@@ -1,11 +1,17 @@
 import { aiProviderManager } from "./ai-provider/provider-manager.js";
 import { IParsedJD } from "../models/Job.model.js";
+import { scoreKeywordsV2 } from "./keyword-scorer.js";
+import { computeSkillIdfMap } from "./skill-idf.service.js";
 import type {
   IATSScore,
   IMatchedSkill,
   IMissingSkill,
   IWeakSkill,
 } from "../models/Resume.model.js";
+
+/** Stamped on every IATSScore produced by this engine (see Resume.model atsSchema).
+ *  1 = token-set keyword phase (pre-2026-09), 2 = synonym-aware graded credit + IDF. */
+export const ATS_ENGINE_VERSION = 2;
 
 // ─── Types ─────────────────────────────────────────────────────
 export interface ResumeContent {
@@ -20,54 +26,12 @@ export interface ResumeContent {
   projects: Array<{ name: string; techStack: string[]; highlights: string[] }>;
 }
 
-// ─── Simple TF-IDF Keyword Matcher ─────────────────────────────
+// ─── Keyword matching — v1 matcher replaced by keyword-scorer.ts (v2) ─────────────────────────────
 
-/**
- * Extract keywords from text (lowercase, deduplicated).
- */
-function extractKeywords(text: string): Set<string> {
-  const words = text
-    .toLowerCase()
-    .replace(/[^\w\s+#.-]/g, " ")
-    .split(/\s+/)
-    .filter((w) => w.length > 1);
-  return new Set(words);
-}
-
-/**
- * Calculate keyword match score between resume content and JD.
- */
-function calculateKeywordScore(resume: ResumeContent, jd: IParsedJD): number {
-  let totalWeight = 0;
-  let matchedWeight = 0;
-
-  // Build resume keyword set
-  const resumeText = [
-    resume.summary,
-    ...resume.skills.map((s) => s.name),
-    ...resume.experience.flatMap((e) => e.bullets.map((b) => b.text)),
-    ...resume.projects.flatMap((p) => [...p.techStack, ...p.highlights]),
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  const resumeKeywords = extractKeywords(resumeText);
-
-  // Score each required skill with weight based on JD focus area
-  const allSkills = [...jd.requiredSkills, ...jd.preferredSkills];
-  allSkills.forEach((skill) => {
-    const skillLower = skill.toLowerCase();
-    const weight = jd.requiredSkills.includes(skill) ? 2 : 1; // Required skills weighted higher
-    totalWeight += weight;
-
-    // Check if skill name (or its parts) appear in resume
-    if (resumeKeywords.has(skillLower) || resumeText.includes(skillLower)) {
-      matchedWeight += weight;
-    }
-  });
-
-  return totalWeight > 0 ? Math.round((matchedWeight / totalWeight) * 100) : 0;
-}
+// The v1 token-set matcher (extractKeywords + calculateKeywordScore) was
+// replaced by keyword-scorer.ts (v2): synonym-aware graded credit with
+// optional IDF weighting. v1 behavior is preserved in the golden fixture
+// (src/tests/fixtures/ats-golden-cases.json) as the recorded delta history.
 
 /**
  * Build matched skills table — which skills from JD exist in resume.
@@ -281,7 +245,7 @@ function calculateFormatScore(resume: ResumeContent): number {
 
 /**
  * Full ATS scoring pipeline:
- * Phase 1: Keyword matching (TF-IDF style) — 35% weight
+ * Phase 1: Keyword matching v2 (synonym-aware graded credit, IDF-weighted) — 35% weight
  * Phase 2: Semantic matching (LLM) — 45% weight
  * Phase 3: Section completeness — 12% weight
  * Phase 4: Format quality — 8% weight
@@ -294,14 +258,19 @@ export async function scoreATS(
   resume: ResumeContent,
   jd: IParsedJD,
 ): Promise<IATSScore> {
-  // Run independent scoring phases in parallel
-  const [semanticResult, keywordScore, sectionScore, formatScore] =
+  // Run independent scoring phases in parallel. The keyword phase is v2:
+  // synonym-aware graded credit, optionally IDF-weighted from the CanonicalJob
+  // corpus (empty map → plain required/preferred weights).
+  const [semanticResult, keywordResult, sectionScore, formatScore] =
     await Promise.all([
       semanticScore(resume, jd),
-      Promise.resolve(calculateKeywordScore(resume, jd)),
+      computeSkillIdfMap([...jd.requiredSkills, ...jd.preferredSkills]).then(
+        (idfNorm) => scoreKeywordsV2(resume, jd, idfNorm),
+      ),
       Promise.resolve(calculateSectionCompleteness(resume)),
       Promise.resolve(calculateFormatScore(resume)),
     ]);
+  const keywordScore = keywordResult.score;
 
   const semanticDegraded = semanticResult.score === null;
   const semanticScoreValue = semanticResult.score ?? 0;
@@ -342,6 +311,7 @@ export async function scoreATS(
     sectionCompletenessScore: sectionScore,
     formatScore: formatScore,
     semanticScoreDegraded: semanticDegraded || undefined,
+    engineVersion: ATS_ENGINE_VERSION,
     breakdown: {
       matchedSkills,
       missingSkills,

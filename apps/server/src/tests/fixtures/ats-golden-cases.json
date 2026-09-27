@@ -59,6 +59,10 @@
       "sectionCompletenessScore": 73,
       "formatScore": 90,
       "degradedOverallScore": 80
+    },
+    "v2": {
+      "keywordMatchScore": 80,
+      "degradedOverallScore": 80
     }
   },
   {
@@ -104,6 +108,10 @@
       "sectionCompletenessScore": 55,
       "formatScore": 60,
       "degradedOverallScore": 53
+    },
+    "v2": {
+      "keywordMatchScore": 95,
+      "degradedOverallScore": 78
     }
   },
   {
@@ -149,6 +157,10 @@
       "sectionCompletenessScore": 55,
       "formatScore": 60,
       "degradedOverallScore": 26
+    },
+    "v2": {
+      "keywordMatchScore": 100,
+      "degradedOverallScore": 81
     }
   },
   {
@@ -194,6 +206,10 @@
       "keywordMatchScore": 0,
       "sectionCompletenessScore": 25,
       "formatScore": 60,
+      "degradedOverallScore": 18
+    },
+    "v2": {
+      "keywordMatchScore": 0,
       "degradedOverallScore": 18
     }
   }
