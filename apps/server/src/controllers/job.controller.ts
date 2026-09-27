@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { Job, IJob } from "../models/Job.model.js";
 import { Resume } from "../models/Resume.model.js";
+import { Application } from "../models/Application.model.js";
 import { parseJD } from "../services/jd-parser.service.js";
 import { escapeRegex } from "../utils/skill-matcher.js";
 
@@ -85,12 +86,10 @@ export async function getJob(req: Request, res: Response): Promise<void> {
     .exec();
 
   if (!job) {
-    res
-      .status(404)
-      .json({
-        success: false,
-        error: { code: "JOB_NOT_FOUND", message: "Job not found." },
-      });
+    res.status(404).json({
+      success: false,
+      error: { code: "JOB_NOT_FOUND", message: "Job not found." },
+    });
     return;
   }
 
@@ -131,12 +130,10 @@ export async function updateJob(req: Request, res: Response): Promise<void> {
     .exec();
 
   if (!job) {
-    res
-      .status(404)
-      .json({
-        success: false,
-        error: { code: "JOB_NOT_FOUND", message: "Job not found." },
-      });
+    res.status(404).json({
+      success: false,
+      error: { code: "JOB_NOT_FOUND", message: "Job not found." },
+    });
     return;
   }
 
@@ -151,14 +148,24 @@ export async function deleteJob(req: Request, res: Response): Promise<void> {
   const result = await Job.deleteOne({ _id: req.params.id, userId });
 
   if (result.deletedCount === 0) {
-    res
-      .status(404)
-      .json({
-        success: false,
-        error: { code: "JOB_NOT_FOUND", message: "Job not found." },
-      });
+    res.status(404).json({
+      success: false,
+      error: { code: "JOB_NOT_FOUND", message: "Job not found." },
+    });
     return;
   }
+
+  // H5 fix (2026-09-27): cascade the delete. Applications keep a jobId ref
+  // and a (userId, jobId) unique index — without this they stayed on the
+  // Kanban with blank company/title (failed populate) and blocked
+  // re-applying; job-specific Resume versions became unreachable orphans.
+  // Profile-level resumes (isProfileResume) are NOT touched.
+  await Application.deleteMany({ userId, jobId: req.params.id });
+  await Resume.deleteMany({
+    userId,
+    jobId: req.params.id,
+    isProfileResume: { $ne: true },
+  });
 
   res.json({ success: true, data: { message: "Job deleted successfully." } });
 }
@@ -242,12 +249,10 @@ export async function parseJobJD(req: Request, res: Response): Promise<void> {
 
   const job = await Job.findOne({ _id: req.params.id, userId });
   if (!job) {
-    res
-      .status(404)
-      .json({
-        success: false,
-        error: { code: "JOB_NOT_FOUND", message: "Job not found." },
-      });
+    res.status(404).json({
+      success: false,
+      error: { code: "JOB_NOT_FOUND", message: "Job not found." },
+    });
     return;
   }
 

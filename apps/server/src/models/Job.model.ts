@@ -1,8 +1,8 @@
-import mongoose, { Schema, Types, Document } from 'mongoose';
+import mongoose, { Schema, Types, Document } from "mongoose";
 
 export interface IParsedJD {
   summary: string;
-  seniorityLevel: 'entry' | 'mid' | 'senior' | 'staff' | 'principal';
+  seniorityLevel: "entry" | "mid" | "senior" | "staff" | "principal";
   focusWeights: {
     frontend: number;
     backend: number;
@@ -15,7 +15,7 @@ export interface IParsedJD {
   responsibilities: string[];
   qualifications: string[];
   niceToHaves: string[];
-  tone: 'formal' | 'casual' | 'technical' | 'corporate';
+  tone: "formal" | "casual" | "technical" | "corporate";
 }
 
 export interface INote {
@@ -30,14 +30,21 @@ export interface IJob extends Document {
   jobTitle: string;
   jobLink?: string;
   location: string;
-  workType: 'remote' | 'hybrid' | 'onsite';
-  employmentType: 'full-time' | 'part-time' | 'contract' | 'internship';
+  workType: "remote" | "hybrid" | "onsite";
+  employmentType: "full-time" | "part-time" | "contract" | "internship";
   salaryRange?: { min: number; max: number; currency: string };
   postedDate?: Date;
   jdRawText: string;
   parsedJD: IParsedJD | null;
   attachedResumeId?: Types.ObjectId;
-  status: 'saved' | 'applied' | 'screening' | 'interview' | 'offer' | 'rejected' | 'withdrawn';
+  status:
+    | "saved"
+    | "applied"
+    | "screening"
+    | "interview"
+    | "offer"
+    | "rejected"
+    | "withdrawn";
   notes: INote[];
   appliedDate?: Date;
   savedAt: Date;
@@ -46,8 +53,12 @@ export interface IJob extends Document {
 
 const parsedJDSchema = new Schema<IParsedJD>(
   {
-    summary: { type: String, default: '' },
-    seniorityLevel: { type: String, enum: ['entry', 'mid', 'senior', 'staff', 'principal'], default: 'mid' },
+    summary: { type: String, default: "" },
+    seniorityLevel: {
+      type: String,
+      enum: ["entry", "mid", "senior", "staff", "principal"],
+      default: "mid",
+    },
     focusWeights: {
       frontend: { type: Number, default: 0 },
       backend: { type: Number, default: 0 },
@@ -60,62 +71,95 @@ const parsedJDSchema = new Schema<IParsedJD>(
     responsibilities: [{ type: String }],
     qualifications: [{ type: String }],
     niceToHaves: [{ type: String }],
-    tone: { type: String, enum: ['formal', 'casual', 'technical', 'corporate'], default: 'technical' },
+    tone: {
+      type: String,
+      enum: ["formal", "casual", "technical", "corporate"],
+      default: "technical",
+    },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const noteSchema = new Schema<INote>(
   {
-    id: { type: String, required: true, default: () => new Types.ObjectId().toString() },
+    id: {
+      type: String,
+      required: true,
+      default: () => new Types.ObjectId().toString(),
+    },
     content: { type: String, required: true, trim: true },
     createdAt: { type: Date, default: Date.now },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const jobSchema = new Schema<IJob>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true }, // index: true removed - compound indexes below cover this
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true }, // index: true removed - compound indexes below cover this
 
     // Company info - Only jobTitle is required
-    companyName: { type: String, trim: true, default: '' },
-    jobTitle: { type: String, required: [true, 'Job title is required'], trim: true },
+    companyName: { type: String, trim: true, default: "" },
+    jobTitle: {
+      type: String,
+      required: [true, "Job title is required"],
+      trim: true,
+    },
     jobLink: { type: String },
-    location: { type: String, default: '' },
-    workType: { type: String, enum: ['remote', 'hybrid', 'onsite'], default: 'remote' },
-    employmentType: { type: String, enum: ['full-time', 'part-time', 'contract', 'internship'], default: 'full-time' },
+    location: { type: String, default: "" },
+    workType: {
+      type: String,
+      enum: ["remote", "hybrid", "onsite"],
+      default: "remote",
+    },
+    employmentType: {
+      type: String,
+      enum: ["full-time", "part-time", "contract", "internship"],
+      default: "full-time",
+    },
     salaryRange: {
       min: Number,
       max: Number,
-      currency: { type: String, default: 'USD' },
+      currency: { type: String, default: "USD" },
     },
     postedDate: Date,
 
     // Job Description - Optional (can be added later)
-    jdRawText: { type: String, default: '' },
+    jdRawText: { type: String, default: "" },
     parsedJD: parsedJDSchema,
 
     // Job-specific resume attachment (uploaded when creating job)
-    attachedResumeId: { type: Schema.Types.ObjectId, ref: 'Resume' },
+    attachedResumeId: { type: Schema.Types.ObjectId, ref: "Resume" },
 
     // Pipeline status - Moved to Application model conceptually, but kept here for backward compatibility
     status: {
       type: String,
-      enum: ['saved', 'applied', 'screening', 'interview', 'offer', 'rejected', 'withdrawn'],
-      default: 'saved',
+      enum: [
+        "saved",
+        "applied",
+        "screening",
+        "interview",
+        "offer",
+        "rejected",
+        "withdrawn",
+      ],
+      default: "saved",
       index: true,
     },
     notes: [noteSchema],
     appliedDate: Date,
+    // H4 fix (2026-09-27): savedAt existed in the interface, the compound
+    // index, and the default list sort — but not in the schema, so strict
+    // mode never persisted it and pagination over "newest first" was
+    // non-deterministic. Default = creation time.
+    savedAt: { type: Date, default: Date.now },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Compound index for user's filtered queries
 jobSchema.index({ userId: 1, status: 1 });
 jobSchema.index({ userId: 1, savedAt: -1 });
 
-export const Job = mongoose.model<IJob>('Job', jobSchema);
+export const Job = mongoose.model<IJob>("Job", jobSchema);

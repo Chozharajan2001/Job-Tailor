@@ -10,6 +10,7 @@ import {
 import mongoose from "mongoose";
 import { Job } from "../models/Job.model.js";
 import { Resume } from "../models/Resume.model.js";
+import { Application } from "../models/Application.model.js";
 import { User } from "../models/User.model.js";
 import * as jobController from "../controllers/job.controller.js";
 import { connectTestDb, disconnectTestDb } from "./helpers/test-db.js";
@@ -167,6 +168,72 @@ describe("Job CRUD & Controller operations integration tests", () => {
     // Confirm job is gone from DB
     const checkDb = await Job.findById(jobId).lean();
     expect(checkDb).toBeNull();
+  });
+
+  it("persists savedAt and cascades deletes to applications + job resumes (H4/H5)", async () => {
+    const job = await Job.create({
+      userId: testUserId,
+      companyName: "Cascade Corp",
+      jobTitle: "Cascade Victim",
+      jdRawText: "x",
+    });
+    const jobId = (job._id as mongoose.Types.ObjectId).toString();
+
+    // H4: savedAt must actually persist (it was interface-only before).
+    const reloaded = await Job.findById(jobId).lean();
+    expect(reloaded?.savedAt).toBeInstanceOf(Date);
+
+    // Seed dependents: one application, one job-specific resume, and one
+    // PROFILE resume that must survive.
+    await Application.create({
+      userId: testUserId,
+      jobId: job._id,
+      status: "applied",
+    });
+    await Resume.create({
+      userId: testUserId,
+      jobId: job._id,
+      version: 1,
+      versionLabel: "v1",
+      tailoredSummary: "tailored for this job",
+    });
+    const profileResume = await Resume.create({
+      userId: testUserId,
+      isProfileResume: true,
+      version: 1,
+      versionLabel: "master",
+      tailoredSummary: "profile master resume",
+    });
+
+    const deleteReq = {
+      user: { userId: testUserId },
+      params: { id: jobId },
+    } as any;
+    const deleteRes = { json: (_d: any) => {} } as any;
+    await jobController.deleteJob(deleteReq, deleteRes);
+
+    expect(
+      await Application.countDocuments({ userId: testUserId, jobId: job._id }),
+    ).toBe(0);
+    expect(
+      await Resume.countDocuments({ userId: testUserId, jobId: job._id }),
+    ).toBe(0);
+    // The profile resume is untouched by the cascade.
+    expect(await Resume.findById(profileResume._id).lean()).not.toBeNull();
+
+    // The (userId, jobId) unique index no longer blocks a fresh job+application.
+    const job2 = await Job.create({
+      userId: testUserId,
+      companyName: "Cascade Corp",
+      jobTitle: "Cascade Victim",
+      jdRawText: "x",
+    });
+    await Application.create({
+      userId: testUserId,
+      jobId: job2._id,
+      status: "applied",
+    });
+    expect(await Job.countDocuments({ userId: testUserId })).toBe(1);
   });
 
   it("should successfully trigger JD parser and attach details onto job record", async () => {
