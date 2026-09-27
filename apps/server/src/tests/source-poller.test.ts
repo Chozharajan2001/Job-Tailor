@@ -174,6 +174,25 @@ describe("source-poller", () => {
     expect(src?.lastError).toMatch(/500/);
   });
 
+  it("treats fetched-but-zero-ingested as a source failure, not a healthy poll (H3)", async () => {
+    // Jobs whose description is empty fail CanonicalJob's required validator
+    // per-item — historically the content-less Greenhouse list payload case.
+    mockGreenhouseList([
+      { id: 1, title: "No content", absolute_url: "https://gh/acme/nc1" },
+      { id: 2, title: "No content", absolute_url: "https://gh/acme/nc2" },
+    ]);
+
+    const result = await pollSource(testSourceId);
+    expect(result.fetched).toBe(2);
+    expect(result.created).toBe(0);
+    expect(result.error).toMatch(/ingested 0/);
+
+    const src = await SourceRegistry.findById(testSourceId).lean();
+    expect(src?.errorCount).toBe(1);
+    expect(src?.trustScore).toBeLessThan(0.5);
+    expect(src?.lastError).toMatch(/ingested 0/);
+  });
+
   it("circuit-breaks after 5 consecutive failures", async () => {
     mockGreenhouseFailure();
     for (let i = 0; i < 5; i++) {

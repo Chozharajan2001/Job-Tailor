@@ -1,7 +1,12 @@
 import type { SourceConnector, RawJob, CanonicalJobInput } from "./types.js";
 import { htmlToText } from "./utils/html.js";
+import { runWithConcurrency } from "../source-poller.util.js";
 
 const BASE = "https://boards-api.greenhouse.io/v1/boards";
+
+/** Per-board concurrency for detail enrichment — boards list 10–30 jobs
+ *  and the poller already runs 5 sources in parallel. */
+const DETAIL_CONCURRENCY = 4;
 
 interface GreenhouseJobSummary {
   id: number;
@@ -47,7 +52,31 @@ export const greenhouseConnector: SourceConnector = {
       throw new Error(`Greenhouse list ${token}: HTTP ${res.status}`);
     }
     const body = (await res.json()) as { jobs?: GreenhouseJobSummary[] };
-    return (body.jobs ?? []).map((j) => toRawJob(j, token));
+
+    // H3 fix (2026-09-27): the list endpoint omits `content`, so raw list
+    // summaries produced empty descriptions that failed CanonicalJob's
+    // required validator — every Greenhouse job was silently dropped while
+    // the poll reported success. Enrich each summary via the detail endpoint;
+    // jobs whose detail cannot be fetched are skipped (an ingestable job
+    // must have content) and retried on the next poll.
+    const detailed = await runWithConcurrency(
+      body.jobs ?? [],
+      DETAIL_CONCURRENCY,
+      async (j): Promise<RawJob | null> => {
+        try {
+          const detailRes = await fetch(
+            `${BASE}/${encodeURIComponent(token)}/jobs/${encodeURIComponent(String(j.id))}`,
+            { headers: { "User-Agent": userAgent() } },
+          );
+          if (!detailRes.ok) return null;
+          const detail = (await detailRes.json()) as GreenhouseJobDetail;
+          return toRawJob({ ...j, ...detail }, token);
+        } catch {
+          return null;
+        }
+      },
+    );
+    return detailed.filter((r): r is RawJob => r !== null);
   },
 
   toCanonicalJob(raw: RawJob, companyHint?: string): CanonicalJobInput {

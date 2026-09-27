@@ -44,7 +44,7 @@ afterEach(() => {
 });
 
 describe("greenhouse connector", () => {
-  it("maps list response to RawJob[] with token as companyName", async () => {
+  it("enriches list results with per-job content via the detail endpoint (H3)", async () => {
     mockFetchOk("https://boards-api.greenhouse.io/v1/boards/acme/jobs", {
       jobs: [
         {
@@ -64,6 +64,20 @@ describe("greenhouse connector", () => {
         },
       ],
     });
+    // The list endpoint omits `content` — fetchJobs must pull each job's
+    // detail or the ingest fails CanonicalJob's required description.
+    mockFetchOk("https://boards-api.greenhouse.io/v1/boards/acme/jobs/101", {
+      id: 101,
+      title: "Senior Engineer",
+      absolute_url: "https://gh/acme/101",
+      content: "<p>Deep React work.</p>",
+    });
+    mockFetchOk("https://boards-api.greenhouse.io/v1/boards/acme/jobs/102", {
+      id: 102,
+      title: "PM",
+      absolute_url: "https://gh/acme/102",
+      content: "<p>Roadmaps.</p>",
+    });
 
     const jobs = await greenhouseConnector.fetchJobs("acme");
     expect(jobs).toHaveLength(2);
@@ -74,7 +88,36 @@ describe("greenhouse connector", () => {
       companyName: "acme",
       locationText: "Remote",
       department: "Engineering",
+      descriptionHtml: "<p>Deep React work.</p>",
     });
+    // toCanonicalJob yields a non-empty description — the bug this fixes
+    // produced jdRawText "" which fails CanonicalJob.description required.
+    expect(
+      greenhouseConnector.toCanonicalJob(jobs[1]).jdRawText.trim().length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("skips jobs whose detail fetch fails instead of yielding empty-content jobs", async () => {
+    mockFetchOk("https://boards-api.greenhouse.io/v1/boards/acme/jobs", {
+      jobs: [
+        { id: 101, title: "A", absolute_url: "https://gh/acme/101" },
+        { id: 102, title: "B", absolute_url: "https://gh/acme/102" },
+      ],
+    });
+    mockFetchOk("https://boards-api.greenhouse.io/v1/boards/acme/jobs/101", {
+      id: 101,
+      title: "A",
+      absolute_url: "https://gh/acme/101",
+      content: "<p>ok</p>",
+    });
+    mockFetchStatus(
+      "https://boards-api.greenhouse.io/v1/boards/acme/jobs/102",
+      500,
+    );
+
+    const jobs = await greenhouseConnector.fetchJobs("acme");
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].externalId).toBe("101");
   });
 
   it("returns empty array when no jobs", async () => {

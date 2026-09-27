@@ -87,6 +87,34 @@ export async function pollSource(sourceId: string): Promise<PollResult> {
       }
     }
 
+    // H3 companion guard (2026-09-27): a poll that fetched jobs but ingested
+    // none is NOT a healthy success — this is exactly how the content-less
+    // Greenhouse list payloads presented. Count it as a source failure so
+    // the breaker, trust decay, and dashboard stop lying.
+    if (raws.length > 0 && created === 0 && duplicates === 0) {
+      const softError = `poll fetched ${raws.length} jobs but ingested 0 (${failed} failed)`;
+      await SourceRegistry.updateOne(
+        { _id: sourceId },
+        {
+          $set: { lastPolledAt: new Date(), lastError: softError },
+          $inc: { errorCount: 1 },
+        },
+      );
+      await CleanupService.decaySourceTrust(sourceId, 0.05);
+      await SourceRegistry.updateOne(
+        { _id: sourceId, errorCount: { $gte: CIRCUIT_BREAKER_THRESHOLD } },
+        { $set: { isEnabled: false } },
+      );
+      return {
+        sourceId,
+        fetched: raws.length,
+        created,
+        duplicates,
+        failed,
+        error: softError,
+      };
+    }
+
     await SourceRegistry.updateOne(
       { _id: sourceId },
       {
