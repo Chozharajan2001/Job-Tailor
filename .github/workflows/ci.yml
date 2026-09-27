@@ -15,16 +15,10 @@ jobs:
     name: Typecheck, lint, build & test
     runs-on: ubuntu-latest
 
-    services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\")'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
+    # No database service container: every server test connects through
+    # mongodb-memory-server (apps/server/src/tests/helpers/test-db.ts), which
+    # downloads its own mongod binary. A mongo:7 service was provisioned here
+    # previously but never used — removed 2026-09-27 (better-harness review).
 
     env:
       # CI-only values — never reuse real secrets in workflows.
@@ -55,8 +49,15 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Server tests
-        run: npm run test --workspace=job-tailor-server
+      # Root task runs every workspace suite through turbo: server, client,
+      # and extension. Adding a workspace with a test script automatically
+      # joins this gate — no workflow edit needed.
+      - name: Tests (all workspaces)
+        run: npm run test
 
-      - name: Client tests
-        run: npm run test --workspace=job-tailor-client
+      # Coverage floor gate: vitest.config.ts declares thresholds (50/60/60/60)
+      # and the provider throws when they are missed, so this step fails the
+      # build on regression. Measured 2026-09-27: 67.34 stmts / 69.05 branch /
+      # 74.17 funcs / 67.34 lines — floor met with margin.
+      - name: Server coverage floor
+        run: npm run test:coverage --workspace=job-tailor-server
