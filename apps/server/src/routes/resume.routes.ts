@@ -15,6 +15,7 @@ import {
   getProfileResume,
   upload,
 } from "../controllers/resume.controller.js";
+import { rescoreResume } from "../controllers/resume-rescore.controller.js";
 import {
   validateBody,
   validateParams,
@@ -157,6 +158,10 @@ router.put(
 // PDF endpoints
 router.post("/:id/pdf", validateParams(idParamSchema), downloadPDF);
 router.post("/upload", upload.single("resume"), uploadResumePDF);
+
+// Re-score with the current engine — compares against the stored score,
+// never overwrites (registered after static paths, alongside /:id/pdf)
+router.post("/:id/rescore", validateParams(idParamSchema), rescoreResume);
 
 // Quick ATS Check endpoint
 router.post("/quick-ats-check", validateBody(quickATSSchema), quickATSCheck);
