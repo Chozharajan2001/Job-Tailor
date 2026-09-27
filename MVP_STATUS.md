@@ -37,12 +37,12 @@ Verified:
 ```bash
 npm run typecheck  ✅ (4/4 tasks: shared-types, server, client, extension)
 npm run lint       ✅ (3/3 tasks, 0 errors)
-npm run test       ✅ (218 tests: 187 server / 28 files, 26 extension / 3 files,
-                          5 client / 2 files — Login+Register smoke plus render-and-
+npm run test       ✅ (server 194 tests across 29 files, 26 extension (3 files),
+                          5 client (2 files) — Login/Register smoke plus render-and-
                           interact gates for JobsPage, ProfilePage, TrackerPage)
 npm run test:coverage --workspace=job-tailor-server
-                   ✅ (measured surface incl. controllers+routes: 55.6 stmts /
-                       68.7 branch / 59.4 funcs; floors 55/50/59/55)
+                   ✅ (measured surface incl. controllers+routes: 56.6 stmts /
+                       69.6 branch / 60.8 funcs; floors 55/50/59/55)
 ```
 
 All suites are hermetic (in-memory MongoDB, AI providers stubbed at the boundary) — identical results with or without real keys in `apps/server/.env`. Not yet verified: production deployment, and the extension's real-DOM pass (open manual step above).
@@ -169,6 +169,6 @@ _Matrix semantics: "Present in Code" / "User Can Access" mean a wired route/UI e
 | Analytics             | 75%        |
 | Tests                 | 75%¹       |
 
-¹ Measured surface (2026-09-27): server 187 tests / 28 files with a CI coverage floor (stmts 55.6%, floors 55/50/59/55 over services+middleware+utils+controllers+routes); client 5 tests / 2 files (auth-page smoke + render-and-interact gates for the three highest-churn pages); extension 26 fixture tests / 3 files. No Playwright E2E yet; the extension real-DOM pass is an open manual step.
+¹ Measured surface (2026-09-27): server 194 tests / 29 files with a CI coverage floor (stmts 56.6%, floors 55/50/59/55 over services+middleware+utils+controllers+routes); client 5 tests / 2 files (auth-page smoke + render-and-interact gates for the three highest-churn pages); extension 26 fixture tests / 3 files. No Playwright E2E yet; the extension real-DOM pass is an open manual step.
 
 Overall MVP completion: approximately **91%**.

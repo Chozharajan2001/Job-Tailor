@@ -95,10 +95,10 @@ Current verification baseline (2026-09-27, single source of truth):
 ```bash
 npm run typecheck   # 4/4 tasks
 npm run lint        # 3/3 tasks, 0 errors
-npm run test        # 218 tests: 187 server (28 files) + 26 extension (3 files) + 5 client (2 files)
+npm run test        # 225 tests: 194 server (29 files) + 26 extension (3 files) + 5 client (2 files)
 npm run test:coverage --workspace=job-tailor-server
-                    # widened surface incl. controllers/routes: 55.6 stmts / 68.7 branch
-                    # / 59.4 funcs — above the 55/50/59/55 floors set from that measurement
+                    # widened surface incl. controllers/routes: 56.6 stmts / 69.6 branch
+                    # / 60.8 funcs — above the 55/50/59/55 floors set from measurement
 ```
 
 All suites are hermetic: tests use `mongodb-memory-server` and stub AI providers, so they
