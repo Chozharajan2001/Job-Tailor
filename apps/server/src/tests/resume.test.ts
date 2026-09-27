@@ -48,6 +48,8 @@ vi.mock("../services/resume-tailor.service.js", () => ({
 }));
 
 vi.mock("../services/ats-scoring.service.js", () => ({
+  // Engine v2 (2026-09): quickATSCheck reads the version for its cache key.
+  ATS_ENGINE_VERSION: 2,
   scoreATS: vi.fn().mockResolvedValue({
     overallScore: 85,
     keywordMatchScore: 80,

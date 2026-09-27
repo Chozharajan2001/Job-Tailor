@@ -1,35 +1,46 @@
-import { Request, Response } from 'express';
-import { Resume, IResume } from '../models/Resume.model.js';
-import { Job, IJob } from '../models/Job.model.js';
-import { Profile, IProfile } from '../models/Profile.model.js';
-import { tailorResume } from '../services/resume-tailor.service.js';
-import { scoreATS } from '../services/ats-scoring.service.js';
-import { generatePDF, uploadToCloudinary } from '../services/pdf-generator.service.js';
-import { config } from '../config/index.js';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
+import { Request, Response } from "express";
+import { Resume, IResume } from "../models/Resume.model.js";
+import { Job, IJob } from "../models/Job.model.js";
+import { Profile, IProfile } from "../models/Profile.model.js";
+import { tailorResume } from "../services/resume-tailor.service.js";
+import {
+  scoreATS,
+  ATS_ENGINE_VERSION,
+} from "../services/ats-scoring.service.js";
+import { scoreCache, scoreKey } from "../services/score-cache.js";
+import {
+  generatePDF,
+  uploadToCloudinary,
+} from "../services/pdf-generator.service.js";
+import { config } from "../config/index.js";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    const uploadDir = 'uploads/resumes';
+    const uploadDir = "uploads/resumes";
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
   },
   filename: (_req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     cb(null, `resume-${uniqueSuffix}${path.extname(file.originalname)}`);
   },
 });
 
-const fileFilter = (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  if (file.mimetype === 'application/pdf') {
+const fileFilter = (
+  _req: Request,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback,
+) => {
+  if (file.mimetype === "application/pdf") {
     cb(null, true);
   } else {
-    cb(new Error('Only PDF files are allowed'));
+    cb(new Error("Only PDF files are allowed"));
   }
 };
 
@@ -42,7 +53,10 @@ export const upload = multer({
 /**
  * POST /api/v1/resumes/generate — Generate tailored resume for a job.
  */
-export async function generateResume(req: Request, res: Response): Promise<void> {
+export async function generateResume(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
   const { jobId, options = {} } = req.body;
 
@@ -50,7 +64,10 @@ export async function generateResume(req: Request, res: Response): Promise<void>
   if (!jobId) {
     res.status(400).json({
       success: false,
-      error: { code: 'MISSING_JOB_ID', message: 'jobId is required to generate a resume.' },
+      error: {
+        code: "MISSING_JOB_ID",
+        message: "jobId is required to generate a resume.",
+      },
     });
     return;
   }
@@ -58,14 +75,23 @@ export async function generateResume(req: Request, res: Response): Promise<void>
   // Fetch job
   const job = await Job.findOne({ _id: jobId, userId }).lean<IJob>().exec();
   if (!job) {
-    res.status(404).json({ success: false, error: { code: 'JOB_NOT_FOUND', message: 'Job not found.' } });
+    res
+      .status(404)
+      .json({
+        success: false,
+        error: { code: "JOB_NOT_FOUND", message: "Job not found." },
+      });
     return;
   }
 
   if (!job.parsedJD) {
     res.status(400).json({
       success: false,
-      error: { code: 'JD_NOT_PARSED', message: 'Job JD has not been parsed yet. Call POST /jobs/:id/parse first.' },
+      error: {
+        code: "JD_NOT_PARSED",
+        message:
+          "Job JD has not been parsed yet. Call POST /jobs/:id/parse first.",
+      },
     });
     return;
   }
@@ -75,7 +101,10 @@ export async function generateResume(req: Request, res: Response): Promise<void>
   if (!profile) {
     res.status(404).json({
       success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Master profile not found. Create your profile first.' },
+      error: {
+        code: "PROFILE_NOT_FOUND",
+        message: "Master profile not found. Create your profile first.",
+      },
     });
     return;
   }
@@ -89,10 +118,10 @@ export async function generateResume(req: Request, res: Response): Promise<void>
     const tailored = await tailorResume(
       profile as unknown as IProfile,
       job.parsedJD,
-      options
+      options,
     );
 
-    const versionLabel = `${job.companyName}_${job.jobTitle.replace(/\s+/g, '_')}_v${nextVersion}`;
+    const versionLabel = `${job.companyName}_${job.jobTitle.replace(/\s+/g, "_")}_v${nextVersion}`;
 
     // Save generated resume
     const resume = await Resume.create({
@@ -106,16 +135,17 @@ export async function generateResume(req: Request, res: Response): Promise<void>
       projects: tailored.projects || [],
       sectionOrder: tailored.sectionOrder,
       atsScore: tailored.atsScore,
-      status: 'generated',
+      status: "generated",
     });
 
     res.status(201).json({ success: true, data: { resume } });
   } catch (error) {
-    console.error('Resume generation failed:', error);
-    const message = error instanceof Error ? error.message : 'Failed to generate resume';
+    console.error("Resume generation failed:", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to generate resume";
     res.status(500).json({
       success: false,
-      error: { code: 'RESUME_GENERATION_FAILED', message },
+      error: { code: "RESUME_GENERATION_FAILED", message },
     });
   }
 }
@@ -143,10 +173,17 @@ export async function listResumes(req: Request, res: Response): Promise<void> {
  */
 export async function getResume(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  const resume = await Resume.findOne({ _id: req.params.id, userId }).lean<IResume>().exec();
+  const resume = await Resume.findOne({ _id: req.params.id, userId })
+    .lean<IResume>()
+    .exec();
 
   if (!resume) {
-    res.status(404).json({ success: false, error: { code: 'RESUME_NOT_FOUND', message: 'Resume not found.' } });
+    res
+      .status(404)
+      .json({
+        success: false,
+        error: { code: "RESUME_NOT_FOUND", message: "Resume not found." },
+      });
     return;
   }
 
@@ -162,11 +199,18 @@ export async function updateResume(req: Request, res: Response): Promise<void> {
   const resume = await Resume.findOneAndUpdate(
     { _id: req.params.id, userId },
     req.body,
-    { new: true }
-  ).lean<IResume>().exec();
+    { new: true },
+  )
+    .lean<IResume>()
+    .exec();
 
   if (!resume) {
-    res.status(404).json({ success: false, error: { code: 'RESUME_NOT_FOUND', message: 'Resume not found.' } });
+    res
+      .status(404)
+      .json({
+        success: false,
+        error: { code: "RESUME_NOT_FOUND", message: "Resume not found." },
+      });
     return;
   }
 
@@ -182,7 +226,12 @@ export async function downloadPDF(req: Request, res: Response): Promise<void> {
   const resume = await Resume.findOne({ _id: req.params.id, userId }).exec();
 
   if (!resume) {
-    res.status(404).json({ success: false, error: { code: 'RESUME_NOT_FOUND', message: 'Resume not found.' } });
+    res
+      .status(404)
+      .json({
+        success: false,
+        error: { code: "RESUME_NOT_FOUND", message: "Resume not found." },
+      });
     return;
   }
 
@@ -190,18 +239,19 @@ export async function downloadPDF(req: Request, res: Response): Promise<void> {
     const { pdfUrl } = await generatePDF(resume);
 
     // Update resume with PDF URL if it's a Cloudinary URL (not base64)
-    if (!pdfUrl.startsWith('data:')) {
+    if (!pdfUrl.startsWith("data:")) {
       resume.pdfUrl = pdfUrl;
       await resume.save();
     }
 
     res.json({ success: true, data: { pdfUrl, resumeId: resume._id } });
   } catch (error) {
-    console.error('PDF generation failed:', error);
-    const message = error instanceof Error ? error.message : 'Failed to generate PDF';
+    console.error("PDF generation failed:", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to generate PDF";
     res.status(500).json({
       success: false,
-      error: { code: 'PDF_GENERATION_FAILED', message },
+      error: { code: "PDF_GENERATION_FAILED", message },
     });
   }
 }
@@ -209,13 +259,16 @@ export async function downloadPDF(req: Request, res: Response): Promise<void> {
 /**
  * POST /api/v1/resumes/upload — Upload existing resume PDF.
  */
-export async function uploadResumePDF(req: Request, res: Response): Promise<void> {
+export async function uploadResumePDF(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
 
   if (!req.file) {
     res.status(400).json({
       success: false,
-      error: { code: 'NO_FILE_UPLOADED', message: 'No PDF file uploaded.' },
+      error: { code: "NO_FILE_UPLOADED", message: "No PDF file uploaded." },
     });
     return;
   }
@@ -231,7 +284,10 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
     }
     res.status(500).json({
       success: false,
-      error: { code: 'CLOUDINARY_NOT_CONFIGURED', message: 'Cloudinary storage is not configured on the server.' },
+      error: {
+        code: "CLOUDINARY_NOT_CONFIGURED",
+        message: "Cloudinary storage is not configured on the server.",
+      },
     });
     return;
   }
@@ -239,7 +295,7 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
   try {
     const existingResumes = await Resume.countDocuments({ userId });
     const nextVersion = existingResumes + 1;
-    
+
     // Clean original name for versionLabel
     const originalNameClean = req.file.originalname
       .replace(/\.[^/.]+$/, "")
@@ -264,11 +320,11 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
       version: nextVersion,
       versionLabel,
       pdfUrl,
-      status: 'draft',
+      status: "draft",
       skills: [],
       experience: [],
       projects: [],
-      sectionOrder: ['skills', 'experience', 'projects', 'education'],
+      sectionOrder: ["skills", "experience", "projects", "education"],
       atsScore: {
         overallScore: 0,
         keywordMatchScore: 0,
@@ -290,12 +346,12 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
         resume,
         pdfUrl,
         filename: req.file.filename,
-        message: 'Resume PDF uploaded to Cloudinary successfully',
+        message: "Resume PDF uploaded to Cloudinary successfully",
       },
     });
   } catch (error) {
-    console.error('Failed to create resume entry on upload:', error);
-    
+    console.error("Failed to create resume entry on upload:", error);
+
     // Attempt local file cleanup
     if (req.file && fs.existsSync(req.file.path)) {
       try {
@@ -307,7 +363,10 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
 
     res.status(500).json({
       success: false,
-      error: { code: 'UPLOAD_REGISTRATION_FAILED', message: 'Failed to upload resume to Cloudinary.' },
+      error: {
+        code: "UPLOAD_REGISTRATION_FAILED",
+        message: "Failed to upload resume to Cloudinary.",
+      },
     });
   }
 }
@@ -315,7 +374,10 @@ export async function uploadResumePDF(req: Request, res: Response): Promise<void
 /**
  * GET /api/v1/resumes/:id/reuse — Get latest resume for reuse in new application.
  */
-export async function getReusableResume(req: Request, res: Response): Promise<void> {
+export async function getReusableResume(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
   const { jobId } = req.query;
 
@@ -329,7 +391,10 @@ export async function getReusableResume(req: Request, res: Response): Promise<vo
     if (!resume) {
       res.status(404).json({
         success: false,
-        error: { code: 'NO_RESUME_FOUND', message: 'No existing resume found for this job.' },
+        error: {
+          code: "NO_RESUME_FOUND",
+          message: "No existing resume found for this job.",
+        },
       });
       return;
     }
@@ -347,7 +412,7 @@ export async function getReusableResume(req: Request, res: Response): Promise<vo
   if (!resume) {
     res.status(404).json({
       success: false,
-      error: { code: 'NO_RESUME_FOUND', message: 'No existing resumes found.' },
+      error: { code: "NO_RESUME_FOUND", message: "No existing resumes found." },
     });
     return;
   }
@@ -359,7 +424,10 @@ export async function getReusableResume(req: Request, res: Response): Promise<vo
  * POST /api/v1/resumes/quick-ats-check — Quick ATS score check for a job without generating full resume.
  * Uses job-specific attached resume if available, otherwise uses profile-based resume.
  */
-export async function quickATSCheck(req: Request, res: Response): Promise<void> {
+export async function quickATSCheck(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
   const { jobId } = req.body;
 
@@ -367,7 +435,7 @@ export async function quickATSCheck(req: Request, res: Response): Promise<void> 
   if (!jobId) {
     res.status(400).json({
       success: false,
-      error: { code: 'MISSING_JOB_ID', message: 'jobId is required.' },
+      error: { code: "MISSING_JOB_ID", message: "jobId is required." },
     });
     return;
   }
@@ -375,11 +443,14 @@ export async function quickATSCheck(req: Request, res: Response): Promise<void> 
   try {
     // Get the job with parsed JD
     const job = await Job.findOne({ _id: jobId, userId }).lean<IJob>().exec();
-    
+
     if (!job) {
       res.status(404).json({
         success: false,
-        error: { code: 'JOB_NOT_FOUND', message: 'Job not found or access denied.' },
+        error: {
+          code: "JOB_NOT_FOUND",
+          message: "Job not found or access denied.",
+        },
       });
       return;
     }
@@ -387,41 +458,46 @@ export async function quickATSCheck(req: Request, res: Response): Promise<void> 
     if (!job.parsedJD) {
       res.status(400).json({
         success: false,
-        error: { code: 'JD_NOT_PARSED', message: 'Job description must be parsed first.' },
+        error: {
+          code: "JD_NOT_PARSED",
+          message: "Job description must be parsed first.",
+        },
       });
       return;
     }
 
     // Determine which resume to use for ATS check
     let resumeToUse: IResume | null = null;
-    let resumeSource: 'attached' | 'profile' | 'none' = 'none';
+    let resumeSource: "attached" | "profile" | "none" = "none";
 
     // Priority 1: Check if job has an attached resume
     if (job.attachedResumeId) {
-      const attachedResume = await Resume.findOne({ 
-        _id: job.attachedResumeId, 
-        userId 
-      }).lean<IResume>().exec();
-      
+      const attachedResume = await Resume.findOne({
+        _id: job.attachedResumeId,
+        userId,
+      })
+        .lean<IResume>()
+        .exec();
+
       if (attachedResume) {
         resumeToUse = attachedResume;
-        resumeSource = 'attached';
+        resumeSource = "attached";
       }
     }
 
     // Priority 2: If no attached resume, use profile-based resume
     if (!resumeToUse) {
-      const profileResume = await Resume.findOne({ 
-        userId, 
-        isProfileResume: true 
+      const profileResume = await Resume.findOne({
+        userId,
+        isProfileResume: true,
       })
         .sort({ createdAt: -1 })
         .lean<IResume>()
         .exec();
-      
+
       if (profileResume) {
         resumeToUse = profileResume;
-        resumeSource = 'profile';
+        resumeSource = "profile";
       }
     }
 
@@ -429,22 +505,33 @@ export async function quickATSCheck(req: Request, res: Response): Promise<void> 
     if (!resumeToUse) {
       res.status(404).json({
         success: false,
-        error: { 
-          code: 'NO_RESUME_AVAILABLE', 
-          message: 'No resume available for ATS check. Please upload a resume to your profile or attach one to this job.',
-          suggestion: 'Go to Profile page to set up your master resume, or upload a resume when creating/editing this job.'
+        error: {
+          code: "NO_RESUME_AVAILABLE",
+          message:
+            "No resume available for ATS check. Please upload a resume to your profile or attach one to this job.",
+          suggestion:
+            "Go to Profile page to set up your master resume, or upload a resume when creating/editing this job.",
         },
       });
       return;
     }
 
-    // Calculate ATS score using existing service
-    const atsScore = await scoreATS({
-      summary: resumeToUse.tailoredSummary || '',
+    // Calculate ATS score (v2 engine), served from the in-process cache when
+    // the same resume content × parsed JD × engine version was scored before.
+    // Degraded results are never cached, so a retry after provider recovery
+    // re-runs the full pipeline.
+    const resumeContent = {
+      summary: resumeToUse.tailoredSummary || "",
       skills: resumeToUse.skills as any,
       experience: resumeToUse.experience as any,
       projects: resumeToUse.projects as any,
-    }, job.parsedJD);
+    };
+    const cacheKey = scoreKey(resumeContent, job.parsedJD, ATS_ENGINE_VERSION);
+    let atsScore = scoreCache.get(cacheKey);
+    if (!atsScore) {
+      atsScore = await scoreATS(resumeContent, job.parsedJD);
+      scoreCache.set(cacheKey, atsScore);
+    }
 
     res.json({
       success: true,
@@ -454,18 +541,19 @@ export async function quickATSCheck(req: Request, res: Response): Promise<void> 
         resumeId: resumeToUse._id,
         resumeVersionLabel: resumeToUse.versionLabel,
         pdfUrl: resumeToUse.pdfUrl,
-        message: resumeSource === 'attached' 
-          ? 'ATS score calculated using job-specific attached resume'
-          : 'ATS score calculated using your profile-based master resume',
+        message:
+          resumeSource === "attached"
+            ? "ATS score calculated using job-specific attached resume"
+            : "ATS score calculated using your profile-based master resume",
       },
     });
   } catch (error) {
-    console.error('Quick ATS check error:', error);
+    console.error("Quick ATS check error:", error);
     res.status(500).json({
       success: false,
-      error: { 
-        code: 'INTERNAL_ERROR', 
-        message: 'Failed to perform ATS check. Please try again.' 
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Failed to perform ATS check. Please try again.",
       },
     });
   }
@@ -475,7 +563,10 @@ export async function quickATSCheck(req: Request, res: Response): Promise<void> 
  * POST /api/v1/resumes — Create a profile-based master resume.
  * This is the user's complete professional profile resume (isProfileResume: true).
  */
-export async function createProfileResume(req: Request, res: Response): Promise<void> {
+export async function createProfileResume(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
   const {
     versionLabel,
@@ -491,20 +582,27 @@ export async function createProfileResume(req: Request, res: Response): Promise<
   if (!versionLabel) {
     res.status(400).json({
       success: false,
-      error: { code: 'MISSING_VERSION_LABEL', message: 'versionLabel is required.' },
+      error: {
+        code: "MISSING_VERSION_LABEL",
+        message: "versionLabel is required.",
+      },
     });
     return;
   }
 
   try {
     // Check if user already has a profile resume
-    const existingProfileResume = await Resume.findOne({ userId, isProfileResume: true }).exec();
+    const existingProfileResume = await Resume.findOne({
+      userId,
+      isProfileResume: true,
+    }).exec();
     if (existingProfileResume) {
       res.status(409).json({
         success: false,
-        error: { 
-          code: 'PROFILE_RESUME_EXISTS', 
-          message: 'Profile resume already exists. Use PUT /resumes/profile to update it.',
+        error: {
+          code: "PROFILE_RESUME_EXISTS",
+          message:
+            "Profile resume already exists. Use PUT /resumes/profile to update it.",
           existingResumeId: existingProfileResume._id,
         },
       });
@@ -515,7 +613,9 @@ export async function createProfileResume(req: Request, res: Response): Promise<
     const validatedSkills = Array.isArray(skills) ? skills : [];
     const validatedExperience = Array.isArray(experience) ? experience : [];
     const validatedProjects = Array.isArray(projects) ? projects : [];
-    const validatedSectionOrder = Array.isArray(sectionOrder) ? sectionOrder : ['summary', 'skills', 'experience', 'projects', 'education'];
+    const validatedSectionOrder = Array.isArray(sectionOrder)
+      ? sectionOrder
+      : ["summary", "skills", "experience", "projects", "education"];
 
     // Default ATS score structure if not provided
     const defaultATSScore = {
@@ -536,23 +636,26 @@ export async function createProfileResume(req: Request, res: Response): Promise<
       userId,
       version: 1,
       versionLabel,
-      tailoredSummary: tailoredSummary || '',
+      tailoredSummary: tailoredSummary || "",
       skills: validatedSkills,
       experience: validatedExperience,
       projects: validatedProjects,
       sectionOrder: validatedSectionOrder,
       atsScore: atsScore || defaultATSScore,
-      status: 'draft',
+      status: "draft",
       isProfileResume: true,
     });
 
     res.status(201).json({ success: true, data: { resume } });
   } catch (error) {
-    console.error('Profile resume creation failed:', error);
-    const message = error instanceof Error ? error.message : 'Failed to create profile resume';
+    console.error("Profile resume creation failed:", error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to create profile resume";
     res.status(500).json({
       success: false,
-      error: { code: 'PROFILE_RESUME_CREATION_FAILED', message },
+      error: { code: "PROFILE_RESUME_CREATION_FAILED", message },
     });
   }
 }
@@ -560,31 +663,42 @@ export async function createProfileResume(req: Request, res: Response): Promise<
 /**
  * PUT /api/v1/resumes/profile — Update the user's profile-based master resume.
  */
-export async function updateProfileResume(req: Request, res: Response): Promise<void> {
+export async function updateProfileResume(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
 
   try {
     const profileResume = await Resume.findOneAndUpdate(
       { userId, isProfileResume: true },
       req.body,
-      { new: true }
-    ).lean<IResume>().exec();
+      { new: true },
+    )
+      .lean<IResume>()
+      .exec();
 
     if (!profileResume) {
       res.status(404).json({
         success: false,
-        error: { code: 'PROFILE_RESUME_NOT_FOUND', message: 'Profile resume not found. Create one first.' },
+        error: {
+          code: "PROFILE_RESUME_NOT_FOUND",
+          message: "Profile resume not found. Create one first.",
+        },
       });
       return;
     }
 
     res.json({ success: true, data: { resume: profileResume } });
   } catch (error) {
-    console.error('Profile resume update failed:', error);
-    const message = error instanceof Error ? error.message : 'Failed to update profile resume';
+    console.error("Profile resume update failed:", error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to update profile resume";
     res.status(500).json({
       success: false,
-      error: { code: 'PROFILE_RESUME_UPDATE_FAILED', message },
+      error: { code: "PROFILE_RESUME_UPDATE_FAILED", message },
     });
   }
 }
@@ -592,7 +706,10 @@ export async function updateProfileResume(req: Request, res: Response): Promise<
 /**
  * GET /api/v1/resumes/profile — Get the user's profile-based master resume.
  */
-export async function getProfileResume(req: Request, res: Response): Promise<void> {
+export async function getProfileResume(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const userId = req.user!.userId;
 
   const profileResume = await Resume.findOne({ userId, isProfileResume: true })
@@ -602,7 +719,10 @@ export async function getProfileResume(req: Request, res: Response): Promise<voi
   if (!profileResume) {
     res.status(404).json({
       success: false,
-      error: { code: 'PROFILE_RESUME_NOT_FOUND', message: 'No profile resume found.' },
+      error: {
+        code: "PROFILE_RESUME_NOT_FOUND",
+        message: "No profile resume found.",
+      },
     });
     return;
   }
