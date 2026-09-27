@@ -1,7 +1,17 @@
 # JobTailor MVP Status
 
-> Last updated: 2026-09-26 (Tier 1 Feature 1 — live job discovery — executed end-to-end)
+> Last updated: 2026-09-27 (Tier 1 Feature 2 — Chrome Extension Auto-Track — shipped; Tier 1 Feature 1 shipped 2026-09-26)
 > Prioritized next-work roadmap lives in [TODO_PLAN.md](./TODO_PLAN.md). This file records what is built.
+
+## Tier 1 Feature 2 Shipped: Chrome Extension Auto-Track
+
+A Manifest V3 browser extension (`apps/extension/`) detects when the user submits a job application on Greenhouse, Lever, Ashby, or Workday and — after an explicit popup confirm — creates the Job + Application on the server in one idempotent call.
+
+- **Server side:** per-user API keys (`jtk_…`, SHA-256 hashed at rest, shown once, revocable — `ApiKey` model, `/api/v1/apikeys` JWT-protected CRUD, `authenticateByApiKey` middleware); `POST /api/v1/applications/from-extension` upserts the Job (exact `jobLink` → company+title within 60 days → create) and creates an Application with status `applied` and a provenance timeline event. Re-firing the same draft never duplicates (relies on the `(userId, jobId)` unique index).
+- **Extension side:** platform registry with URL matchers (lookalike-domain-safe), per-platform detectors (thank-you URL / confirmation copy) and extractors (og:title, posting selectors, Ashby's `__ASBY__DATA` read as text without executing page JS); content script with MutationObserver + SPA history hooks; badge + confirm popup rendering page data via `textContent` only; options page with API-key storage, per-platform enable/always-add toggles, and a connection probe that distinguishes bad key (401) from valid key (400).
+- **Security posture:** only the background service worker holds the key and touches the network; content scripts never see it. "Always add" is opt-in per platform, off by default.
+- **Tests:** 26 extension tests (manifest, registry, fixture-based detector/extractor logic incl. a script-injection resistance case) + server tests (apikey 12, upsert 5, from-extension 6, e2e flow 1). Build verified producing a loadable `dist/`.
+- **Manual step remaining:** load `apps/extension/dist` via chrome://extensions → Load unpacked and apply to a live Greenhouse/Lever/Ashby/Workday posting (real-DOM verification; fixtures pin our assumptions, not theirs). LinkedIn + SmartRecruiters are deliberate v1 non-goals.
 
 ## Tier 1 Feature 1 Shipped: Live Job Discovery
 

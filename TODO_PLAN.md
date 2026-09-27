@@ -22,24 +22,24 @@
 
 ## Priority Index (single glance)
 
-| Rank | Tier      | Feature                                      | Effort  |
-| ---- | --------- | -------------------------------------------- | ------- |
-| 0    | Quick Win | Fix stale docs                               | 30 min  |
-| 1    | MUST      | ✅ Live job discovery — seed the empty index | 8 h     |
-| 2    | MUST      | Chrome Extension — auto-track applications   | 15–20 h |
-| 3    | MUST      | ATS Scoring upgrade (60% → 85%)              | 8–12 h  |
-| 4    | IMPORTANT | Resume template library                      | 6 h     |
-| 5    | IMPORTANT | Cover letter generator                       | 4 h     |
-| 6    | IMPORTANT | Email digest recommendations                 | 6–8 h   |
-| 7    | IMPORTANT | UI onboarding fixes (empty state, progress)  | 2–3 h   |
-| 8    | QUALITY   | Resume tailoring depth                       | 4–6 h   |
-| 9    | QUALITY   | Real ATS emulation (parsable check)          | 8 h     |
-| 10   | QUALITY   | Analytics depth                              | 4–6 h   |
-| 11   | QUALITY   | Testing gaps                                 | 4–6 h   |
-| 12   | POLISH    | Kanban DnD, filters, quick preview, loaders  | 8–12 h  |
-| 13   | SHIP      | Production deployment verification           | 4–6 h   |
-| 14   | FUTURE    | Extension v2/v3 (save-job, autofill)         | 12–24 h |
-| 15   | FUTURE    | JobPilot referral agent                      | 20–30 h |
+| Rank | Tier      | Feature                                       | Effort  |
+| ---- | --------- | --------------------------------------------- | ------- |
+| 0    | Quick Win | Fix stale docs                                | 30 min  |
+| 1    | MUST      | ✅ Live job discovery — seed the empty index  | 8 h     |
+| 2    | MUST      | ✅ Chrome Extension — auto-track applications | 15–20 h |
+| 3    | MUST      | ATS Scoring upgrade (60% → 85%)               | 8–12 h  |
+| 4    | IMPORTANT | Resume template library                       | 6 h     |
+| 5    | IMPORTANT | Cover letter generator                        | 4 h     |
+| 6    | IMPORTANT | Email digest recommendations                  | 6–8 h   |
+| 7    | IMPORTANT | UI onboarding fixes (empty state, progress)   | 2–3 h   |
+| 8    | QUALITY   | Resume tailoring depth                        | 4–6 h   |
+| 9    | QUALITY   | Real ATS emulation (parsable check)           | 8 h     |
+| 10   | QUALITY   | Analytics depth                               | 4–6 h   |
+| 11   | QUALITY   | Testing gaps                                  | 4–6 h   |
+| 12   | POLISH    | Kanban DnD, filters, quick preview, loaders   | 8–12 h  |
+| 13   | SHIP      | Production deployment verification            | 4–6 h   |
+| 14   | FUTURE    | Extension v2/v3 (save-job, autofill)          | 12–24 h |
+| 15   | FUTURE    | JobPilot referral agent                       | 20–30 h |
 
 ---
 
@@ -77,20 +77,24 @@ Every other discovery feature depends on this. Nothing downstream works on an em
 
 ---
 
-## 2. Chrome Extension — Auto-Track Applications (15–20 h)
+## 2. Chrome Extension — Auto-Track Applications (15–20 h) ✅ DONE (2026-09-27)
 
 **Why this is #2:** the tracker only has value if applications actually land in it. Today that requires the user to remember to add each one manually — the single biggest reason tracking tools get abandoned. This makes the tracker **self-fill**, which compounds the value of analytics, outcomes, interview mode, and everything already built.
 
-**Loop:** user applies on a job platform → extension detects the submission → popup asks "Add this to JobTailor tracker?" → `POST /applications` → appears on the Kanban board.
+**Loop:** user applies on a job platform → extension detects the submission → popup asks "Add this to JobTailor tracker?" → `POST /applications/from-extension` → appears on the Kanban board.
 
-- [ ] Extension scaffold — Manifest V3, content scripts, background service worker, auth with JobTailor server (new `apps/extension/` package)
-- [ ] Platform detectors — LinkedIn Jobs, Greenhouse, Lever, Workday, Ashby, SmartRecruiters (URL pattern + DOM signature per platform)
-- [ ] Application submission detection — confirmation pages, "thank you" screens, submit events, `/success` URL changes
-- [ ] Job data extraction — company, title, JD text, URL, location from page DOM
-- [ ] Popup UI — job preview card + "Add to tracker" / "Skip" / "Always add from this site"
-- [ ] API bridge — `POST /applications` with `{ company, title, jdRawText, url, status: 'applied', appliedAt }` (new extension-auth endpoint)
-- [ ] Match detection — if the job already exists (URL or company+title), link to the existing record instead of duplicating
-- [ ] Settings page — enable/disable per platform, auto-add without asking
+**Executed as `docs/superpowers/plans/2026-09-26-chrome-extension-auto-track.md` (17 tasks).** Per-user revocable API keys (`jtk_…`, hashed at rest) with JWT-protected issue/list/revoke; idempotent upsert endpoint (jobLink → company+title/60d → create; `(userId, jobId)` unique index prevents dupes); MV3 extension with platform registry, 4 detector+extractor pairs on synthetic-fixture tests (incl. script-injection resistance), confirm-by-default popup, options page with always-add opt-in and a 401-vs-400 connection probe. 27 new tests; extension is loadable from `apps/extension/dist`.
+
+- [x] Extension scaffold — Manifest V3, content scripts, background service worker, auth with JobTailor server (new `apps/extension/` package)
+- [x] Platform detectors — Greenhouse, Lever, Ashby, Workday (URL pattern + DOM signature per platform). **LinkedIn + SmartRecruiters: deliberate v1 non-goals** (ToS/modal complexity; tenant-variable DOM) → moved under v2
+- [x] Application submission detection — confirmation pages, "thank you" screens, SPA route changes via MutationObserver + popstate/hashchange
+- [x] Job data extraction — company, title, JD text, URL from page DOM (Ashby blob read as text, never executed)
+- [x] Popup UI — job preview card + "Add to JobTailor" / "Skip"; textContent-only rendering
+- [x] API bridge — `POST /applications/from-extension` with x-api-key auth, `{ platform, sourceUrl, companyName, jobTitle, jdRawText, detectedAt }`
+- [x] Match detection — URL first, company+title within 60 days second; re-fires never duplicate
+- [x] Settings page — API key + URL, per-platform tracked/always-add toggles, connection probe
+- [ ] Manual real-DOM verification: load `dist/` unpacked, apply to a live posting on each platform (fixtures pin our assumptions, not their DOMs)
+- [ ] Web UI affordance: a "Settings → API keys" section in the JobTailor client to generate keys without curl (currently server-side endpoints only)
 
 ---
 

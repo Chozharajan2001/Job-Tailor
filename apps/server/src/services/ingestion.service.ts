@@ -15,37 +15,51 @@ export class IngestionService {
    * Helper to ensure basic sources exist in the SourceRegistry.
    * Uses upsert so concurrent ingestJob calls (e.g. the source-poller
    * fanning out across sources) do not race on the unique `name` index.
+   * A duplicate-key error means a concurrent call just inserted the row —
+   * the desired end state either way — so it is swallowed, not fatal.
    */
   static async ensureDefaultSources() {
-    await SourceRegistry.updateOne(
+    const upsertDefault = async (
+      filter: Record<string, unknown>,
+      insert: Record<string, unknown>,
+    ) => {
+      try {
+        await SourceRegistry.updateOne(
+          filter,
+          { $setOnInsert: insert },
+          {
+            upsert: true,
+          },
+        );
+      } catch (err) {
+        const code = (err as { code?: number })?.code;
+        if (code !== 11000) throw err; // E11000: another call won — fine.
+      }
+    };
+
+    await upsertDefault(
       { sourceType: "manual_paste" },
       {
-        $setOnInsert: {
-          name: "Manual Paste Ingest",
-          sourceType: "manual_paste",
-          baseUrl: "local://manual",
-          crawlFrequency: 0,
-          extractionStrategy: "manual_input",
-          trustScore: 1.0,
-          isEnabled: true,
-        },
+        name: "Manual Paste Ingest",
+        sourceType: "manual_paste",
+        baseUrl: "local://manual",
+        crawlFrequency: 0,
+        extractionStrategy: "manual_input",
+        trustScore: 1.0,
+        isEnabled: true,
       },
-      { upsert: true },
     );
 
-    await SourceRegistry.updateOne(
+    await upsertDefault(
       { name: "Public Job Page Ingest" },
       {
-        $setOnInsert: {
-          sourceType: "public_job_page",
-          baseUrl: "http://",
-          crawlFrequency: 1440,
-          extractionStrategy: "json_ld",
-          trustScore: 0.8,
-          isEnabled: true,
-        },
+        sourceType: "public_job_page",
+        baseUrl: "http://",
+        crawlFrequency: 1440,
+        extractionStrategy: "json_ld",
+        trustScore: 0.8,
+        isEnabled: true,
       },
-      { upsert: true },
     );
   }
 
