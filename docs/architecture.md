@@ -206,14 +206,16 @@ Current limitation: production deployment has not been verified end-to-end in th
 
 ## Verification Status
 
-Passing checks:
+Current baseline (2026-09-27):
 
 ```bash
-npm run typecheck   # 3/3 packages
-npm run build       # client + server
-npm run test        # 79 tests (77 server + 2 client smoke)
+npm run typecheck   # 4/4 tasks (shared-types, server, client, extension)
+npm run lint        # 3/3 tasks, 0 errors
+npm run test        # 190 tests: 162 server (22 files) + 26 extension (3 files) + 2 client
+npm run test:coverage --workspace=job-tailor-server
+                    # 67.3% stmts / 69.1% branch / 74.2% funcs — above the 50/60/60 floor
 ```
 
-Tests cover auth, HTTP auth flows, profile CRUD concurrency, jobs, resume generation, ATS scoring math, the application workflow, the search engine (ingestion, dedup, ranking, synonyms, alerts, watches, feed, cleanup, trust decay), and security utilities. CI runs typecheck, lint, build, and both test suites on every push/PR (`.github/workflows/ci.yml`).
+Tests cover auth, HTTP auth flows, profile CRUD concurrency, jobs, resume generation, ATS scoring math, the application workflow, the search engine (ingestion, dedup, ranking, synonyms, alerts, watches, feed, cleanup, trust decay), live job discovery (source connectors, poller, seeding, admin routes), API-key auth and the extension flow, error correlation, and security utilities. All suites are hermetic (in-memory MongoDB, stubbed AI providers). CI runs typecheck, lint, build, all three test suites, and the server coverage floor on every push/PR (`.github/workflows/ci.yml`).
 
-Remaining verification gap: production deployment (Vercel + Render + MongoDB Atlas) has not been exercised end-to-end.
+Remaining verification gap: production deployment (Vercel + Render + MongoDB Atlas) has not been exercised end-to-end, and the Chrome extension UI has not been manually verified in a real browser (load `apps/extension/dist` unpacked).

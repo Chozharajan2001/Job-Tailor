@@ -392,11 +392,11 @@ Honest assessment: this is defense-in-depth appropriate for a personal-scale app
 
 ### 9.1 Environments
 
-| Environment       | Purpose          | How it runs                                                                                                                                  |
-| ----------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Local development | Day-to-day work  | `npm run dev` (Turborepo) with MongoDB via Docker Compose or Atlas; client at `localhost:5173`, API at `localhost:5000`                      |
-| CI                | Verification     | GitHub Actions: typecheck → lint → build → server tests → client tests against a `mongo:7` service container, with CI-only dummy JWT secrets |
-| Production        | Intended hosting | Configuration written, not yet verified end-to-end (§14)                                                                                     |
+| Environment       | Purpose          | How it runs                                                                                                                                                                                                                                              |
+| ----------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Local development | Day-to-day work  | `npm run dev` (Turborepo) with MongoDB via Docker Compose or Atlas; client at `localhost:5173`, API at `localhost:5000`                                                                                                                                  |
+| CI                | Verification     | GitHub Actions: typecheck → lint → build → all-workspace tests (server, client, and extension suites via root `npm run test`) → server coverage floor, with CI-only dummy JWT secrets; no database service container (tests use `mongodb-memory-server`) |
+| Production        | Intended hosting | Configuration written, not yet verified end-to-end (§14)                                                                                                                                                                                                 |
 
 `docker-compose.yml` defines `mongo:7` (with healthcheck and a persistent volume), the server built from `apps/server/Dockerfile`, and an optional client container.
 

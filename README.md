@@ -25,18 +25,19 @@ The job search engine (URL/paste ingestion, dedup, ranking, saved searches, aler
 
 ## Tech Stack
 
-| Layer          | Technology                                                                                |
-| -------------- | ----------------------------------------------------------------------------------------- |
-| Frontend       | React 19 + Vite 6 + TypeScript                                                            |
-| UI             | TailwindCSS + Lucide Icons                                                                |
-| State          | Zustand + TanStack Query                                                                  |
-| Backend        | Node.js + Express + TypeScript                                                            |
-| Database       | MongoDB + Mongoose                                                                        |
-| Auth           | JWT + bcryptjs                                                                            |
-| LLM            | Multi-provider (OpenAI / Google Gemini / NVIDIA NIM) with fallback via a provider manager |
-| PDF Generation | Puppeteer service, wired to `POST /resumes/:id/pdf`                                       |
-| File Storage   | Cloudinary service support exists                                                         |
-| Monorepo       | Turborepo                                                                                 |
+| Layer          | Technology                                                                                      |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| Frontend       | React 19 + Vite 6 + TypeScript                                                                  |
+| UI             | TailwindCSS + Lucide Icons                                                                      |
+| State          | Zustand + TanStack Query                                                                        |
+| Backend        | Node.js + Express + TypeScript                                                                  |
+| Database       | MongoDB + Mongoose                                                                              |
+| Auth           | JWT + bcryptjs                                                                                  |
+| LLM            | Multi-provider (OpenAI / Google Gemini / NVIDIA NIM) with fallback via a provider manager       |
+| PDF Generation | Puppeteer service, wired to `POST /resumes/:id/pdf`                                             |
+| File Storage   | Cloudinary service support exists                                                               |
+| Browser Ext.   | Chrome MV3 (TypeScript + esbuild) — auto-track applications from Greenhouse/Lever/Ashby/Workday |
+| Monorepo       | Turborepo                                                                                       |
 
 Note: shadcn/ui is not currently installed as a component system.
 
@@ -45,8 +46,9 @@ Note: shadcn/ui is not currently installed as a component system.
 ```text
 job-tailor/
   apps/
-    client/          React frontend (13 pages, 6 shared components)
-    server/          Express backend (13 models, 23 services, 7 route groups)
+    client/          React frontend (14 pages, 6 shared components)
+    server/          Express backend (15 models, 9 route groups, source connectors + poller)
+    extension/       Chrome MV3 auto-track extension (detectors/extractors per platform)
   packages/
     shared-types/    Shared TypeScript definitions
   docs/              Architecture, API, sprint, and design docs
@@ -83,19 +85,25 @@ Development URLs:
 ```bash
 npm run dev
 npm run build
+npm run lint
 npm run typecheck
 npm run test
 ```
 
-Known passing checks:
+Current verification baseline (2026-09-27, single source of truth):
 
 ```bash
-npm run typecheck   # 3/3 packages
-npm run build       # client + server
-npm run test        # 79 tests (77 server across 9 files + 2 client smoke)
+npm run typecheck   # 4/4 tasks
+npm run lint        # 3/3 tasks, 0 errors
+npm run test        # 190 tests: 162 server (22 files) + 26 extension (3 files) + 2 client
+npm run test:coverage --workspace=job-tailor-server
+                    # 67.3% stmts / 69.1% branch / 74.2% funcs — above the 50/60/60 floor
 ```
 
-The test suite covers auth, profile CRUD concurrency, jobs, resume generation, ATS scoring math, the full application workflow, the search engine (ingestion, dedup, ranking, alerts, watches, feed, trust decay), and security utilities.
+All suites are hermetic: tests use `mongodb-memory-server` and stub AI providers, so they
+pass identically with or without real API keys in `apps/server/.env`.
+
+The test suite covers auth, profile CRUD concurrency, jobs, resume generation, ATS scoring math, the full application workflow, the search engine (ingestion, dedup, ranking, alerts, watches, feed, trust decay), live job discovery connectors/poller, API-key auth + extension flow, and security utilities.
 
 ## Development Phases
 
@@ -112,7 +120,7 @@ The test suite covers auth, profile CRUD concurrency, jobs, resume generation, A
 | 8     | Done    | PDF service wired and interview mode                           |
 | 9     | Partial | Polish, docs, deployment config (production deploy unverified) |
 
-Beyond the base phases, the search engine (Sprints 1–4), MVP workflow (Sprint 5), and UI gap closure (Sprint 6) are complete — see [MVP_STATUS.md](./MVP_STATUS.md).
+Beyond the base phases, the search engine (Sprints 1–4), MVP workflow (Sprint 5), UI gap closure (Sprint 6), live job discovery (Tier 1 #1), and the Chrome auto-track extension (Tier 1 #2) are complete — see [MVP_STATUS.md](./MVP_STATUS.md).
 
 ## Documentation
 

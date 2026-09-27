@@ -23,13 +23,15 @@ cp .env.example apps/server/.env
 
 Edit `apps/server/.env` with your values:
 
-| Variable                                                   | Required        | Notes                                                                                                      |
-| ---------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------- |
-| `MONGODB_URI`                                              | Yes             | Your MongoDB connection string                                                                             |
-| `JWT_SECRET`                                               | Yes             | Generate: `openssl rand -base64 32`                                                                        |
-| `JWT_REFRESH_SECRET`                                       | Yes             | Generate another one                                                                                       |
-| `OPENAI_API_KEY` / `GEMINI_API_KEY` / `NVIDIA_NIM_API_KEY` | For AI features | At least one provider; `PREFERRED_AI_PROVIDER` selects the primary, the manager falls back across the rest |
-| `CLOUDINARY_*`                                             | Optional        | For PDF storage (can skip locally)                                                                         |
+| Variable                                                   | Required               | Notes                                                                                                                                                                                            |
+| ---------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MONGODB_URI`                                              | Yes                    | Your MongoDB connection string                                                                                                                                                                   |
+| `JWT_SECRET`                                               | Yes                    | Generate: `openssl rand -base64 32`                                                                                                                                                              |
+| `JWT_REFRESH_SECRET`                                       | Yes                    | Generate another one                                                                                                                                                                             |
+| `OPENAI_API_KEY` / `GEMINI_API_KEY` / `NVIDIA_NIM_API_KEY` | For AI features        | At least one provider; `PREFERRED_AI_PROVIDER` selects the primary, the manager falls back across the rest                                                                                       |
+| `CLOUDINARY_*`                                             | Optional               | For PDF storage (can skip locally)                                                                                                                                                               |
+| `SOURCE_POLL_ADMIN_KEY`                                    | For live job discovery | Shared secret for `POST /api/v1/admin/*` (seed-sources, poll-due-sources). Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`. Unset = admin routes return 503 |
+| `LOG_LEVEL`                                                | Optional               | Pino logger verbosity: `fatal`, `error`, `warn`, `info` (default), `debug`, `trace`                                                                                                              |
 
 ```bash
 cp apps/client/.env.example apps/client/.env.client
@@ -78,7 +80,7 @@ docker-compose up --build
 ```
 apps/
 ├── client/src/
-│   ├── pages/           # 13 route page components
+│   ├── pages/           # 14 route page components
 │   ├── components/      # Shared components (modals, ConfirmDialog, ErrorBoundary, SessionExpiredModal)
 │   ├── components/layout/# App layout (sidebar, navbar)
 │   ├── stores/          # Zustand state stores
@@ -86,27 +88,47 @@ apps/
 │   └── tests/           # Client smoke tests
 │
 ├── server/src/
-│   ├── models/          # Mongoose schemas (13 collections)
-│   ├── services/        # Business logic (JD parser, ATS, resume tailor, search/ingestion, ai-provider/)
-│   ├── controllers/     # Request handlers
+│   ├── models/          # Mongoose schemas (15 collections incl. SourceRegistry, ApiKey)
+│   ├── services/        # Business logic (JD parser, ATS, resume tailor, search/ingestion,
+│   │                    #   source-connectors/, source-poller, ai-provider/)
+│   ├── controllers/     # Request handlers (incl. admin, apikey, application-extension)
 │   ├── routes/          # Express route definitions (+ Zod validation)
-│   ├── middleware/      # Auth, error handling, validation
-│   ├── tests/           # 9 server test suites
+│   ├── middleware/      # JWT auth, api-key auth, admin key, error handling, validation
+│   ├── tests/           # Server test suites (mongodb-memory-server; no external deps)
+│   ├── data/            # seed-companies.json (live job discovery bootstrap)
+│   ├── scripts/         # seed-sources.mjs (idempotent source bootstrap)
 │   └── config/          # DB connection, env config
+│
+├── extension/src/       # Chrome MV3 auto-track extension (Plan 2)
+│   ├── platform-registry.ts  # URL → platform detection (Greenhouse/Lever/Ashby/Workday)
+│   ├── detectors/       # Per-platform page detectors (DOM-agnostic signals)
+│   ├── extractors/      # Per-platform draft extractors (textContent only)
+│   ├── content/         # Content script (observer + single DETECTED signal per tab)
+│   ├── background/      # Service worker (sole network + api-key holder, badge state)
+│   ├── popup/           # One-tap confirm/dismiss UI
+│   └── options/         # Server URL, api-key connect, per-platform toggles
 │
 └── packages/shared-types/  # Shared TS interfaces (client ↔ server)
 ```
 
 ## 6. Available Scripts
 
-| Command                         | Description                            |
-| ------------------------------- | -------------------------------------- |
-| `npm run dev`                   | Start both client + server in dev mode |
-| `npm run build`                 | Build all workspace packages           |
-| `npm run lint`                  | Lint all packages                      |
-| `npm run typecheck`             | Type-check all packages                |
-| `cd apps/server && npm run dev` | Backend only                           |
-| `cd apps/client && npm run dev` | Frontend only                          |
+| Command                              | Description                                                |
+| ------------------------------------ | ---------------------------------------------------------- |
+| `npm run dev`                        | Start both client + server in dev mode                     |
+| `npm run build`                      | Build all workspace packages                               |
+| `npm run lint`                       | Lint all packages (server, client, extension)              |
+| `npm run typecheck`                  | Type-check all packages                                    |
+| `npm test`                           | Run every workspace test suite (server, client, extension) |
+| `cd apps/server && npm run dev`      | Backend only                                               |
+| `cd apps/client && npm run dev`      | Frontend only                                              |
+| `cd apps/extension && npm run build` | Bundle the Chrome extension (esbuild → `dist/`)            |
+| `cd apps/extension && npm run dev`   | Rebuild the extension on file changes                      |
+
+**Verification baseline (2026-09-27):** `npm run typecheck` 4/4 tasks · `npm run lint` 3/3 tasks,
+0 errors · `npm test` 190 tests (162 server / 26 extension / 2 client) · server coverage
+67.3% stmts, above the declared 50/60/60 floor. Suites are hermetic (in-memory Mongo, stubbed
+AI providers) — they pass with or without real API keys.
 
 ## 7. Troubleshooting
 
@@ -124,7 +146,7 @@ apps/
 
 - Push to GitHub → Import project in Vercel
 - Set env var: `VITE_API_BASE_URL=https://your-api.render.com/api/v1`
-- Auto-deploys from `main` branch
+- Auto-deploys from the `master` branch (the repository's only branch)
 
 ### Backend (Render/Railway)
 

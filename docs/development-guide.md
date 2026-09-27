@@ -1,10 +1,22 @@
 # ============================================
+
 # JobTailor — Development Guide & Conventions
+
+# Last reconciled with the tree: 2026-09-27
+
 # ============================================
 
 ## 1. Development Workflow (Git Flow)
 
 ### Branch Strategy
+
+**Actual practice:** the repository has a single `master` branch. Work lands via direct
+conventional commits; CI (`.github/workflows/ci.yml`) gates every push with typecheck,
+lint, build, all-workspace tests, and the server coverage floor. Pushes to GitHub pass an
+L3 deep security review gate first.
+
+**Aspiration (not yet adopted)** — if multi-contributor work starts, move to:
+
 ```
 main                    ← Production-ready, protected
   ├── develop           ← Integration branch
@@ -13,7 +25,11 @@ main                    ← Production-ready, protected
   │     └── chore/*     ├── Config, deps, docs
 ```
 
+The CI workflow already triggers on `main`/`master` pushes and all pull requests, so
+adopting this model needs no workflow change.
+
 ### Commit Message Convention (Conventional Commits)
+
 ```
 feat: add JD parsing endpoint with OpenAI integration
 fix: resolve ATS score calculation overflow for edge cases
@@ -25,18 +41,20 @@ chore: upgrade dependencies to latest versions
 ```
 
 ### Commit Checklist Before Push
-- [ ] No `console.log` left in production code
+
+- [ ] No `console.log` left in production code (ESLint `no-console` warns; Pino logger instead)
 - [ ] No hardcoded secrets or keys
-- [ ] TypeScript compiles without errors (`tsc --noEmit`)
+- [ ] TypeScript compiles without errors (`npm run typecheck`)
 - [ ] Linter passes (`npm run lint`)
-- [ ] Tests pass (`npm run test` if applicable)
-- [ ] Commit message follows conventional format
+- [ ] Tests pass (`npm test` — all workspaces)
+- [ ] Commit message follows conventional format (commitlint enforces; body lines ≤ 100 chars)
 
 ---
 
 ## 2. Code Style & Conventions
 
 ### TypeScript Rules
+
 - Use **interfaces** for object shapes, **types** for unions/intersections
 - Avoid `any` — use `unknown` and type narrowing
 - Use `strict: true` in tsconfig
@@ -44,19 +62,21 @@ chore: upgrade dependencies to latest versions
 - Return explicit types from public functions
 
 ### Naming Conventions
-| Category | Convention | Example |
-|----------|-----------|---------|
-| Files (components) | PascalCase | `JobCard.tsx`, `ATSDashboard.tsx` |
-| Files (utils/hooks) | camelCase | `useAuth.ts`, ` formatDate.ts` |
-| Components | PascalCase | `<KanbanBoard />` |
-| Functions/variables | camelCase | `parseJD()`, `userId` |
-| Constants | UPPER_SNAKE | `MAX_BULLETS_PER_ROLE` |
-| Interfaces/Types | Prefix I_ or descriptive | `IUser`, `ParsedJD` |
-| DB collections | Singular, Pascal | `User`, `JobApplication` |
-| API routes | kebab-case | `/jobs/:id/parse-jd` |
-| Env variables | UPPER_SNAKE | `MONGODB_URI` |
+
+| Category            | Convention                | Example                           |
+| ------------------- | ------------------------- | --------------------------------- |
+| Files (components)  | PascalCase                | `JobCard.tsx`, `ATSDashboard.tsx` |
+| Files (utils/hooks) | camelCase                 | `useAuth.ts`, ` formatDate.ts`    |
+| Components          | PascalCase                | `<KanbanBoard />`                 |
+| Functions/variables | camelCase                 | `parseJD()`, `userId`             |
+| Constants           | UPPER_SNAKE               | `MAX_BULLETS_PER_ROLE`            |
+| Interfaces/Types    | Prefix I\_ or descriptive | `IUser`, `ParsedJD`               |
+| DB collections      | Singular, Pascal          | `User`, `JobApplication`          |
+| API routes          | kebab-case                | `/jobs/:id/parse-jd`              |
+| Env variables       | UPPER_SNAKE               | `MONGODB_URI`                     |
 
 ### Component Structure Order
+
 ```typescript
 // 1. Imports (external → internal → relative)
 // 2. Types/interfaces
@@ -72,6 +92,14 @@ chore: upgrade dependencies to latest versions
 ```
 
 ### File Size Guidelines
+
+Enforced by ESLint at **warn** level in every workspace (`max-lines`, and
+`max-lines-per-function` on the client): visible on every lint run, non-blocking for CI.
+Files that predate the rule are baselined via per-file overrides in each `eslint.config.js`
+(server: `auth.service`, `ingestion.service`, `email.service`, `ats-scoring.service`, and
+five controllers; client: `JobsPage`, `ProfilePage`, `TrackerPage`, `ResumeTailorPage`,
+`AnalyticsPage`). Shrink a baselined file below the limit → remove it from the override.
+
 - **Components**: Max 200 lines — split if larger
 - **Pages**: Max 300 lines — extract sections
 - **Services/Controllers**: Max 300 lines — extract logic
@@ -88,23 +116,32 @@ npm install
 # Development mode (both frontend + backend)
 npm run dev
 
-# Build all packages
+# Build all packages (server tsc, client Vite, extension esbuild)
 npm run build
 
-# Lint everything
+# Lint everything (server, client, extension)
 npm run lint
 
 # Type-check everything
 npm run typecheck
+
+# Tests — all workspaces via turbo (server, client, extension)
+npm test
+npm run test --workspace=job-tailor-server           # server only
+npm run test:coverage --workspace=job-tailor-server  # coverage floor gate
 
 # Frontend only
 cd apps/client && npm run dev        # Dev server on :5173
 cd apps/client && npm run build      # Production build
 
 # Backend only
-cd apps/server && npm run dev        # Dev server with nodemon :5000
+cd apps/server && npm run dev        # Dev server with tsx watch :5000
 cd apps/server && npm run build      # TypeScript compile
 cd apps/server && npm run start      # Run compiled JS
+
+# Extension only
+cd apps/extension && npm run build   # esbuild → dist/ (load unpacked in Chrome)
+cd apps/extension && npm run dev     # rebuild on changes
 
 # UI note
 # The current client uses TailwindCSS and Lucide icons.
@@ -116,6 +153,7 @@ cd apps/server && npm run start      # Run compiled JS
 ## 4. Environment Setup
 
 1. Clone repo:
+
 ```bash
 git clone <repo-url>
 cd job-tailor
@@ -123,6 +161,7 @@ npm install
 ```
 
 2. Set up environment files:
+
 ```bash
 cp .env.example apps/server/.env
 cp apps/client/.env.example apps/client/.env.client
@@ -136,6 +175,7 @@ cp apps/client/.env.example apps/client/.env.client
    - Cloudinary account for PDF storage
 
 5. Run:
+
 ```bash
 npm run dev
 ```
@@ -144,11 +184,21 @@ npm run dev
 
 ## 5. Testing Strategy
 
-| Layer | Tool | What to Test |
-|-------|------|-------------|
-| Unit | Vitest + React Testing Library | Components, hooks, utils |
-| Integration | Supertest | API routes + database |
-| E2E | Playwright | Critical flows: login, create job, generate resume |
+| Layer           | Tool                              | What to Test                                       |
+| --------------- | --------------------------------- | -------------------------------------------------- |
+| Unit            | Vitest + React Testing Library    | Components, hooks, utils                           |
+| Integration     | Supertest + mongodb-memory-server | API routes + database                              |
+| Extension logic | Vitest (synthetic DOM fixtures)   | Detectors, extractors, registry                    |
+| E2E             | Playwright (planned)              | Critical flows: login, create job, generate resume |
+
+**Hermeticity rule:** every server test connects through `mongodb-memory-server`
+(`src/tests/helpers/test-db.ts`) and AI providers are stubbed at the provider boundary.
+The suite must pass identically with and without real keys in `apps/server/.env`.
+
+Current suites (2026-09-27): server 22 files / 162 tests (auth, profile concurrency, jobs,
+resumes, ATS math, applications, search engine, source connectors + poller, API keys +
+extension flow, admin routes, security, error correlation); extension 3 files / 26 tests;
+client smoke. Server coverage floor (50/60/60/60) is gated in CI via `test:coverage`.
 
 ---
 
@@ -169,11 +219,11 @@ npm run dev
 
 ## 7. Performance Targets
 
-| Metric | Target |
-|--------|--------|
-| First Contentful Paint | < 1.5s |
-| Time to Interactive | < 3s |
+| Metric                     | Target  |
+| -------------------------- | ------- |
+| First Contentful Paint     | < 1.5s  |
+| Time to Interactive        | < 3s    |
 | API response (simple CRUD) | < 200ms |
-| JD parsing (LLM call) | < 10s |
-| Resume generation | < 15s |
-| PDF generation | < 5s |
+| JD parsing (LLM call)      | < 10s   |
+| Resume generation          | < 15s   |
+| PDF generation             | < 5s    |

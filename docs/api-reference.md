@@ -1,18 +1,15 @@
 # JobTailor API Reference
 
-> Base URL: `/api/v1`  
-> Authentication: Bearer token, unless marked public.  
-> This document reflects the routes currently implemented in `apps/server/src/routes`.
+> Base URL: `/api/v1` (except `GET /health`)  
+> Authentication: `Authorization: Bearer <accessToken>` unless another scheme is noted.  
+> This document reflects the routes mounted in `apps/server/src/app.ts` as of 2026-09-27.
 
 ## Response Shape
 
 Successful responses:
 
 ```json
-{
-  "success": true,
-  "data": {}
-}
+{ "success": true, "data": {} }
 ```
 
 Error responses:
@@ -28,103 +25,142 @@ Error responses:
 }
 ```
 
-## Auth
+Every response carries an `X-Request-Id` header (inbound value honored, else generated);
+error log lines are correlated under the same id.
 
-| Method | Endpoint | Auth | Status | Notes |
-| --- | --- | --- | --- | --- |
-| POST | `/auth/register` | Public | Implemented | Creates user and returns user, access token, refresh token |
-| POST | `/auth/login` | Public | Implemented | Returns user, access token, refresh token |
-| POST | `/auth/refresh` | Public | Implemented | Refreshes access token |
-| GET | `/auth/me` | Required | Implemented | Returns current user |
-| POST | `/auth/logout` | Required | Implemented | Stateless logout response |
+## Health
 
-## Profile
+| Method | Endpoint  | Auth   | Notes                      |
+| ------ | --------- | ------ | -------------------------- |
+| GET    | `/health` | Public | `{ status: "ok", uptime }` |
 
-| Method | Endpoint | Status | Notes |
-| --- | --- | --- | --- |
-| GET | `/profile` | Implemented | Gets or creates the authenticated user's profile |
-| PUT | `/profile` | Implemented | Updates profile fields currently allowed by route validation |
-| POST | `/profile/skills` | Implemented | Adds one skill |
-| PUT | `/profile/skills/:id` | Implemented | Route exists, update validation should be tightened |
-| DELETE | `/profile/skills/:id` | Implemented | Deletes one skill |
-| POST | `/profile/experience` | Implemented | Adds one experience block |
-| PUT | `/profile/experience/:id` | Implemented | Route exists, update validation should be tightened |
-| DELETE | `/profile/experience/:id` | Implemented | Deletes one experience block |
-| POST | `/profile/projects` | Implemented | Adds one project |
-| PUT | `/profile/projects/:id` | Implemented | Route exists, update validation should be tightened |
-| DELETE | `/profile/projects/:id` | Implemented | Deletes one project |
+## Auth — `/api/v1/auth`
 
-Not implemented yet:
+| Method | Endpoint                    | Auth                       | Notes                                                   |
+| ------ | --------------------------- | -------------------------- | ------------------------------------------------------- |
+| POST   | `/auth/register`            | Public (rate-limited)      | Creates user, sends verification email, returns tokens  |
+| POST   | `/auth/verify-email`        | Public                     | Verifies email token                                    |
+| POST   | `/auth/resend-verification` | Public                     | Resends verification email                              |
+| POST   | `/auth/login`               | Public (strict rate limit) | Returns user, access token, refresh token; audit-logged |
+| POST   | `/auth/refresh`             | Public                     | Rotates refresh token                                   |
+| GET    | `/auth/me`                  | Bearer                     | Returns current user                                    |
+| POST   | `/auth/logout`              | Bearer                     | Logs out current session                                |
+| POST   | `/auth/logout-all`          | Bearer                     | Revokes all sessions                                    |
+| POST   | `/auth/forgot-password`     | Public                     | Sends reset email                                       |
+| POST   | `/auth/reset-password`      | Public                     | Completes reset with token                              |
+| POST   | `/auth/change-password`     | Bearer                     | Changes password, revokes other sessions                |
 
-- Education CRUD
-- Certification CRUD
-- Dedicated summary patch endpoint
+## Profile — `/api/v1/profile`
 
-## Jobs
+| Method              | Endpoint                        | Notes                                                  |
+| ------------------- | ------------------------------- | ------------------------------------------------------ |
+| GET                 | `/profile`                      | Gets or creates the authenticated user's profile       |
+| PUT                 | `/profile`                      | Updates allowed profile fields                         |
+| POST                | `/profile/upload`               | Multipart resume upload → populates profile (Phase 10) |
+| POST / PUT / DELETE | `/profile/skills[/:id]`         | Skill CRUD                                             |
+| POST / PUT / DELETE | `/profile/experience[/:id]`     | Experience CRUD                                        |
+| POST / PUT / DELETE | `/profile/projects[/:id]`       | Project CRUD                                           |
+| POST / PUT / DELETE | `/profile/education[/:id]`      | Education CRUD                                         |
+| POST / PUT / DELETE | `/profile/certifications[/:id]` | Certification CRUD                                     |
 
-| Method | Endpoint | Status | Notes |
-| --- | --- | --- | --- |
-| POST | `/jobs` | Implemented | Creates a job from manually supplied JD text |
-| GET | `/jobs` | Implemented | Supports `page`, `limit`, `status`, `search`, `sortBy`, `sortOrder` |
-| GET | `/jobs/:id` | Implemented | Gets one job |
-| PUT | `/jobs/:id` | Implemented | Updates selected job fields |
-| DELETE | `/jobs/:id` | Implemented | Deletes one job |
-| POST | `/jobs/:id/parse` | Implemented | Calls OpenAI and stores parsed JD |
+## Jobs — `/api/v1/jobs`
 
-Not implemented yet:
+| Method | Endpoint                  | Notes                                                               |
+| ------ | ------------------------- | ------------------------------------------------------------------- |
+| POST   | `/jobs`                   | Creates a job from manually supplied JD text                        |
+| GET    | `/jobs`                   | Supports `page`, `limit`, `status`, `search`, `sortBy`, `sortOrder` |
+| GET    | `/jobs/:id`               | Gets one job                                                        |
+| PUT    | `/jobs/:id`               | Updates selected job fields                                         |
+| DELETE | `/jobs/:id`               | Deletes one job                                                     |
+| POST   | `/jobs/:id/parse`         | Runs the AI JD parse and stores `structuredJD`                      |
+| PATCH  | `/jobs/:id/attach-resume` | Attaches a generated resume to the job                              |
 
-- JD URL fetching
-- `/jobs/:id/parsed`
-- Async parse polling
+## Resumes — `/api/v1/resumes`
 
-## Resumes
+| Method | Endpoint                   | Notes                                                                    |
+| ------ | -------------------------- | ------------------------------------------------------------------------ |
+| POST   | `/resumes/generate`        | Generates tailored resume content + ATS score for a parsed job           |
+| GET    | `/resumes`                 | Optional `jobId` filter                                                  |
+| POST   | `/resumes/profile`         | Creates/updates the profile-level (master) resume                        |
+| PUT    | `/resumes/profile`         | Updates the profile-level resume                                         |
+| GET    | `/resumes/profile`         | Returns the profile-level resume                                         |
+| GET    | `/resumes/reuse`           | Two-type system: returns the reusable resume when eligible               |
+| GET    | `/resumes/:id`             | Gets one resume                                                          |
+| PUT    | `/resumes/:id`             | Updates resume fields                                                    |
+| POST   | `/resumes/:id/pdf`         | Renders the resume to PDF via Puppeteer and returns it (wired in app.ts) |
+| POST   | `/resumes/upload`          | Multipart resume PDF upload                                              |
+| POST   | `/resumes/quick-ats-check` | Fast ATS check without full generation                                   |
 
-| Method | Endpoint | Status | Notes |
-| --- | --- | --- | --- |
-| POST | `/resumes/generate` | Implemented | Generates tailored resume content and ATS score for a parsed job |
-| GET | `/resumes` | Implemented | Optional `jobId` filter |
-| GET | `/resumes/:id` | Implemented | Gets one resume |
-| PUT | `/resumes/:id` | Implemented | Updates resume fields |
+## Applications — `/api/v1/applications`
 
-The PDF generation service exists at `apps/server/src/services/pdf-generator.service.ts`, but no route currently calls it.
+| Method | Endpoint                                    | Auth            | Notes                                                                                                                                                                                                                                   |
+| ------ | ------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/applications`                             | Bearer          | Creates an application for a job                                                                                                                                                                                                        |
+| GET    | `/applications`                             | Bearer          | Optional `status` filter                                                                                                                                                                                                                |
+| GET    | `/applications/:id`                         | Bearer          | Returns populated job and resume                                                                                                                                                                                                        |
+| PATCH  | `/applications/:id/status`                  | Bearer          | Moves status; records previous status + timeline event                                                                                                                                                                                  |
+| POST   | `/applications/:id/notes`                   | Bearer          | Adds a timeline note                                                                                                                                                                                                                    |
+| POST   | `/applications/:id/reminders`               | Bearer          | Adds a reminder + timeline event                                                                                                                                                                                                        |
+| PATCH  | `/applications/:id/reminders/:rid/complete` | Bearer          | Completes a reminder                                                                                                                                                                                                                    |
+| PATCH  | `/applications/:id/outcome`                 | Bearer          | Records offer/rejection outcome                                                                                                                                                                                                         |
+| DELETE | `/applications/:id`                         | Bearer          | Deletes an application                                                                                                                                                                                                                  |
+| POST   | `/applications/from-extension`              | **`x-api-key`** | Extension auto-track: idempotent find-or-create job (exact URL, then company+title within 60 days) + application with `applied` status. Unique `(userId, jobId)` index prevents duplicates. Registered before the JWT-protected router. |
 
-Not implemented yet:
+## Job Discovery / Search — mounted at `/api/v1`
 
-- `/resumes/:id/pdf`
-- `/resumes/:id/regenerate`
-- Persisted `pdfUrl` workflow
-- Download/export UI
+| Method         | Endpoint             | Notes                                                        |
+| -------------- | -------------------- | ------------------------------------------------------------ |
+| POST           | `/ingest/url`        | Fetches a job page, extracts JSON-LD, ingests a CanonicalJob |
+| POST           | `/ingest/paste`      | Ingests a pasted JD                                          |
+| GET            | `/`                  | Searches CanonicalJobs (filter/sort/paginate)                |
+| GET            | `/feed`              | Per-user recommended feed                                    |
+| POST           | `/sources`           | Registers a job source                                       |
+| POST           | `/sources/:id/trust` | Adjusts source trust                                         |
+| POST           | `/analytics/click`   | Records a click event                                        |
+| POST / GET     | `/saved`             | Create / list saved searches                                 |
+| PATCH / DELETE | `/saved/:id`         | Update / delete a saved search                               |
+| GET            | `/alerts`            | Lists match alerts                                           |
+| PATCH          | `/alerts/:id/read`   | Marks one alert read                                         |
+| PATCH          | `/alerts/read-all`   | Marks all alerts read                                        |
+| POST / GET     | `/watches`           | Create / list search watches (digest pipeline)               |
+| PATCH / DELETE | `/watches/:id`       | Toggle / delete a watch                                      |
 
-## Applications
+## API Keys — `/api/v1/apikeys` (Bearer JWT)
 
-| Method | Endpoint | Status | Notes |
-| --- | --- | --- | --- |
-| GET | `/applications` | Implemented | Optional `status` filter |
-| GET | `/applications/:id` | Implemented | Returns populated job and resume |
-| PATCH | `/applications/:id/status` | Implemented | Moves status and records previous status/timeline event |
-| POST | `/applications/:id/notes` | Implemented | Adds a timeline note |
-| POST | `/applications/:id/reminders` | Implemented | Adds a reminder and timeline event |
+Long-lived keys (`jtk_` + 40 hex chars) for the browser extension. Only the SHA-256 hash
+is stored; the raw key is returned exactly once and never logged (audit trails carry the
+safe 8-char prefix).
 
-Not implemented yet:
+| Method | Endpoint              | Notes                                                             |
+| ------ | --------------------- | ----------------------------------------------------------------- |
+| POST   | `/apikeys`            | Issues a key; returns the raw value once (`data.key`)             |
+| GET    | `/apikeys`            | Lists keys (prefix, name, timestamps — never the hash or raw key) |
+| PATCH  | `/apikeys/:id/revoke` | Revokes a key; extension requests then fail 401                   |
 
-- `POST /applications`
-- Delete application endpoint
-- Complete reminder endpoint
-- Custom timeline endpoint
-- Callback/rejection outcome endpoint
+Issuance, revocation, and failed key authentication write `API_KEY_ISSUED` /
+`API_KEY_REVOKED` / `API_KEY_AUTH_FAILED` records to the AuditLog collection.
 
-## Analytics
+## Admin — `/api/v1/admin` (**`x-admin-key`**)
 
-| Method | Endpoint | Status | Notes |
-| --- | --- | --- | --- |
-| GET | `/analytics/overview` | Implemented | Dashboard totals, pipeline, skill gaps, resume performance |
-| GET | `/analytics/resume-performance` | Implemented | Returns resumes populated with job data |
-| GET | `/analytics/status-breakdown` | Implemented | Counts by status |
-| GET | `/analytics/skill-gap-report` | Implemented | Aggregates gaps from parsed jobs and scored resumes |
+Gated by `SOURCE_POLL_ADMIN_KEY` (constant-time compare). When the env var is unset the
+routes answer 503 `ADMIN_NOT_CONFIGURED`; a wrong key answers 401.
 
-## Important Product Gaps
+| Method | Endpoint                  | Notes                                                                      |
+| ------ | ------------------------- | -------------------------------------------------------------------------- |
+| POST   | `/admin/poll-due-sources` | Body `{ companyId?, limit? }` (Zod-validated); polls due connector sources |
+| POST   | `/admin/seed-sources`     | Body `{ companyId, ats, slug }`; idempotent source registration            |
 
-- There is no normal API flow to create an application from a generated resume.
-- PDF export is not wired to an endpoint.
-- Reminder completion and outcome tracking are missing.
-- Some update routes use loose validation and should be tightened.
+## Analytics — `/api/v1/analytics`
+
+| Method | Endpoint                        | Notes                                                      |
+| ------ | ------------------------------- | ---------------------------------------------------------- |
+| GET    | `/analytics/overview`           | Dashboard totals, pipeline, skill gaps, resume performance |
+| GET    | `/analytics/resume-performance` | Resumes populated with job data                            |
+| GET    | `/analytics/status-breakdown`   | Counts by status                                           |
+| GET    | `/analytics/skill-gap-report`   | Gaps aggregated from parsed jobs and scored resumes        |
+
+## Still Not Implemented
+
+- Async parse polling (`POST /jobs/:id/parse` is synchronous)
+- Client-side Settings → API keys management page (extension keys are currently issued directly via this API)
+- Manual Chrome UI verification of the extension (load `apps/extension/dist` as an unpacked extension in a real browser) — tracked in TODO_PLAN.md
