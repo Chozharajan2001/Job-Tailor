@@ -16,7 +16,10 @@ export type AuditEventType =
   | "EMAIL_VERIFICATION_SENT"
   | "SESSION_CREATED"
   | "SESSION_REVOKED"
-  | "ALL_SESSIONS_REVOKED";
+  | "ALL_SESSIONS_REVOKED"
+  | "API_KEY_ISSUED"
+  | "API_KEY_REVOKED"
+  | "API_KEY_AUTH_FAILED";
 
 export interface AuditEventData {
   userId?: string;
@@ -183,6 +186,41 @@ class AuditLogger {
     sessionCount: number;
   }): void {
     this.log("ALL_SESSIONS_REVOKED", true, data);
+  }
+
+  /**
+   * API-key lifecycle events (browser-extension auth surface).
+   * Never pass the raw key — `prefix` (first 8 chars) is the safe
+   * identifier, matching what the key list UI already exposes.
+   */
+  apiKeyIssued(data: {
+    userId: string;
+    keyId: string;
+    prefix: string;
+    name: string;
+    ip: string;
+    userAgent: string;
+  }): void {
+    this.log("API_KEY_ISSUED", true, data);
+  }
+
+  apiKeyRevoked(data: {
+    userId: string;
+    keyId: string;
+    prefix: string;
+    ip: string;
+    userAgent: string;
+  }): void {
+    this.log("API_KEY_REVOKED", true, data);
+  }
+
+  apiKeyAuthFailed(data: {
+    ip: string;
+    userAgent: string;
+    reason: string;
+    prefix?: string;
+  }): void {
+    this.log("API_KEY_AUTH_FAILED", false, data);
   }
 }
 

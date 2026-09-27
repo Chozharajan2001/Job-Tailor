@@ -1,6 +1,14 @@
 import { Request, Response } from "express";
 import { ApiKey } from "../models/ApiKey.model.js";
 import { generateApiKey } from "../utils/api-key.js";
+import { auditLogger } from "../services/audit-logger.service.js";
+
+function clientMeta(req: Request): { ip: string; userAgent: string } {
+  return {
+    ip: req.ip ?? "unknown",
+    userAgent: String(req.headers?.["user-agent"] ?? "unknown"),
+  };
+}
 
 /**
  * POST /api/v1/apikeys
@@ -19,6 +27,14 @@ export async function issueApiKey(req: Request, res: Response): Promise<void> {
   }
   const { raw, hash, prefix } = generateApiKey();
   const doc = await ApiKey.create({ userId, name, keyHash: hash, prefix });
+  // Audit the issuance — prefix and id only, never the raw key.
+  auditLogger.apiKeyIssued({
+    userId,
+    keyId: String(doc._id),
+    prefix,
+    name,
+    ...clientMeta(req),
+  });
   res.status(201).json({
     success: true,
     data: {
@@ -75,6 +91,12 @@ export async function revokeApiKey(req: Request, res: Response): Promise<void> {
     doc.revokedAt = new Date();
     await doc.save();
   }
+  auditLogger.apiKeyRevoked({
+    userId,
+    keyId: String(doc._id),
+    prefix: doc.prefix,
+    ...clientMeta(req),
+  });
   res.json({
     success: true,
     data: { id: doc._id, revokedAt: doc.revokedAt },

@@ -17,6 +17,27 @@ import { connectTestDb, disconnectTestDb } from "./helpers/test-db.js";
 // Each test file gets an isolated in-memory database
 process.env.NODE_ENV = "test";
 
+// Hermeticity: ingestion calls parseJD for descriptions over 50 chars.
+// Without this mock the dedup/ingest tests hit a live AI provider when a
+// real key is present in apps/server/.env (nondeterministic 30s timeouts),
+// while CI — which has no key — silently exercises the swallow-and-continue
+// branch instead. Stubbing at the provider boundary keeps both environments
+// on the same code path. The LLM parse itself is covered in jd-parser's own
+// suite and by the resume/ATS tests, which mock at the same boundary.
+vi.mock("../services/jd-parser.service.js", () => ({
+  parseJD: vi.fn(async () => ({
+    summary: "Mocked parse for deterministic ingestion tests",
+    seniorityLevel: "mid" as const,
+    focusWeights: { frontend: 0, backend: 100, devops: 0, ai: 0, mobile: 0 },
+    requiredSkills: ["MockedSkill"],
+    preferredSkills: [],
+    responsibilities: [],
+    qualifications: [],
+    niceToHaves: [],
+    tone: "technical" as const,
+  })),
+}));
+
 const mockJsonLdHtml = `
 <html>
   <head>

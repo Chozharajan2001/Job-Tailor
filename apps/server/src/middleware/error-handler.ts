@@ -42,7 +42,12 @@ export function errorHandler(
 ): void {
   // 4xx are expected client errors; only log 5xx at error level
   const statusCode = (err as AppError).statusCode;
-  const meta = { err, requestId: req.headers["x-request-id"], path: req.path };
+  // Use the id pino-http bound to this request (req.id) so the error line
+  // joins to the request/completion lines under one correlation id.
+  // Falls back to the inbound header only if pino-http is not upstream.
+  const requestId =
+    (req as Request & { id?: string }).id ?? req.headers["x-request-id"];
+  const meta = { err, requestId, path: req.path };
   if (statusCode && statusCode < 500) {
     logger.warn(meta, err.message);
   } else {

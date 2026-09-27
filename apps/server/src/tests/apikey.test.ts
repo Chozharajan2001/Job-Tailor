@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import { generateApiKey, hashApiKey } from "../utils/api-key.js";
 import { ApiKey } from "../models/ApiKey.model.js";
+import { AuditLog } from "../models/AuditLog.model.js";
 import { User } from "../models/User.model.js";
 import { authenticateByApiKey } from "../middleware/api-key-auth.js";
 import {
@@ -96,6 +97,25 @@ describe("authenticateByApiKey", () => {
     expect(r.body.error.code).toBe("AUTH_INVALID_API_KEY");
   });
 
+  it("audit-logs a failed api-key auth attempt with prefix only", async () => {
+    const { raw } = generateApiKey();
+    await request(makePingApp()).get("/ping").set("x-api-key", raw);
+    // persist() is fire-and-forget; give it a beat to land. Query by THIS
+    // key's prefix — earlier 401 tests in this file leak their own
+    // API_KEY_AUTH_FAILED events, so an unfiltered findOne is racy.
+    await new Promise((r) => setTimeout(r, 80));
+    const prefix = raw.slice(0, 8);
+    const ev = await AuditLog.findOne({
+      eventType: "API_KEY_AUTH_FAILED",
+      "data.prefix": prefix,
+    }).lean();
+    expect(ev).toBeTruthy();
+    expect(ev?.success).toBe(false);
+    expect(ev?.data).toMatchObject({ reason: "invalid-or-revoked" });
+    expect(JSON.stringify(ev)).not.toContain(raw);
+    expect(JSON.stringify(ev)).toContain(prefix);
+  });
+
   it("rejects revoked key with 401", async () => {
     const user = await User.create({
       email: "c@b.co",
@@ -179,6 +199,30 @@ describe("apikey controller", () => {
       emailVerified: true,
     });
     userId = String(u._id);
+    await AuditLog.deleteMany({});
+  });
+
+  it("writes audit records for issue and revoke without raw key material", async () => {
+    const issued = await request(makeKeyApp(userId))
+      .post("/keys")
+      .send({ name: "audit-me" });
+    expect(issued.status).toBe(201);
+    const rawKey = issued.body.data.key as string;
+    const keyId = issued.body.data.id as string;
+
+    const rev = await request(makeKeyApp(userId)).patch(
+      `/keys/${keyId}/revoke`,
+    );
+    expect(rev.status).toBe(200);
+
+    await new Promise((r) => setTimeout(r, 80));
+    const events = await AuditLog.find({}).lean();
+    const types = events.map((e) => e.eventType);
+    expect(types).toContain("API_KEY_ISSUED");
+    expect(types).toContain("API_KEY_REVOKED");
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain(rawKey);
+    expect(serialized).toContain(rawKey.slice(0, 8));
   });
 
   it("POST /keys issues a raw key with jtk_ prefix", async () => {
