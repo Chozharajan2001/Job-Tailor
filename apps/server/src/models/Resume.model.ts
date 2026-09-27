@@ -30,6 +30,10 @@ export interface IATSScore {
   /** True when the LLM semantic phase failed and the score was computed
    *  from deterministic phases only (never fabricated). */
   semanticScoreDegraded?: boolean;
+  /** Scoring engine version: 1 = token-set keyword phase, 2 = synonym-aware
+   *  graded-credit keyword phase (2026-09 upgrade). Absent on scores stored
+   *  before the field existed (treat as v1). */
+  engineVersion?: number;
   breakdown: {
     matchedSkills: IMatchedSkill[];
     missingSkills: IMissingSkill[];
@@ -84,6 +88,8 @@ const atsSchema = new Schema<IATSScore>(
     semanticMatchScore: { type: Number, default: 0 },
     sectionCompletenessScore: { type: Number, default: 0 },
     formatScore: { type: Number, default: 0 },
+    semanticScoreDegraded: { type: Boolean },
+    engineVersion: { type: Number },
     breakdown: {
       matchedSkills: [
         {
