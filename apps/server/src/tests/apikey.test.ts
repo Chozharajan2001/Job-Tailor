@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import request from "supertest";
 import express from "express";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import mongoose from "mongoose";
 import { generateApiKey, hashApiKey } from "../utils/api-key.js";
 import { ApiKey } from "../models/ApiKey.model.js";
@@ -13,6 +14,7 @@ import {
   listApiKeys,
   revokeApiKey,
 } from "../controllers/apikey.controller.js";
+import { changePassword, resetPassword } from "../services/auth.service.js";
 import { connectTestDb, disconnectTestDb } from "./helpers/test-db.js";
 
 process.env.NODE_ENV = "test";
@@ -95,6 +97,27 @@ describe("authenticateByApiKey", () => {
     const r = await request(makePingApp()).get("/ping").set("x-api-key", raw);
     expect(r.status).toBe(401);
     expect(r.body.error.code).toBe("AUTH_INVALID_API_KEY");
+  });
+
+  it("rejects a valid key whose owner is deactivated (H2)", async () => {
+    const user = await User.create({
+      email: "deact@b.co",
+      passwordHash: validHash,
+      firstName: "D",
+      lastName: "B",
+      emailVerified: true,
+      isActive: false,
+    });
+    const { raw, hash, prefix } = generateApiKey();
+    await ApiKey.create({
+      userId: user._id,
+      name: "deact",
+      keyHash: hash,
+      prefix,
+    });
+    const r = await request(makePingApp()).get("/ping").set("x-api-key", raw);
+    expect(r.status).toBe(401);
+    expect(r.body.error.code).toBe("AUTH_USER_DEACTIVATED");
   });
 
   it("audit-logs a failed api-key auth attempt with prefix only", async () => {
@@ -281,5 +304,79 @@ describe("apikey controller", () => {
       .post("/keys")
       .send({ name: "" });
     expect(r.status).toBe(400);
+  });
+});
+
+describe("api-key revocation on credential change (H2)", () => {
+  beforeAll(async () => {
+    // Same shared-connection pattern as the controller describe above.
+    if (mongoose.connection.readyState !== 1) await connectTestDb();
+  });
+  beforeEach(async () => {
+    await ApiKey.deleteMany({});
+    await User.deleteMany({});
+  });
+
+  async function userWithLiveKey(email: string, password: string) {
+    const user = await User.create({
+      email,
+      passwordHash: bcrypt.hashSync(password, 10),
+      firstName: "Rev",
+      lastName: "Oked",
+      emailVerified: true,
+    });
+    const { raw, hash, prefix } = generateApiKey();
+    await ApiKey.create({
+      userId: user._id,
+      name: "live-key",
+      keyHash: hash,
+      prefix,
+    });
+    return { user, raw };
+  }
+
+  it("changePassword revokes every live api key for the account", async () => {
+    const { user, raw } = await userWithLiveKey(
+      "chgpw@b.co",
+      "old-password-123",
+    );
+    const ok = await request(makePingApp()).get("/ping").set("x-api-key", raw);
+    expect(ok.status).toBe(200);
+
+    await changePassword(
+      String(user._id),
+      "old-password-123",
+      "new-password-456",
+      "127.0.0.1",
+    );
+
+    const gone = await request(makePingApp())
+      .get("/ping")
+      .set("x-api-key", raw);
+    expect(gone.status).toBe(401);
+    const doc = await ApiKey.findOne({}).lean();
+    expect(doc?.revokedAt).toBeTruthy();
+  });
+
+  it("resetPassword revokes every live api key for the account", async () => {
+    const { user, raw } = await userWithLiveKey(
+      "respw@b.co",
+      "pw-before-reset",
+    );
+    const token = "reset-token-value-xyz";
+    await User.findByIdAndUpdate(user._id, {
+      resetPasswordToken: crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex"),
+      resetPasswordExpires: new Date(Date.now() + 10 * 60 * 1000),
+    });
+
+    await resetPassword(token, "pw-after-reset", "127.0.0.1");
+
+    const gone = await request(makePingApp())
+      .get("/ping")
+      .set("x-api-key", raw);
+    expect(gone.status).toBe(401);
   });
 });

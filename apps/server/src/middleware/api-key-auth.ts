@@ -76,6 +76,25 @@ export async function authenticateByApiKey(
     return;
   }
 
+  // A deactivated account must not keep API access through a live key —
+  // the JWT path already refuses this case (auth.middleware.ts).
+  if (user.isActive === false) {
+    auditLogger.apiKeyAuthFailed({
+      ip,
+      userAgent,
+      reason: "owner-deactivated",
+      prefix,
+    });
+    res.status(401).json({
+      success: false,
+      error: {
+        code: "AUTH_USER_DEACTIVATED",
+        message: "Account is deactivated",
+      },
+    });
+    return;
+  }
+
   req.user = { userId: String(user._id), email: user.email };
   ApiKey.updateOne(
     { _id: key._id },

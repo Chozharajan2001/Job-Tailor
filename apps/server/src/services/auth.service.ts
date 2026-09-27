@@ -5,6 +5,7 @@ import type { Secret, SignOptions } from "jsonwebtoken";
 import { config } from "../config/index.js";
 import { ApiError } from "../middleware/error-handler.js";
 import { User, IUser } from "../models/User.model.js";
+import { ApiKey } from "../models/ApiKey.model.js";
 import { ObjectId } from "mongoose";
 import { sendPasswordResetEmail } from "./email.service.js";
 import { auditLogger } from "./audit-logger.service.js";
@@ -720,6 +721,15 @@ export async function resetPassword(
     activeSessions: [],
   });
 
+  // A password reset is incident response for a compromised account —
+  // long-lived extension API keys must die with the sessions, otherwise
+  // the leaked jtk_ key keeps working after the "reset" that was meant
+  // to lock the attacker out. New keys can be issued after reset.
+  await ApiKey.updateMany(
+    { userId: matchedUser._id, revokedAt: null },
+    { $set: { revokedAt: new Date() } },
+  );
+
   auditLogger.passwordResetCompleted({
     userId: matchedUser._id.toString(),
     ip,
@@ -760,6 +770,13 @@ export async function changePassword(
     passwordHash,
     activeSessions: [],
   });
+
+  // Same incident-response guarantee as resetPassword: changing the
+  // password revokes every live API key for the account.
+  await ApiKey.updateMany(
+    { userId, revokedAt: null },
+    { $set: { revokedAt: new Date() } },
+  );
 
   auditLogger.passwordChanged({ userId, ip });
 }
