@@ -6,13 +6,14 @@
     <style>
       body {
         font-family: system-ui, sans-serif;
-        max-width: 560px;
+        max-width: 640px;
         margin: 40px auto;
         padding: 0 16px;
+        font-size: 14px;
       }
-      label {
+      label.field {
         display: block;
-        margin: 12px 0 4px;
+        margin: 14px 0 4px;
         font-weight: 600;
       }
       input[type="text"] {
@@ -20,26 +21,71 @@
         padding: 8px;
         box-sizing: border-box;
       }
-      button {
-        margin-top: 16px;
-        padding: 8px 16px;
+      table {
+        border-collapse: collapse;
+        margin: 12px 0;
       }
-      #saved {
-        color: green;
+      th,
+      td {
+        text-align: left;
+        padding: 6px 14px 6px 0;
+      }
+      button {
+        margin-top: 12px;
+        padding: 8px 16px;
+        cursor: pointer;
+      }
+      #msg {
         margin-left: 8px;
+      }
+      #msg.ok {
+        color: #15803d;
+      }
+      #msg.err {
+        color: #b91c1c;
+      }
+      .hint {
+        color: #666;
+        font-size: 12px;
       }
     </style>
   </head>
   <body>
     <h1>JobTailor Auto-Track settings</h1>
-    <label for="apiBase">JobTailor API base URL</label>
+
+    <label class="field" for="apiBase">JobTailor API base URL</label>
     <input type="text" id="apiBase" placeholder="http://localhost:5000/api/v1" />
-    <label for="apiKey">API key (from JobTailor → Settings → API keys)</label>
-    <input type="text" id="apiKey" placeholder="jtk_..." />
+
+    <label class="field" for="apiKey">API key</label>
+    <input type="text" id="apiKey" placeholder="jtk_… (JobTailor → Settings → API keys)" />
+    <p class="hint">
+      Generated in JobTailor under Settings → API keys. Shown once when created;
+      store it here. Revoking it in JobTailor disables this extension instantly.
+    </p>
+
     <div>
       <button id="save">Save</button>
-      <span id="saved"></span>
+      <button id="test">Test connection</button>
+      <span id="msg"></span>
     </div>
+
+    <h2>Platforms</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Platform</th>
+          <th>Tracked</th>
+          <th>Always add (no popup)</th>
+        </tr>
+      </thead>
+      <tbody id="platforms"></tbody>
+    </table>
+    <p class="hint">
+      "Always add" skips the confirmation popup for that platform. Leave it off
+      until you trust the detector — a false positive would silently create a
+      tracker entry (never deleted automatically).
+    </p>
+
     <script src="options.js"></script>
   </body>
 </html>

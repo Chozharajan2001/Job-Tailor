@@ -6,19 +6,58 @@
     <style>
       body {
         font-family: system-ui, sans-serif;
-        width: 320px;
+        width: 340px;
         margin: 0;
         padding: 16px;
-      }
-      #status {
-        color: #555;
         font-size: 14px;
+      }
+      .muted {
+        color: #666;
+      }
+      .row {
+        margin: 10px 0;
+      }
+      .title {
+        font-weight: 700;
+        font-size: 15px;
+      }
+      .company {
+        color: #444;
+      }
+      .url {
+        font-size: 11px;
+        color: #888;
+        word-break: break-all;
+      }
+      button {
+        padding: 8px 14px;
+        margin-right: 8px;
+        cursor: pointer;
+      }
+      #add {
+        background: #4f46e5;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+      }
+      #skip {
+        background: #eee;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+      }
+      #result {
+        margin-top: 10px;
+      }
+      #result.ok {
+        color: #15803d;
+      }
+      #result.err {
+        color: #b91c1c;
       }
     </style>
   </head>
   <body>
-    <h2 style="font-size: 16px; margin: 0 0 8px">JobTailor Auto-Track</h2>
-    <p id="status">No application detected yet on this tab.</p>
+    <div id="root"><span class="muted">Loading…</span></div>
     <script src="popup.js"></script>
   </body>
 </html>
