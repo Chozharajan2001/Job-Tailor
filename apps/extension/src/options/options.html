@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>JobTailor Auto-Track — Settings</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 560px;
+        margin: 40px auto;
+        padding: 0 16px;
+      }
+      label {
+        display: block;
+        margin: 12px 0 4px;
+        font-weight: 600;
+      }
+      input[type="text"] {
+        width: 100%;
+        padding: 8px;
+        box-sizing: border-box;
+      }
+      button {
+        margin-top: 16px;
+        padding: 8px 16px;
+      }
+      #saved {
+        color: green;
+        margin-left: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>JobTailor Auto-Track settings</h1>
+    <label for="apiBase">JobTailor API base URL</label>
+    <input type="text" id="apiBase" placeholder="http://localhost:5000/api/v1" />
+    <label for="apiKey">API key (from JobTailor → Settings → API keys)</label>
+    <input type="text" id="apiKey" placeholder="jtk_..." />
+    <div>
+      <button id="save">Save</button>
+      <span id="saved"></span>
+    </div>
+    <script src="options.js"></script>
+  </body>
+</html>

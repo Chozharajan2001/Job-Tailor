@@ -1,0 +1,20 @@
+{
+  "name": "@jobtailor/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "dev": "node esbuild.config.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "chrome-types": "^0.1.0",
+    "esbuild": "^0.24.0",
+    "happy-dom": "^15.11.6",
+    "typescript": "^5.8.2",
+    "vitest": "^3.2.6"
+  }
+}
