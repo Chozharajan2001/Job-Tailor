@@ -55,9 +55,11 @@ jobs:
       - name: Tests (all workspaces)
         run: npm run test
 
-      # Coverage floor gate: vitest.config.ts declares thresholds (50/60/60/60)
-      # and the provider throws when they are missed, so this step fails the
-      # build on regression. Measured 2026-09-27: 67.34 stmts / 69.05 branch /
-      # 74.17 funcs / 67.34 lines — floor met with margin.
+      # Coverage floor gate: vitest.config.ts declares thresholds and the
+      # provider throws when they are missed, so this step fails the build on
+      # regression. Measured surface widened 2026-09-27 to include controllers
+      # and routes (the highest-churn paths): stmts 55.59 / branch 68.72 /
+      # funcs 59.37 / lines 55.59; floors set to 55/50/59/55 from that
+      # measurement (services-only surface measured 67-75% the same day).
       - name: Server coverage floor
         run: npm run test:coverage --workspace=job-tailor-server

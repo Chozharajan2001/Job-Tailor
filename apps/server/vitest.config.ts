@@ -20,13 +20,28 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
-      include: ["src/services/**", "src/middleware/**", "src/utils/**"],
+      // Controllers and routes joined 2026-09-27 (better-harness review): the
+      // highest-churn core paths must be inside the measured surface, not just
+      // the services layer. Thresholds may only be adjusted with a recorded
+      // measurement in hand (see ci.yml coverage-floor comment).
+      include: [
+        "src/services/**",
+        "src/middleware/**",
+        "src/utils/**",
+        "src/controllers/**",
+        "src/routes/**",
+      ],
       exclude: ["src/services/email.service.ts", "**/__tests__/**"],
+      // Floors set from the 2026-09-27 measurement of THIS widened surface:
+      // stmts 55.59 / branch 68.72 / funcs 59.37 / lines 55.59 (controllers at
+      // 22.99 stmts are the diluter; services-only surface measured 68.68/
+      // 71.3/75.64/68.68 the same day). Raise a floor only when a later
+      // measurement supports it; never lower one without a recorded number.
       thresholds: {
-        lines: 60,
-        functions: 60,
+        lines: 55,
+        functions: 59,
         branches: 50,
-        statements: 60,
+        statements: 55,
       },
     },
   },
