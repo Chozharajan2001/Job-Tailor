@@ -1,9 +1,9 @@
 # JobTailor MVP Status
 
-> Last updated: 2026-09-27 (Tier 1 Feature 2 — Chrome Extension Auto-Track — shipped; Tier 1 Feature 1 shipped 2026-09-26)
+> Last updated: 2026-09-27 (Tier 1 Feature 2 — Chrome Extension Auto-Track — code-complete with 2 open sub-items; Tier 1 Feature 1 shipped 2026-09-26; Tier 1 Feature 3 — ATS v2 — done 2026-09-27)
 > Prioritized next-work roadmap lives in [TODO_PLAN.md](./TODO_PLAN.md). This file records what is built.
 
-## Tier 1 Feature 2 Shipped: Chrome Extension Auto-Track
+## Tier 1 Feature 2 Code-Complete (2 Open Sub-Items): Chrome Extension Auto-Track
 
 A Manifest V3 browser extension (`apps/extension/`) detects when the user submits a job application on Greenhouse, Lever, Ashby, or Workday and — after an explicit popup confirm — creates the Job + Application on the server in one idempotent call.
 
@@ -12,6 +12,7 @@ A Manifest V3 browser extension (`apps/extension/`) detects when the user submit
 - **Security posture:** only the background service worker holds the key and touches the network; content scripts never see it. "Always add" is opt-in per platform, off by default.
 - **Tests:** 26 extension tests (manifest, registry, fixture-based detector/extractor logic incl. a script-injection resistance case) + server tests (apikey 12, upsert 5, from-extension 6, e2e flow 1). Build verified producing a loadable `dist/`.
 - **Manual step remaining:** load `apps/extension/dist` via chrome://extensions → Load unpacked and apply to a live Greenhouse/Lever/Ashby/Workday posting (real-DOM verification; fixtures pin our assumptions, not theirs). LinkedIn + SmartRecruiters are deliberate v1 non-goals.
+- **Open sub-item (client UI):** no "Settings → API keys" page exists in the client yet. **Supported path until it ships:** issue/list/revoke keys with curl (or any HTTP client) against the JWT-protected `/api/v1/apikeys` endpoints; `POST /api/v1/apikeys` returns the raw `jtk_…` key exactly once.
 
 ## Tier 1 Feature 1 Shipped: Live Job Discovery
 
@@ -34,12 +35,17 @@ JobTailor is an advanced MVP. The resume tailoring loop, job search engine, prof
 Verified:
 
 ```bash
-npm run typecheck  ✅ (3/3 packages)
-npm run test       ✅ (server 117+ tests across 15 files, client 2 smoke; one pre-existing
-                             search-engine L2 test times out due to live OpenAI latency,
-                             not a code regression — see plan execution notes)
-npm run build      ✅
+npm run typecheck  ✅ (4/4 tasks: shared-types, server, client, extension)
+npm run lint       ✅ (3/3 tasks, 0 errors)
+npm run test       ✅ (218 tests: 187 server / 28 files, 26 extension / 3 files,
+                          5 client / 2 files — Login+Register smoke plus render-and-
+                          interact gates for JobsPage, ProfilePage, TrackerPage)
+npm run test:coverage --workspace=job-tailor-server
+                   ✅ (measured surface incl. controllers+routes: 55.6 stmts /
+                       68.7 branch / 59.4 funcs; floors 55/50/59/55)
 ```
+
+All suites are hermetic (in-memory MongoDB, AI providers stubbed at the boundary) — identical results with or without real keys in `apps/server/.env`. Not yet verified: production deployment, and the extension's real-DOM pass (open manual step above).
 
 ## Completed
 
@@ -146,6 +152,8 @@ Largest strategic gaps (from the competitor audit): empty search index at first 
 | Create Search Source             | Form to add crawler registry sources             |             Yes |                    Yes | Registered from Quality Dashboard matrix header                        |
 | Test coverage                    | Integration tests for search/workflow            |             Yes |                     No | Internal verification only                                             |
 
+_Matrix semantics: "Present in Code" / "User Can Access" mean a wired route/UI exists in the tree — they do not imply test coverage. The measured verification surface lives in the Verified block and the Tests row below._
+
 ## Honest Completion Estimate
 
 | Area                  | Completion |
@@ -159,6 +167,8 @@ Largest strategic gaps (from the competitor audit): empty search index at first 
 | Application tracker   | 95%        |
 | PDF export            | 90%        |
 | Analytics             | 75%        |
-| Tests                 | 80%        |
+| Tests                 | 75%¹       |
+
+¹ Measured surface (2026-09-27): server 187 tests / 28 files with a CI coverage floor (stmts 55.6%, floors 55/50/59/55 over services+middleware+utils+controllers+routes); client 5 tests / 2 files (auth-page smoke + render-and-interact gates for the three highest-churn pages); extension 26 fixture tests / 3 files. No Playwright E2E yet; the extension real-DOM pass is an open manual step.
 
 Overall MVP completion: approximately **91%**.
