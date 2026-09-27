@@ -57,6 +57,33 @@ export default [
       // Legitimate swallowed errors are allowed when explicitly empty catch blocks
       "no-empty": ["error", { allowEmptyCatch: true }],
       "no-constant-condition": ["error", { checkLoops: false }],
+      // docs/development-guide.md conventions, enforced at warn level so new
+      // violations are visible without blocking CI. Existing large files are
+      // baselined in the override below (measured 2026-09-27); shrink a file
+      // below 300 lines and remove it from the baseline.
+      "no-console": "warn",
+      "max-lines": [
+        "warn",
+        { max: 300, skipBlankLines: true, skipComments: true },
+      ],
+    },
+  },
+  {
+    // Baseline: pre-existing files over the 300-line limit. max-lines is off
+    // ONLY for these; every other server file is held to the guide's limit.
+    files: [
+      "src/services/auth.service.ts",
+      "src/services/ingestion.service.ts",
+      "src/services/email.service.ts",
+      "src/services/ats-scoring.service.ts",
+      "src/controllers/resume.controller.ts",
+      "src/controllers/analytics.controller.ts",
+      "src/controllers/search.controller.ts",
+      "src/controllers/application.controller.ts",
+      "src/controllers/auth.controller.ts",
+    ],
+    rules: {
+      "max-lines": "off",
     },
   },
   {
@@ -69,6 +96,8 @@ export default [
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
+      // Test output/debug logging is legitimate
+      "no-console": "off",
     },
   },
 ];

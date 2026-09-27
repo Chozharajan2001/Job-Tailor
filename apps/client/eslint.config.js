@@ -54,12 +54,42 @@ export default [
       "@typescript-eslint/no-explicit-any": "warn",
       "no-empty": ["error", { allowEmptyCatch: true }],
       "no-constant-condition": ["error", { checkLoops: false }],
+      // docs/development-guide.md conventions, enforced at warn level so new
+      // violations are visible without blocking CI. Existing large pages are
+      // baselined in the override below (measured 2026-09-27); shrink a file
+      // below the limit and remove it from the baseline.
+      "no-console": "warn",
+      "max-lines": [
+        "warn",
+        { max: 300, skipBlankLines: true, skipComments: true },
+      ],
+      "max-lines-per-function": [
+        "warn",
+        { max: 200, skipBlankLines: true, skipComments: true },
+      ],
+    },
+  },
+  {
+    // Baseline: pre-existing pages over the 300-line limit. max-lines rules
+    // are off ONLY for these; every other client file is held to the guide.
+    files: [
+      "src/pages/JobsPage.tsx",
+      "src/pages/ProfilePage.tsx",
+      "src/pages/TrackerPage.tsx",
+      "src/pages/ResumeTailorPage.tsx",
+      "src/pages/AnalyticsPage.tsx",
+    ],
+    rules: {
+      "max-lines": "off",
+      "max-lines-per-function": "off",
     },
   },
   {
     files: ["**/*.test.{ts,tsx}", "src/tests/**"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
+      // Test output/debug logging is legitimate
+      "no-console": "off",
     },
   },
   {
