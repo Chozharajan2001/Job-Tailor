@@ -1,0 +1,200 @@
+[
+  {
+    "caseId": "A-exact-match",
+    "title": "Both required skills exact-matched; preferred unmatched (the ats-scoring.test.ts fixture)",
+    "resume": {
+      "summary": "Frontend engineer focused on React and performance.",
+      "skills": [
+        {
+          "name": "React",
+          "category": "frontend",
+          "yearsOfExperience": 3,
+          "proficiency": "advanced"
+        },
+        {
+          "name": "Node.js",
+          "category": "backend",
+          "yearsOfExperience": 2,
+          "proficiency": "intermediate"
+        }
+      ],
+      "experience": [
+        {
+          "company": "Acme",
+          "bullets": [
+            {
+              "text": "Rebuilt the dashboard in React, cutting load time 40%."
+            },
+            { "text": "Built Node.js APIs serving 1M requests/day." }
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "Portfolio",
+          "techStack": ["React"],
+          "highlights": ["10k users"]
+        }
+      ]
+    },
+    "jd": {
+      "summary": "Build our web platform",
+      "seniorityLevel": "mid",
+      "focusWeights": {
+        "frontend": 50,
+        "backend": 40,
+        "devops": 10,
+        "ai": 0,
+        "mobile": 0
+      },
+      "requiredSkills": ["React", "Node.js"],
+      "preferredSkills": ["TypeScript"],
+      "responsibilities": ["Ship features"],
+      "qualifications": ["B.S. CS"],
+      "niceToHaves": ["Docker"],
+      "tone": "technical"
+    },
+    "v1": {
+      "keywordMatchScore": 80,
+      "sectionCompletenessScore": 73,
+      "formatScore": 90,
+      "degradedOverallScore": 80
+    }
+  },
+  {
+    "caseId": "B-synonym-gap",
+    "title": "Resume says 'React.js' and 'TS'; JD asks for 'React' and 'TypeScript' — v1 misses TypeScript",
+    "resume": {
+      "summary": "Built React.js dashboards and TS tooling.",
+      "skills": [
+        {
+          "name": "React.js",
+          "category": "frontend",
+          "yearsOfExperience": 2,
+          "proficiency": "advanced"
+        }
+      ],
+      "experience": [
+        {
+          "company": "Beta",
+          "bullets": [{ "text": "Shipped React.js component library." }]
+        }
+      ],
+      "projects": []
+    },
+    "jd": {
+      "summary": "Frontend platform role",
+      "seniorityLevel": "mid",
+      "focusWeights": {
+        "frontend": 100,
+        "backend": 0,
+        "devops": 0,
+        "ai": 0,
+        "mobile": 0
+      },
+      "requiredSkills": ["React", "TypeScript"],
+      "preferredSkills": [],
+      "responsibilities": ["Own the frontend"],
+      "qualifications": [],
+      "niceToHaves": [],
+      "tone": "technical"
+    },
+    "v1": {
+      "keywordMatchScore": 50,
+      "sectionCompletenessScore": 55,
+      "formatScore": 60,
+      "degradedOverallScore": 53
+    }
+  },
+  {
+    "caseId": "C-multiword-synonym",
+    "title": "Resume says 'SRE'; JD asks for 'Site Reliability' — v1 scores zero",
+    "resume": {
+      "summary": "SRE practices and on-call ownership.",
+      "skills": [
+        {
+          "name": "SRE",
+          "category": "devops",
+          "yearsOfExperience": 4,
+          "proficiency": "advanced"
+        }
+      ],
+      "experience": [
+        {
+          "company": "Gamma",
+          "bullets": [{ "text": "Ran SRE on-call rotation for core services." }]
+        }
+      ],
+      "projects": []
+    },
+    "jd": {
+      "summary": "Reliability engineering role",
+      "seniorityLevel": "senior",
+      "focusWeights": {
+        "frontend": 0,
+        "backend": 30,
+        "devops": 70,
+        "ai": 0,
+        "mobile": 0
+      },
+      "requiredSkills": ["Site Reliability"],
+      "preferredSkills": [],
+      "responsibilities": ["Own reliability"],
+      "qualifications": [],
+      "niceToHaves": [],
+      "tone": "technical"
+    },
+    "v1": {
+      "keywordMatchScore": 0,
+      "sectionCompletenessScore": 55,
+      "formatScore": 60,
+      "degradedOverallScore": 26
+    }
+  },
+  {
+    "caseId": "D-no-skills",
+    "title": "JD lists no skills — keyword phase must be 0, not NaN, in both versions",
+    "resume": {
+      "summary": "Detail-oriented engineer.",
+      "skills": [
+        {
+          "name": "Java",
+          "category": "backend",
+          "yearsOfExperience": 3,
+          "proficiency": "advanced"
+        },
+        {
+          "name": "SQL",
+          "category": "backend",
+          "yearsOfExperience": 3,
+          "proficiency": "advanced"
+        }
+      ],
+      "experience": [],
+      "projects": []
+    },
+    "jd": {
+      "summary": "Generic role",
+      "seniorityLevel": "entry",
+      "focusWeights": {
+        "frontend": 0,
+        "backend": 100,
+        "devops": 0,
+        "ai": 0,
+        "mobile": 0
+      },
+      "requiredSkills": [],
+      "preferredSkills": [],
+      "responsibilities": [],
+      "qualifications": [],
+      "niceToHaves": [],
+      "tone": "neutral"
+    },
+    "v1": {
+      "keywordMatchScore": 0,
+      "sectionCompletenessScore": 25,
+      "formatScore": 60,
+      "degradedOverallScore": 18
+    }
+  }
+]

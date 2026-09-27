@@ -8,7 +8,7 @@ import type {
 } from "../models/Resume.model.js";
 
 // ─── Types ─────────────────────────────────────────────────────
-interface ResumeContent {
+export interface ResumeContent {
   summary: string;
   skills: Array<{
     name: string;
