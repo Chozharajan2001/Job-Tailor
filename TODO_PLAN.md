@@ -1,6 +1,6 @@
 # JobTailor — Prioritized TODO Plan
 
-> Last updated: 2026-09-25
+> Last updated: 2026-09-29 (Tier 1 complete; security-audit remediation tier added)
 > Source: post-audit of MVP status, sprint checklists (1–6), feature gaps, and competitor analysis (Teal, Huntr, Jobscan, Simplify, RemoteHunt, Happpy Agent/Uplers, LoopCV, AIHawk).
 > Ordering principle: **must-have before nice-to-have; product viability before polish.**
 
@@ -109,6 +109,22 @@ Every other discovery feature depends on this. Nothing downstream works on an em
 - [x] Share the search synonym map into scoring — `skill-matcher.ts` now used by search, alerts, AND scoring
 - [x] Score caching keyed on (resume version, parsed JD) hash — key also includes engine version
 - [x] Re-score endpoint — `POST /resumes/:id/rescore` compares new engine output against stored versions without overwriting
+
+---
+
+# TIER 1.5 — SECURITY (full-app audit 2026-09-27, remediation in progress)
+
+_Four parallel read-only domain audits. H1–H5 fixed and test-pinned 2026-09-27; the rest are ranked open items. Evidence: `MVP_STATUS.md` § Security Audit._
+
+**Fixed:** H1 log redaction of `x-api-key`/`x-admin-key` · H2 key revocation on password change/reset + deactivated-owner refusal · H3 Greenhouse content enrichment + zero-ingested = source failure · H4 `Job.savedAt` persistence · H5 job-delete cascade.
+
+- [ ] **H6** Cross-tab silent-refresh race → token-reuse detection revokes ALL sessions (`navigator.locks` around `performSilentRefresh`); also the VerifyEmailPage infinite retry loop (M6)
+- [ ] **H7** Public self-registration in front of paid AI endpoints — env allowlist/invite gate. **Blocking requirement before any deploy**
+- [ ] **H8** SSRF DNS-rebinding TOCTOU: pin the validated IP for the actual connection; drop the ad-hoc `startsWith` filter in cleanup for the guard
+- [ ] **M-batch** M1 `trust proxy` config · M2 static 5xx messages (stop error echoes / SSRF oracle) · M3 admin key length check + timing-safe compare + limiter · M4 Cloudinary `type:private`/random public_id · M5 `/search/feed` validateQuery + bounds · M7 connector fetch timeouts · M8 dedup E11000 revival path · M9 `createApplication`/`getOrCreateProfile`/resume-version races · M10 wire gitleaks into pre-push/CI · M11 extension: `storage.local` for key + https-only `apiBase` · M12 detector structural confirm signals
+- [ ] **L-batch** Zod on `PUT /jobs/:id` + profile DELETE params · escape `$regex` host in ingestion · admin-gate feedback/click · rollback `Job.status` on application delete · `resumeId` interface nullability · feed URL normalization · extension sourcemap prod policy · pin GH Actions · gitignore `.qoder/`+`.zcode/` · queryKeys drift · `npm audit fix` (3 advisories)
+
+Effort: H-batch ≈ 6–8 h, M-batch ≈ 10–14 h, L-batch ≈ 4–6 h. Do H6–H8 **before** Tier 5 deployment work.
 
 ---
 

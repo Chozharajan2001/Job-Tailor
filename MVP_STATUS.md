@@ -1,6 +1,6 @@
 # JobTailor MVP Status
 
-> Last updated: 2026-09-27 (Tier 1 Feature 2 — Chrome Extension Auto-Track — code-complete with 2 open sub-items; Tier 1 Feature 1 shipped 2026-09-26; Tier 1 Feature 3 — ATS v2 — done 2026-09-27)
+> Last updated: 2026-09-29 (full-application security audit remediation: H1–H5 fixed and test-pinned; Tier 1 complete — discovery shipped, extension code-complete with 2 open sub-items, ATS engine v2 done)
 > Prioritized next-work roadmap lives in [TODO_PLAN.md](./TODO_PLAN.md). This file records what is built.
 
 ## Tier 1 Feature 2 Code-Complete (2 Open Sub-Items): Chrome Extension Auto-Track
@@ -27,6 +27,18 @@ The `CanonicalJob` search index can now be populated from public career-page API
 - **New tests**: 12 connector tests, 5 ingestion-connector tests, 10 source-poller tests, 4 seed tests, 7 admin-route tests, 2 e2e tests. Suite grew from 77 → 117 server tests.
 
 What the poller intentionally does **not** do: parse the JD with the LLM. Cost is bounded to user view-time — the client's existing "Parse JD with AI" flow on the Jobs page handles that when the user actually engages with a canonical job.
+
+## Security Audit (2026-09-27) — H1–H5 Fixed
+
+Four parallel read-only domain audits (server security, data layer, client, extension/CI) produced 8 high, ~12 medium, ~10 low findings — zero critical. Fixed and test-pinned the same day:
+
+- **H1** Request logs redacted `x-api-key`/`x-admin-key` (pino-http default serializers leaked both in plaintext); pinned by a sink-level redaction test.
+- **H2** Password change/reset now revoke all live API keys; deactivated accounts are refused even with a valid key (audit-logged).
+- **H3** Greenhouse connector fetches per-job content (the list endpoint omits it — the platform had been ingesting zero jobs while reporting healthy); a poll that fetches N but ingests 0 now counts as a source failure.
+- **H4** `Job.savedAt` added to the schema (interface-only before → default sort was non-deterministic).
+- **H5** `DELETE /jobs/:id` cascades to Applications and job-specific Resumes (dangling rows held the (userId,jobId) unique index).
+
+Open items (ranked in TODO_PLAN.md Tier 1.5): H6 cross-tab refresh race, H7 registration gate before any deploy, H8 SSRF DNS-rebinding pinning, plus mediums M1–M12 (trust proxy, error echoes, admin-key hardening, Cloudinary private PDFs, feed bounds, verify-email retry loop, connector timeouts, dedup revival, remaining races, gitleaks wiring, extension storage/https, detector false-positives) and ~10 lows; `npm audit fix` pending (3 advisories).
 
 ## Summary
 
@@ -89,7 +101,7 @@ All suites are hermetic (in-memory MongoDB, AI providers stubbed at the boundary
   - **Reusable Resume Selection**: Automatically queries `GET /resumes/reuse` to pre-populate default tailored resume selection dropdown in tracker card creation modal.
   - **Attach Resume to Job**: Exposes inline Link Resume selectors on the `JobsPage` details view calling `PATCH /jobs/:id/attach-resume`.
   - **Crawl Source Registration**: Exposes a "Register Source" form modal and trigger in the health matrix panel calling `POST /search/sources`.
-- **Test Suite**: 215 tests — 187 server across 28 files (search engine, auth/HTTP-auth, security utils, profile/application workflows, ATS scoring v2 + golden regression + schema persistence, keyword scorer, skill IDF, score cache, rescore, live-discovery connectors/poller/seed/admin, API keys + extension flow, error correlation) + 26 extension (manifest, platform registry, detector/extractor fixtures) + 2 client smoke tests.
+- **Test Suite**: 225 tests — 194 server across 29 files (search engine, auth/HTTP-auth, security utils, profile/application workflows, ATS scoring v2 + golden regression + schema persistence, keyword scorer, skill IDF, score cache, rescore, live-discovery connectors/poller/seed/admin, API keys + extension flow + revocation + log-redaction, delete cascade, error correlation) + 26 extension (manifest, platform registry, detector/extractor fixtures) + 5 client (auth smoke + Jobs/Profile/Tracker page gates).
 
 ## Partially Done
 

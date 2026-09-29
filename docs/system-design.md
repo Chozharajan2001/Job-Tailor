@@ -334,16 +334,16 @@ Why this exists: the system was developed against free/low-cost tiers where any 
 
 **ATS scoring** combines four phases with fixed weights:
 
-| Phase                | Weight | Method                                                                                           |
-| -------------------- | ------ | ------------------------------------------------------------------------------------------------ |
-| Keyword match        | 35%    | Weighted token matching of JD skills against resume text; required skills weigh 2×, preferred 1× |
-| Semantic match       | 45%    | LLM evaluation via provider manager                                                              |
-| Section completeness | 12%    | Points for presence/depth of skills, experience bullets, projects, education                     |
-| Format quality       | 8%     | Base content score plus quantified bullets (`\d+%`, `$…`, counts) and bullet density             |
+| Phase                | Weight | Method                                                                                                                                                                |
+| -------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keyword match        | 35%    | Engine v2: synonym-aware graded credit per JD skill (exact 1.0 / synonym 0.9 / token-subset 0.75, +0.1 multi-section spread), IDF-weighted; required 2×, preferred 1× |
+| Semantic match       | 45%    | LLM evaluation via provider manager                                                                                                                                   |
+| Section completeness | 12%    | Points for presence/depth of skills, experience bullets, projects, education                                                                                          |
+| Format quality       | 8%     | Base content score plus quantified bullets (`\d+%`, `$…`, counts) and bullet density                                                                                  |
 
 Failure behavior is deliberate: if the LLM phase fails, the score is **renormalized over the three deterministic phases** (55/25/20), flagged `semanticScoreDegraded`, and the action items tell the user the AI phase was missing. A degraded score is never backfilled with a fabricated semantic value. This matters because the score influences user decisions; presenting a confident-but-fake number would be worse than an honest partial one.
 
-Limitation, stated plainly: this is a useful heuristic, not a simulation of any commercial ATS. Keyword matching is token-based without true TF-IDF, and the weak-skill heuristic uses a static seniority-to-years table.
+Limitation, stated plainly: this is a useful heuristic, not a simulation of any commercial ATS. Since engine v2 (2026-09-27) keyword matching is synonym-aware graded credit with IDF distinctiveness weighting shared with the search feature's matcher (`docs/ats-scoring-technical-design.md` §4.3); the weak-skill heuristic still uses a static seniority-to-years table, and calibration against real outcomes remains future work.
 
 ### 7.4 Job search engine
 
@@ -369,22 +369,22 @@ One scheduled job runs in-process with the server: stale-listing cleanup and lin
 
 Controls implemented, mapped to concerns:
 
-| Concern            | Implementation                                                                                                                                     |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Credential storage | bcrypt password hashes (`select: false`); refresh/reset/verification tokens stored hashed                                                          |
-| Transport/session  | Short-lived access JWT + rotating refresh token in HttpOnly cookie; per-device session revocation                                                  |
-| Brute force        | Per-endpoint auth rate limits (5/15 min on login and forgot-password), account lockout via `loginAttempts`/`lockUntil`                             |
-| Injection          | Zod validation on every write endpoint; user input never interpolated into raw regex without escaping (search); parameterized queries via Mongoose |
-| SSRF               | URL guard validates crawl targets against private/internal ranges before fetch                                                                     |
-| XSS                | Output escaping (`escape-html`) for LLM-derived and user content rendered in generated HTML; client-side guards on rendered content                |
-| Mass assignment    | Route-level schema whitelists; update endpoints accept only declared fields                                                                        |
-| Authorization      | Ownership checks on every user-scoped query (`userId` filter); `requireAdmin` guard for admin routes                                               |
-| Headers            | Helmet defaults; CORS restricted to a configured origin allowlist with credentials                                                                 |
-| Secrets            | Environment variables only; `.env.example` ships placeholders; `gitleaks.toml` config in repo                                                      |
-| Observability      | Pino structured logs with request correlation IDs; `AuditLog` collection for security events                                                       |
-| Supply chain       | CI runs lint/typecheck/build/tests on every PR; commit hooks (husky + commitlint); gitleaks config for secret scanning                             |
+| Concern            | Implementation                                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Credential storage | bcrypt password hashes (`select: false`); refresh/reset/verification tokens stored hashed                                                                                      |
+| Transport/session  | Short-lived access JWT + rotating refresh token in HttpOnly cookie; per-device session revocation                                                                              |
+| Brute force        | Per-endpoint auth rate limits (5/15 min on login and forgot-password), account lockout via `loginAttempts`/`lockUntil`                                                         |
+| Injection          | Zod validation on every write endpoint; user input never interpolated into raw regex without escaping (search); parameterized queries via Mongoose                             |
+| SSRF               | URL guard validates crawl targets against private/internal ranges before fetch (redirects re-validated; DNS-rebinding IP pinning is open audit item H8)                        |
+| XSS                | Output escaping (`escape-html`) for LLM-derived and user content rendered in generated HTML; client-side guards on rendered content                                            |
+| Mass assignment    | Route-level schema whitelists; update endpoints accept only declared fields                                                                                                    |
+| Authorization      | Ownership checks on every user-scoped query (`userId` filter); `requireAdmin` guard for admin routes                                                                           |
+| Headers            | Helmet defaults; CORS restricted to a configured origin allowlist with credentials                                                                                             |
+| Secrets            | Environment variables only; `.env.example` ships placeholders; `gitleaks.toml` config in repo — the scan itself is not yet wired into any hook or CI job (open audit item M10) |
+| Observability      | Pino structured logs with request correlation IDs; `AuditLog` collection for security events                                                                                   |
+| Supply chain       | CI runs lint/typecheck/build/tests on every PR; commit hooks (husky + commitlint); gitleaks config for secret scanning                                                         |
 
-Honest assessment: this is defense-in-depth appropriate for a personal-scale app. No formal penetration test has been performed, and there is no compliance regime (GDPR/PCI/SOC 2) because there are no third-party users or regulated data.
+Honest assessment: this is defense-in-depth appropriate for a personal-scale app. A structured internal security audit (four parallel read-only domain passes, 2026-09-27) replaced assumption with evidence and produced ranked findings: H1–H5 (log secret redaction, key revocation on password change, Greenhouse ingestion honesty, savedAt persistence, delete cascades) are fixed and test-pinned; H6–H8 and twelve mediums remain open, tracked in `TODO_PLAN.md` Tier 1.5. No external penetration test has been performed, and there is no compliance regime (GDPR/PCI/SOC 2) because there are no third-party users or regulated data.
 
 ---
 

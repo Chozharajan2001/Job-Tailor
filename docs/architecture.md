@@ -1,6 +1,6 @@
 # JobTailor Architecture
 
-> Last updated: 2026-09-25
+> Last updated: 2026-09-29
 > Status: Advanced MVP — core workflows operational end-to-end.
 > Note: this is the original architecture overview. The authoritative, code-verified descriptions now live in `docs/system-design.md`, `docs/ai-jd-analysis-architecture.md`, and `docs/ats-scoring-technical-design.md`. This file is kept as a lightweight orientation and is corrected against the repo.
 
@@ -88,7 +88,7 @@ Not currently present:
 - shared `validations`
 - shared `api-client`
 - client `hooks`
-- Playwright E2E tests (server and client unit/integration suites exist and pass — 79 tests)
+- Playwright E2E tests (server, client, and extension unit/integration suites exist and pass — 225 tests)
 
 ## Backend Architecture
 
