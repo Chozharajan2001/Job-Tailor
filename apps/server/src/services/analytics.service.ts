@@ -162,11 +162,18 @@ export class AnalyticsService {
             }
           });
 
+          const ghostTagged = await CanonicalJob.countDocuments({
+            sourceId: src._id,
+            isActive: true,
+            ghostRisk: { $gte: 0.6 },
+          });
+
           return {
             _id: src._id.toString(),
             name: src.name,
             baseUrl: src.baseUrl,
             trustScore: src.trustScore,
+            ghostTagged,
             isEnabled: src.isEnabled,
             sourceType: src.sourceType,
             states: statesCount,

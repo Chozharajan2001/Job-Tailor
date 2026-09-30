@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { CanonicalJob } from "../models/CanonicalJob.model.js";
+import { SourceRegistry } from "../models/SourceRegistry.model.js";
 import { applyGhostScoring } from "../services/ghost-job.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { connectTestDb, disconnectTestDb } from "./helpers/test-db.js";
 
 process.env.NODE_ENV = "test";
@@ -102,5 +104,47 @@ describe("applyGhostScoring", () => {
     const after = await CanonicalJob.findById(firstSeen._id).lean();
     expect(after?.ghostReasons).not.toContain("text unchanged");
     expect(after?.ghostReasons).toContain("listed 200 days");
+  });
+
+  it("reports per-source ghostTagged counts on the dashboard", async () => {
+    await SourceRegistry.deleteMany({});
+    const src = await SourceRegistry.create({
+      name: "Acme (Ashby)",
+      sourceType: "api_connector",
+      connectorType: "ashby",
+      companyId: "acme",
+      baseUrl: "https://api.ashbyhq.com",
+      crawlFrequency: 360,
+      extractionStrategy: "manual_input",
+      trustScore: 0.5,
+    });
+    const mk = (title: string, risk: number, active = true) =>
+      CanonicalJob.create({
+        sourceId: src._id,
+        sourceName: src.name,
+        companyName: "Acme",
+        jobTitle: title,
+        location: "Remote",
+        workType: "remote",
+        description: "Body",
+        dedupeKey: `gh_${title}_${Math.random().toString(36).slice(2)}`,
+        isActive: active,
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+        ghostRisk: risk,
+      });
+    await mk("High A", 0.8);
+    await mk("Low B", 0.1);
+    await mk("High C", 0.9);
+    await mk("Inactive D", 0.95, false);
+
+    const dash = await AnalyticsService.getAnalyticsDashboard();
+    const row = (
+      dash.sourceHealth as Array<{
+        _id: string;
+        ghostTagged?: number;
+      }>
+    ).find((r) => r._id === String(src._id));
+    expect(row?.ghostTagged).toBe(2);
   });
 });

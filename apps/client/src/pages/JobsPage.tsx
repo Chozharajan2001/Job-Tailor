@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../services/api";
 import { Upload, FileText, X, Check, Plus } from "lucide-react";
 import ResumeUploadModal from "../components/ResumeUploadModal";
+import { GhostChip } from "../components/GhostChip";
 import { Link } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { sanitizeUrl } from "../lib/sanitizeUrl";
@@ -75,6 +76,7 @@ export default function JobsPage() {
   const [globalEmploymentType, setGlobalEmploymentType] = useState("all");
   const [globalSalaryMin, setGlobalSalaryMin] = useState("");
   const [globalSortBy, setGlobalSortBy] = useState("relevance");
+  const [globalHideGhosts, setGlobalHideGhosts] = useState(false);
   const [globalPage, setGlobalPage] = useState(1);
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [submittedLocation, setSubmittedLocation] = useState("");
@@ -122,6 +124,19 @@ export default function JobsPage() {
           error.message ||
           "Quick ATS check failed. Please ensure you have a resume set up.",
       );
+    },
+  });
+
+  const stillHiringMutation = useMutation({
+    mutationFn: (canonicalJobId: string) =>
+      api.post("/search/feedback", {
+        canonicalJobId,
+        interactionType: "still_hiring",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["global-search"] });
+      queryClient.invalidateQueries({ queryKey: ["feed"] });
+      toast.success("Marked as still hiring");
     },
   });
 
@@ -185,6 +200,7 @@ export default function JobsPage() {
       globalEmploymentType,
       globalSalaryMin,
       globalSortBy,
+      globalHideGhosts,
       globalPage,
     ],
     queryFn: () =>
@@ -199,7 +215,7 @@ export default function JobsPage() {
       }>(
         `/search?q=${encodeURIComponent(submittedQuery)}&location=${encodeURIComponent(
           submittedLocation,
-        )}&workType=${globalWorkType}&employmentType=${globalEmploymentType}&salaryMin=${globalSalaryMin}&sortBy=${globalSortBy}&page=${globalPage}&limit=10`,
+        )}&workType=${globalWorkType}&employmentType=${globalEmploymentType}&salaryMin=${globalSalaryMin}&sortBy=${globalSortBy}&hideGhosts=${globalHideGhosts}&page=${globalPage}&limit=10`,
       ),
     enabled: activeSearchTab === "global",
   });
@@ -994,6 +1010,17 @@ export default function JobsPage() {
                             <option value="date">Date Posted</option>
                           </select>
                         </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={globalHideGhosts}
+                            onChange={(e) =>
+                              setGlobalHideGhosts(e.target.checked)
+                            }
+                            className="accent-amber-600"
+                          />
+                          <span>Hide likely stale</span>
+                        </label>
                       </div>
                       {(submittedQuery || submittedLocation) && (
                         <button
@@ -1073,6 +1100,14 @@ export default function JobsPage() {
                             <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
                               {job.description}
                             </p>
+                            <GhostChip
+                              risk={job.ghostRisk}
+                              reasons={job.ghostReasons ?? []}
+                              verdict={job.userGhostVerdict}
+                              onStillHiring={() =>
+                                stillHiringMutation.mutate(String(job._id))
+                              }
+                            />
                             <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1.5 border-t">
                               <div>
                                 <span>
@@ -1219,6 +1254,14 @@ export default function JobsPage() {
                           <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
                             {job.description}
                           </p>
+                          <GhostChip
+                            risk={job.ghostRisk}
+                            reasons={job.ghostReasons ?? []}
+                            verdict={job.userGhostVerdict}
+                            onStillHiring={() =>
+                              stillHiringMutation.mutate(String(job._id))
+                            }
+                          />
                           <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1.5 border-t">
                             <div>
                               <span>
@@ -1509,6 +1552,7 @@ export default function JobsPage() {
                               <tr className="border-b text-gray-400 font-semibold bg-gray-50/30">
                                 <th className="py-3 px-3">Source Name</th>
                                 <th className="py-3 px-3">Type</th>
+                                <th className="py-3 px-3">Likely stale</th>
                                 <th className="py-3 px-3">
                                   Dynamic Trust Score
                                 </th>
@@ -1552,6 +1596,9 @@ export default function JobsPage() {
                                           ? "Paste"
                                           : "Crawler"}
                                       </span>
+                                    </td>
+                                    <td className="py-3 px-3">
+                                      {src.ghostTagged ?? 0}
                                     </td>
                                     <td className="py-3 px-3">
                                       <div className="flex items-center gap-1.5">
