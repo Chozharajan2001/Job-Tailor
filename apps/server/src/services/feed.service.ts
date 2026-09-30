@@ -1,7 +1,7 @@
-import { CanonicalJob } from '../models/CanonicalJob.model.js';
-import { Profile } from '../models/Profile.model.js';
-import { Watch } from '../models/Watch.model.js';
-import { Job } from '../models/Job.model.js';
+import { CanonicalJob } from "../models/CanonicalJob.model.js";
+import { Profile } from "../models/Profile.model.js";
+import { Watch } from "../models/Watch.model.js";
+import { Job } from "../models/Job.model.js";
 
 export class FeedService {
   /**
@@ -21,11 +21,11 @@ export class FeedService {
       : [];
 
     const companyWatches = watches
-      .filter((w) => w.type === 'company')
+      .filter((w) => w.type === "company")
       .map((w) => w.value.toLowerCase().trim());
 
     const titleWatches = watches
-      .filter((w) => w.type === 'title')
+      .filter((w) => w.type === "title")
       .map((w) => w.value.toLowerCase().trim());
 
     // 2. Map imported jobs to exclude
@@ -36,8 +36,8 @@ export class FeedService {
       if (uj.jobLink) {
         importedUrls.add(uj.jobLink.trim().toLowerCase());
       }
-      const titleClean = (uj.jobTitle || '').trim().toLowerCase();
-      const companyClean = (uj.companyName || '').trim().toLowerCase();
+      const titleClean = (uj.jobTitle || "").trim().toLowerCase();
+      const companyClean = (uj.companyName || "").trim().toLowerCase();
       if (titleClean && companyClean) {
         importedKeys.add(`${companyClean}_${titleClean}`);
       }
@@ -46,9 +46,9 @@ export class FeedService {
     // 3. Fetch active canonical jobs
     const activeJobs = await CanonicalJob.find({
       isActive: true,
-      verificationState: { $nin: ['failed', 'suspicious'] }
+      verificationState: { $nin: ["failed", "suspicious"] },
     })
-      .populate('sourceId')
+      .populate("sourceId")
       .lean()
       .exec();
 
@@ -56,15 +56,18 @@ export class FeedService {
     const scoredFeed = activeJobs
       .filter((job: any) => {
         // Exclude if already imported
-        const applyUrlLower = (job.applyUrl || '').trim().toLowerCase();
-        const sourceUrlLower = (job.sourceUrl || '').trim().toLowerCase();
-        
-        if (importedUrls.has(applyUrlLower) || (sourceUrlLower && importedUrls.has(sourceUrlLower))) {
+        const applyUrlLower = (job.applyUrl || "").trim().toLowerCase();
+        const sourceUrlLower = (job.sourceUrl || "").trim().toLowerCase();
+
+        if (
+          importedUrls.has(applyUrlLower) ||
+          (sourceUrlLower && importedUrls.has(sourceUrlLower))
+        ) {
           return false;
         }
 
-        const titleLower = (job.jobTitle || '').trim().toLowerCase();
-        const companyLower = (job.companyName || '').trim().toLowerCase();
+        const titleLower = (job.jobTitle || "").trim().toLowerCase();
+        const companyLower = (job.companyName || "").trim().toLowerCase();
         const key = `${companyLower}_${titleLower}`;
         if (importedKeys.has(key)) {
           return false;
@@ -74,9 +77,9 @@ export class FeedService {
       })
       .map((job: any) => {
         let score = 0;
-        const titleLower = (job.jobTitle || '').toLowerCase();
-        const companyLower = (job.companyName || '').toLowerCase();
-        const descLower = (job.description || '').toLowerCase();
+        const titleLower = (job.jobTitle || "").toLowerCase();
+        const companyLower = (job.companyName || "").toLowerCase();
+        const descLower = (job.description || "").toLowerCase();
 
         // A. Watches Boost
         let watchMatched = false;
@@ -89,8 +92,8 @@ export class FeedService {
         }
         // Title Watches (regex matching using word boundary)
         for (const title of titleWatches) {
-          const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+          const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(`\\b${escaped}\\b`, "i");
           if (regex.test(titleLower)) {
             score += 150;
             watchMatched = true;
@@ -101,13 +104,13 @@ export class FeedService {
         let skillsMatchedCount = 0;
         if (userSkills.length > 0) {
           for (const skill of userSkills) {
-            const escapedSkill = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const skillRegex = new RegExp(`\\b${escapedSkill}\\b`, 'i');
+            const escapedSkill = skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const skillRegex = new RegExp(`\\b${escapedSkill}\\b`, "i");
 
             const inTitle = skillRegex.test(titleLower);
             const inDesc = skillRegex.test(descLower);
             const inRequiredSkills = job.structuredJD?.requiredSkills?.some(
-              (s: string) => s.toLowerCase().trim() === skill
+              (s: string) => s.toLowerCase().trim() === skill,
             );
 
             if (inTitle) {
@@ -128,13 +131,20 @@ export class FeedService {
         const ageInMs = Date.now() - new Date(postedDate).getTime();
         const ageInDays = Math.max(0, ageInMs / (24 * 60 * 60 * 1000));
         if (ageInDays < 30) {
-          score += (30 - ageInDays);
+          score += 30 - ageInDays;
         }
 
         // D. Source trust boost
         const sourceRegistry = job.sourceId;
-        if (sourceRegistry && typeof sourceRegistry.trustScore === 'number') {
+        if (sourceRegistry && typeof sourceRegistry.trustScore === "number") {
           score += sourceRegistry.trustScore * 10;
+        }
+
+        // E. Ghost demotion — same advisory multiplier as search, so the
+        // planned #6 digest inherits it instead of re-deriving it.
+        const ghostRisk = typeof job.ghostRisk === "number" ? job.ghostRisk : 0;
+        if (ghostRisk > 0) {
+          score *= 1 - 0.5 * ghostRisk;
         }
 
         return {

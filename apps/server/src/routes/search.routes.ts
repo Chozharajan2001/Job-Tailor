@@ -68,6 +68,7 @@ const searchJobsQuerySchema = z.object({
   freshnessDays: z.coerce.number().int().min(1).optional(),
   employmentType: z.string().optional(),
   salaryMin: z.coerce.number().int().min(0).optional(),
+  hideGhosts: z.coerce.boolean().optional(),
 });
 
 const createSavedSearchSchema = z.object({

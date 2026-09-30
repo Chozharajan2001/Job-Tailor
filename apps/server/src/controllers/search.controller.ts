@@ -15,12 +15,10 @@ import {
 export async function ingestUrl(req: Request, res: Response): Promise<void> {
   const { url } = req.body;
   if (!url) {
-    res
-      .status(400)
-      .json({
-        success: false,
-        error: { code: "MISSING_URL", message: "URL is required." },
-      });
+    res.status(400).json({
+      success: false,
+      error: { code: "MISSING_URL", message: "URL is required." },
+    });
     return;
   }
 
@@ -110,6 +108,9 @@ export async function searchJobs(req: Request, res: Response): Promise<void> {
   const salaryMin = req.query.salaryMin
     ? parseInt(req.query.salaryMin as string)
     : undefined;
+  // Mirrors z.coerce.boolean in the route schema ("true"/"1" → true)
+  const hideGhosts =
+    req.query.hideGhosts === "true" || req.query.hideGhosts === "1";
   const userId = req.user?.userId;
 
   try {
@@ -124,6 +125,7 @@ export async function searchJobs(req: Request, res: Response): Promise<void> {
       freshnessDays,
       employmentType,
       salaryMin,
+      hideGhosts,
       userId,
     });
 
@@ -173,15 +175,13 @@ export async function createSavedSearch(
   const { name, query, filters, alertSubscription } = req.body;
 
   if (!name) {
-    res
-      .status(400)
-      .json({
-        success: false,
-        error: {
-          code: "MISSING_NAME",
-          message: "Saved search name is required.",
-        },
-      });
+    res.status(400).json({
+      success: false,
+      error: {
+        code: "MISSING_NAME",
+        message: "Saved search name is required.",
+      },
+    });
     return;
   }
 

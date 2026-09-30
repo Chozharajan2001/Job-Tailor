@@ -15,6 +15,7 @@ export interface ISearchParams {
   userId?: string;
   employmentType?: string;
   salaryMin?: number;
+  hideGhosts?: boolean;
 }
 
 /**
@@ -23,6 +24,9 @@ export interface ISearchParams {
  * of O(collection) while fresh jobs (the useful ones) are always included.
  */
 const SCORING_CANDIDATE_CAP = 500;
+
+/** Risk above which a listing is hidden when the user opts into the filter. */
+const GHOST_HIDE_THRESHOLD = 0.6;
 
 export class SearchService {
   /**
@@ -41,6 +45,7 @@ export class SearchService {
     const userId = params.userId;
     const employmentType = params.employmentType;
     const salaryMin = params.salaryMin;
+    const hideGhosts = params.hideGhosts === true;
 
     const query: Record<string, any> = {
       isActive,
@@ -105,6 +110,19 @@ export class SearchService {
       } else {
         query.$or = salaryFilter.$or;
       }
+    }
+
+    // Opt-in ghost filter: only when the user asked. Untagged rows survive —
+    // a listing nobody has measured yet is not a ghost.
+    if (hideGhosts) {
+      const ghostFilter = {
+        $or: [
+          { ghostRisk: { $exists: false } },
+          { ghostRisk: null },
+          { ghostRisk: { $lt: GHOST_HIDE_THRESHOLD } },
+        ],
+      };
+      query.$and = [...(query.$and ?? []), ghostFilter];
     }
 
     // Fetch matching jobs and populate source trust score.
@@ -212,6 +230,13 @@ export class SearchService {
       const sourceRegistry = job.sourceId;
       if (sourceRegistry && typeof sourceRegistry.trustScore === "number") {
         score += sourceRegistry.trustScore * 10;
+      }
+
+      // 7. Ghost demotion — advisory only, never an exclusion. A 0.9-risk
+      // listing loses 45% of its relevance but stays searchable.
+      const ghostRisk = typeof job.ghostRisk === "number" ? job.ghostRisk : 0;
+      if (ghostRisk > 0) {
+        score *= 1 - 0.5 * ghostRisk;
       }
 
       return {
