@@ -137,7 +137,7 @@ const toggleWatchSchema = z.object({
 
 const feedbackSchema = z.object({
   canonicalJobId: z.string().min(1, "canonicalJobId is required"),
-  interactionType: z.enum(["flag_expired", "flag_spam"]),
+  interactionType: z.enum(["flag_expired", "flag_spam", "still_hiring"]),
   feedbackComment: z.string().optional(),
 });
 

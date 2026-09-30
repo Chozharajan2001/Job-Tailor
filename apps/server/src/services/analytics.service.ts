@@ -1,9 +1,9 @@
-import mongoose from 'mongoose';
-import { SearchQueryLog } from '../models/SearchQueryLog.model.js';
-import { JobInteractionLog } from '../models/JobInteractionLog.model.js';
-import { CanonicalJob } from '../models/CanonicalJob.model.js';
-import { SourceRegistry } from '../models/SourceRegistry.model.js';
-import { CleanupService } from './cleanup.service.js';
+import mongoose from "mongoose";
+import { SearchQueryLog } from "../models/SearchQueryLog.model.js";
+import { JobInteractionLog } from "../models/JobInteractionLog.model.js";
+import { CanonicalJob } from "../models/CanonicalJob.model.js";
+import { SourceRegistry } from "../models/SourceRegistry.model.js";
+import { CleanupService } from "./cleanup.service.js";
 
 export class AnalyticsService {
   /**
@@ -13,18 +13,18 @@ export class AnalyticsService {
     userId: string,
     query: string,
     filters: Record<string, any>,
-    resultsCount: number
+    resultsCount: number,
   ): Promise<void> {
     try {
       await SearchQueryLog.create({
         userId: new mongoose.Types.ObjectId(userId),
-        query: query ? query.trim() : '',
+        query: query ? query.trim() : "",
         filters,
         resultsCount,
         clickedJobIds: [],
       });
     } catch (err) {
-      console.error('⚠️ AnalyticsService: Failed to log search query:', err);
+      console.error("⚠️ AnalyticsService: Failed to log search query:", err);
     }
   }
 
@@ -36,12 +36,18 @@ export class AnalyticsService {
   static async logInteraction(
     userId: string,
     canonicalJobId: string,
-    interactionType: 'click' | 'import' | 'flag_expired' | 'flag_spam' | 'dismiss',
-    feedbackComment?: string
+    interactionType:
+      | "click"
+      | "import"
+      | "flag_expired"
+      | "flag_spam"
+      | "dismiss"
+      | "still_hiring",
+    feedbackComment?: string,
   ): Promise<void> {
     try {
       const jobIdObj = new mongoose.Types.ObjectId(canonicalJobId);
-      
+
       // Save log entry
       await JobInteractionLog.create({
         userId: new mongoose.Types.ObjectId(userId),
@@ -51,32 +57,51 @@ export class AnalyticsService {
       });
 
       // Handle flagging impacts
-      if (interactionType === 'flag_expired' || interactionType === 'flag_spam') {
+      if (
+        interactionType === "flag_expired" ||
+        interactionType === "flag_spam"
+      ) {
         const job = await CanonicalJob.findById(jobIdObj);
         if (job) {
-          if (interactionType === 'flag_expired') {
-            job.verificationState = 'failed';
+          if (interactionType === "flag_expired") {
+            job.verificationState = "failed";
             job.isActive = false;
             job.expiredAt = new Date();
-            job.verificationError = feedbackComment || 'Flagged as expired by user';
+            job.verificationError =
+              feedbackComment || "Flagged as expired by user";
             await job.save();
-            
+
             // Decay trust by 0.05
             await CleanupService.decaySourceTrust(job.sourceId, 0.05);
-          } else { // flag_spam
-            job.verificationState = 'suspicious';
+          } else {
+            // flag_spam
+            job.verificationState = "suspicious";
             job.isActive = false; // Exclude from search/feed
             job.expiredAt = new Date();
-            job.verificationError = feedbackComment || 'Flagged as spam by user';
+            job.verificationError =
+              feedbackComment || "Flagged as spam by user";
             await job.save();
 
             // Decay trust by 0.10
-            await CleanupService.decaySourceTrust(job.sourceId, 0.10);
+            await CleanupService.decaySourceTrust(job.sourceId, 0.1);
           }
         }
       }
+
+      if (interactionType === "still_hiring") {
+        // Deliberately narrower than flag_expired, which sets isActive=false:
+        // a user dispute pins the verdict, it never hides or resurrects a row.
+        await CanonicalJob.findByIdAndUpdate(jobIdObj, {
+          $set: {
+            userGhostVerdict: "real",
+            ghostRisk: 0,
+            ghostReasons: ["you marked this as still hiring"],
+            ghostEvaluatedAt: new Date(),
+          },
+        });
+      }
     } catch (err) {
-      console.error('⚠️ AnalyticsService: Failed to log interaction:', err);
+      console.error("⚠️ AnalyticsService: Failed to log interaction:", err);
     }
   }
 
@@ -90,15 +115,15 @@ export class AnalyticsService {
 
       // 2. Top search queries
       const topQueries = await SearchQueryLog.aggregate([
-        { $match: { query: { $ne: '' } } },
-        { $group: { _id: '$query', count: { $sum: 1 } } },
+        { $match: { query: { $ne: "" } } },
+        { $group: { _id: "$query", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 10 },
       ]);
 
       // 3. Verification state breakdown
       const rawStates = await CanonicalJob.aggregate([
-        { $group: { _id: '$verificationState', count: { $sum: 1 } } },
+        { $group: { _id: "$verificationState", count: { $sum: 1 } } },
       ]);
 
       const verificationStates = {
@@ -110,7 +135,8 @@ export class AnalyticsService {
 
       rawStates.forEach((s) => {
         if (s._id in verificationStates) {
-          verificationStates[s._id as keyof typeof verificationStates] = s.count;
+          verificationStates[s._id as keyof typeof verificationStates] =
+            s.count;
         }
       });
 
@@ -120,7 +146,7 @@ export class AnalyticsService {
         sources.map(async (src) => {
           const stats = await CanonicalJob.aggregate([
             { $match: { sourceId: src._id } },
-            { $group: { _id: '$verificationState', count: { $sum: 1 } } },
+            { $group: { _id: "$verificationState", count: { $sum: 1 } } },
           ]);
 
           const statesCount = {
@@ -145,14 +171,20 @@ export class AnalyticsService {
             sourceType: src.sourceType,
             states: statesCount,
           };
-        })
+        }),
       );
 
       // 5. Click-Through Rate (CTR) approximation
-      const clicks = await JobInteractionLog.countDocuments({ interactionType: 'click' });
-      const imports = await JobInteractionLog.countDocuments({ interactionType: 'import' });
-      const ctr = totalQueries > 0 ? parseFloat((clicks / totalQueries).toFixed(4)) : 0;
-      const importRate = totalQueries > 0 ? parseFloat((imports / totalQueries).toFixed(4)) : 0;
+      const clicks = await JobInteractionLog.countDocuments({
+        interactionType: "click",
+      });
+      const imports = await JobInteractionLog.countDocuments({
+        interactionType: "import",
+      });
+      const ctr =
+        totalQueries > 0 ? parseFloat((clicks / totalQueries).toFixed(4)) : 0;
+      const importRate =
+        totalQueries > 0 ? parseFloat((imports / totalQueries).toFixed(4)) : 0;
 
       return {
         totalQueries,
@@ -160,12 +192,15 @@ export class AnalyticsService {
         imports,
         ctr,
         importRate,
-        topQueries: topQueries.map(q => ({ query: q._id, count: q.count })),
+        topQueries: topQueries.map((q) => ({ query: q._id, count: q.count })),
         verificationStates,
         sourceHealth,
       };
     } catch (err) {
-      console.error('⚠️ AnalyticsService: Failed to compile dashboard metrics:', err);
+      console.error(
+        "⚠️ AnalyticsService: Failed to compile dashboard metrics:",
+        err,
+      );
       throw err;
     }
   }

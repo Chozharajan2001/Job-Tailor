@@ -383,12 +383,15 @@ export async function submitFeedback(
       });
     }
 
-    if (!["flag_expired", "flag_spam"].includes(interactionType)) {
+    if (
+      !["flag_expired", "flag_spam", "still_hiring"].includes(interactionType)
+    ) {
       return res.status(400).json({
         success: false,
         error: {
           code: "INVALID_INPUT",
-          message: "interactionType must be flag_expired or flag_spam",
+          message:
+            "interactionType must be flag_expired, flag_spam or still_hiring",
         },
       });
     }
