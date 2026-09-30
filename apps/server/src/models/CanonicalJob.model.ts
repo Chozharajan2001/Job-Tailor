@@ -23,6 +23,10 @@ export interface ICanonicalJobDocument extends Document {
   firstSeenAt: Date;
   lastSeenAt: Date;
   expiredAt?: Date;
+  ghostRisk?: number;
+  ghostReasons?: string[];
+  ghostEvaluatedAt?: Date;
+  userGhostVerdict?: "real" | "ghost";
   isActive: boolean;
   verificationState: VerificationState;
   verificationAttempts: number;
@@ -106,6 +110,13 @@ const canonicalJobSchema = new Schema<ICanonicalJobDocument>(
     verificationAttempts: { type: Number, default: 0 },
     lastVerifiedAt: Date,
     verificationError: String,
+    ghostRisk: { type: Number, min: 0, max: 1 },
+    ghostReasons: [{ type: String }],
+    ghostEvaluatedAt: Date,
+    userGhostVerdict: {
+      type: String,
+      enum: ["real", "ghost"],
+    },
   },
   {
     timestamps: true,
@@ -115,6 +126,7 @@ const canonicalJobSchema = new Schema<ICanonicalJobDocument>(
 // Create compound and text indexes for search
 canonicalJobSchema.index({ companyName: 1, jobTitle: 1, location: 1 });
 canonicalJobSchema.index({ firstSeenAt: -1 });
+canonicalJobSchema.index({ isActive: 1, ghostEvaluatedAt: 1 });
 
 // Create text index for scoring text searches
 canonicalJobSchema.index(

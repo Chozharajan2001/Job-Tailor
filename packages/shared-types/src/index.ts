@@ -377,6 +377,10 @@ export interface ICanonicalJob {
   verificationAttempts: number;
   lastVerifiedAt?: Date;
   verificationError?: string;
+  ghostRisk?: number;
+  ghostReasons?: string[];
+  ghostEvaluatedAt?: Date;
+  userGhostVerdict?: "real" | "ghost";
   createdAt: Date;
   updatedAt: Date;
 }
