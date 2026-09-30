@@ -1915,6 +1915,14 @@ export default function JobsPage() {
                     Type: {selectedSearchJob.employmentType}
                   </span>
                 )}
+                <GhostChip
+                  risk={selectedSearchJob.ghostRisk}
+                  reasons={selectedSearchJob.ghostReasons ?? []}
+                  verdict={selectedSearchJob.userGhostVerdict}
+                  onStillHiring={() =>
+                    stillHiringMutation.mutate(String(selectedSearchJob._id))
+                  }
+                />
                 {selectedSearchJob.sourceUrl && (
                   <a
                     href={sanitizeUrl(selectedSearchJob.sourceUrl)}
