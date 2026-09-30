@@ -370,6 +370,7 @@ export interface ICanonicalJob {
   dedupeKey: string;
   firstSeenAt: Date;
   lastSeenAt: Date;
+  descriptionHashChanges?: number;
   expiredAt?: Date;
   isActive: boolean;
   verificationState: VerificationState;

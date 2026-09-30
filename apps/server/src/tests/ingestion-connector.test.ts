@@ -199,4 +199,40 @@ describe("IngestionService — api_connector source type", () => {
     expect(job.jobTitle).toBe("Backend Engineer");
     expect(job.employmentType).toBeUndefined();
   });
+
+  it("refreshes stored text and counts drift when a re-sighting changed", async () => {
+    const base = {
+      sourceType: "api_connector" as const,
+      sourceName: "Acme (Greenhouse)",
+      sourceId: String(testSource._id),
+      companyName: "Acme",
+      jobTitle: "Senior Engineer",
+      location: "Remote",
+      sourceUrl: "https://gh/acme/drift",
+      applyUrl: "https://gh/acme/drift",
+    };
+
+    const first = await IngestionService.ingestJob({
+      ...base,
+      description: "Original body text describing the work.",
+    });
+    expect(first.descriptionHashChanges).toBe(0);
+
+    const same = await IngestionService.ingestJob({
+      ...base,
+      description: "Original body text describing the work.",
+    });
+    expect(String(same._id)).toBe(String(first._id));
+    expect(same.descriptionHashChanges).toBe(0);
+
+    const changed = await IngestionService.ingestJob({
+      ...base,
+      description: "Rewritten body text describing different work.",
+    });
+    expect(String(changed._id)).toBe(String(first._id));
+    expect(changed.description).toBe(
+      "Rewritten body text describing different work.",
+    );
+    expect(changed.descriptionHashChanges).toBe(1);
+  });
 });

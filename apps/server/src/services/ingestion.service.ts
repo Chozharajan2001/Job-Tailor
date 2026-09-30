@@ -161,7 +161,15 @@ export class IngestionService {
     );
 
     if (duplicate) {
-      // 6. Re-activate / update existing canonical job
+      // 6. Re-activate / update existing canonical job. Text is refreshed on
+      // re-sighting: without this the stored body freezes at first sight, so
+      // content drift is invisible and salary can never corroborate a listing.
+      if (duplicate.descriptionHash !== descriptionHash) {
+        duplicate.description = description;
+        duplicate.descriptionHash = descriptionHash;
+        duplicate.descriptionHashChanges =
+          (duplicate.descriptionHashChanges ?? 0) + 1;
+      }
       duplicate.lastSeenAt = new Date();
       duplicate.isActive = true;
       if (input.rawHtmlSnapshot) {
