@@ -195,17 +195,25 @@ npm run dev
 (`src/tests/helpers/test-db.ts`) and AI providers are stubbed at the provider boundary.
 The suite must pass identically with and without real keys in `apps/server/.env`.
 
-Current suites (2026-09-27): server 22 files / 162 tests (auth, profile concurrency, jobs,
-resumes, ATS math, applications, search engine, source connectors + poller, API keys +
-extension flow, admin routes, security, error correlation); extension 3 files / 26 tests;
-client smoke. Server coverage floor (50/60/60/60) is gated in CI via `test:coverage`.
+Current suites (2026-09-30): server 30 files / 200 tests (auth, profile concurrency, jobs,
+resumes, ATS math + golden scores, applications, search engine, source connectors + poller,
+ingestion + dedup, employment-type normalising, API keys + extension flow, admin routes,
+security, logger redaction, error correlation); extension 3 files / 26 tests; client 2 files /
+5 tests (smoke + high-churn page gates). Server coverage floors (55 statements / 50 branches /
+59 functions / 55 lines — `apps/server/vitest.config.ts:40-44`) are gated in CI via
+`test:coverage`; latest measurement 56.8 / 70.0 / 61.0 / 56.8.
+
+Run the gates with `npx turbo run typecheck lint test --force --concurrency=1`. `--force`
+because turbo replays cached output by default and a replayed run proves nothing; `--concurrency=1`
+because the full fan-out exhausts memory on an 8 GB machine and dies with exit 134 (a V8 native
+allocation failure, not a code error).
 
 ---
 
 ## 6. Security Checklist
 
 - [x] Passwords hashed with bcrypt (12 rounds)
-- [ ] JWT stored in http-only cookies
+- [x] Refresh token delivered only as an httpOnly cookie (`controllers/auth.controller.ts:155-160`); the access token is held in Zustand memory, never in localStorage
 - [x] JWT supported through Authorization header
 - [x] All inputs validated with Zod schemas (server-side)
 - [x] Rate limiting on auth endpoints
