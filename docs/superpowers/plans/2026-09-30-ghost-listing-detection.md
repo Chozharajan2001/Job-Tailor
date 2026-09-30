@@ -188,111 +188,69 @@ Adds descriptionHashChanges on CanonicalJob and shared-types."
 **Files:**
 
 - Create: `apps/server/src/scripts/ghost-baseline.ts`
-- Modify: this plan (paste the script's output under Step 4)
+- Create: `apps/server/src/scripts/seed-and-poll.ts` (dev helper — `data/seed-companies.json` had no consumer; this registers it and polls through the real pipeline)
+- Modify: this plan (output recorded in the **Baseline Measurement** section below)
 
 **Interfaces:**
 
-- Consumes: `CanonicalJob` collection in a real or seeded Mongo.
+- Consumes: `CanonicalJob` collection in a real or seeded Mongo; `SourceRegistry` + `pollDueSources()`.
 - Produces: recorded numbers that justify (or revise) the Task 4 thresholds and weights. **Task 4 may not be merged until this task's output is in this file.**
 
-- [ ] **Step 1: Write the script** — `apps/server/src/scripts/ghost-baseline.ts`:
+- [x] **Step 1: Write the scripts** — both committed. The baseline script buckets two age signals: `firstSeenAt` span (which is all `<7` days on a fresh index — useless at first sighting) **and** `postedDate` age, which the providers actually supply (`Greenhouse first_published`, `Lever createdAt`, `Ashby publishedAt`, `RemoteOK published_at`) and which carries the true listing age. The design must calibrate against `postedDate`, not `firstSeenAt`. Run with: `MONGODB_URI=... npx tsx src/scripts/ghost-baseline.ts` from `apps/server`.
 
-```ts
-import mongoose from "mongoose";
-import { CanonicalJob } from "../models/CanonicalJob.model.js";
+- [x] **Step 2: Run it against the seeded index**
 
-/**
- * One-off measurement for TODO_PLAN #16: how much of the live index is old,
- * how much of it is repost churn, and how many listings trip each signal.
- * Run with: node --enable-source-maps dist/scripts/ghost-baseline.js
- * (after `npm run build -w job-tailor-server`) or via tsx in dev.
- */
-const DAY = 24 * 60 * 60 * 1000;
+Run: `docker compose up -d mongodb` (local compose), then `MONGODB_URI=mongodb://jobtailor:…@127.0.0.1:27017/jobtailor?authSource=admin npx tsx src/scripts/seed-and-poll.ts` (registers 23 sources from `data/seed-companies.json`, polls the live APIs once), then the baseline script.
+Expected: one JSON object printed. No DB writes by the baseline itself.
 
-async function main() {
-  const uri = process.env.MONGO_URI;
-  if (!uri) throw new Error("MONGO_URI is required");
-  await mongoose.connect(uri);
+- [x] **Step 3: Sanity-check against the evidence base** — 1,235 active listings ingested (RemoteOK alone contributes 99, all passing the fixed employment-type boundary). Provider `postedDate` shows 555 of 1,235 listings (45 %) older than 60 days and 269 (22 %) older than 120 — consistent with the Datadog evergreen roles first published in 2025 that were sampled in the evidence table.
 
-  const jobs = await CanonicalJob.find({ isActive: true })
-    .select(
-      "companyName jobTitle location firstSeenAt lastSeenAt employmentType descriptionHashChanges description jobTitle",
-    )
-    .lean();
+- [x] **Step 4: Recorded in the Baseline Measurement section below.** The `>60`-day share is ~45 %, far above the 5 % re-rank threshold: proceed with the scorer.
 
-  const now = Date.now();
-  const spans = jobs.map(
-    (j) => (now - new Date(j.firstSeenAt).getTime()) / DAY,
-  );
-  const buckets = { "<7": 0, "7-30": 0, "30-60": 0, "60-120": 0, ">120": 0 };
-  for (const s of spans) {
-    if (s < 7) buckets["<7"]++;
-    else if (s < 30) buckets["7-30"]++;
-    else if (s < 60) buckets["30-60"]++;
-    else if (s < 120) buckets["60-120"]++;
-    else buckets[">120"]++;
-  }
-
-  const byRole = new Map<string, number>();
-  for (const j of jobs) {
-    const k = `${j.companyName}|${j.jobTitle}|${j.location}`;
-    byRole.set(k, (byRole.get(k) ?? 0) + 1);
-  }
-  const churn = { dup2: 0, dup3plus: 0 };
-  for (const n of byRole.values()) {
-    if (n === 2) churn.dup2++;
-    else if (n >= 3) churn.dup3plus++;
-  }
-
-  const evergreen =
-    /always hiring|ongoing pipeline|rolling|we review continuously|year[- ]round/i;
-  const evergreenHits = jobs.filter((j) =>
-    evergreen.test(`${j.jobTitle} ${j.description ?? ""}`),
-  ).length;
-  const unchangedOld = jobs.filter(
-    (j) => (j.descriptionHashChanges ?? 0) === 0,
-  ).length;
-
-  console.log(
-    JSON.stringify(
-      {
-        activeListings: jobs.length,
-        ageDaysBuckets: buckets,
-        repostGroups: churn,
-        evergreenHits,
-        noContentChangeEver: unchangedOld,
-      },
-      null,
-      2,
-    ),
-  );
-  await mongoose.disconnect();
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
-```
-
-- [ ] **Step 2: Run it against the seeded index**
-
-Run: `npm run build -w job-tailor-server && MONGO_URI=<your local mongo uri> node --enable-source-maps apps/server/dist/scripts/ghost-baseline.js`
-Expected: one JSON object printed. No DB writes.
-
-- [ ] **Step 3: Sanity-check the numbers against the evidence base** — `>120` days should be non-zero for a Greenhouse index seeded from the boards in the table above. If `activeListings` is 0, the measurement is meaningless: seed first (`npm run poll:sources` or the seed script) and re-run.
-
-- [ ] **Step 4: Record the output in this plan** under a new `## Baseline Measurement` heading, with the run date, source count and index size. If the `>60`-day share is under ~5 %, stop and re-rank #16 against the roadmap before writing the scorer — the feature would be solving a problem this index does not have.
-
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
-git add apps/server/src/scripts/ghost-baseline.ts docs/superpowers/plans/2026-09-30-ghost-listing-detection.md
+git add apps/server/src/scripts/ghost-baseline.ts apps/server/src/scripts/seed-and-poll.ts docs/superpowers/plans/2026-09-30-ghost-listing-detection.md
 git commit -m "chore(server): add ghost-listing baseline measurement script
 
 TODO_PLAN #16 requires measured signal prevalence before weights are
 picked; the recorded output lives in the plan document."
 ```
+
+## Baseline Measurement (2026-09-30)
+
+Run against a local compose Mongo seeded with `seed-and-poll.ts` (23 registered sources: the 23 companies in `data/seed-companies.json`; polled live once; `POST`-style poll through the real `pollDueSources()` path, no HTTP mock):
+
+```json
+{
+  "activeListings": 1235,
+  "firstSightingAgeDaysBuckets": {
+    "<7": 1235,
+    "7-30": 0,
+    "30-60": 0,
+    "60-120": 0,
+    ">120": 0
+  },
+  "postedDateAgeDaysBuckets": {
+    "<7": 185,
+    "7-30": 260,
+    "30-60": 235,
+    "60-120": 286,
+    ">120": 269
+  },
+  "repostGroups": { "dup2": 0, "dup3plus": 0 },
+  "evergreenHits": 18,
+  "noContentChangeEver": 1208
+}
+```
+
+**What this decides:**
+
+1. **Span signal: use `postedDate` as the anchor** (`postedDate ?? firstSeenAt`). `firstSeenAt` is first-sighting time, which on any fresh index is "today" for everything; the 45 % `>60`-day share proves the listing-age problem is real and calibrates the Task 4 span threshold of 60 days (45 for contract/internship) — it sits near the distribution's centre, not at an edge.
+2. **Repost churn: zero today.** One poll produces no same-role duplicates (dedup collapses them). The signal only accrues as listings lapse and return. Keep the weight, but accept it contributes nothing on day one — it is an accruing signal, not a day-one one.
+3. **`descriptionHashChanges`: zero-information today** — every row was first seen in this run, so `noContentChangeEver = 1208` is an artifact, not a finding. Task 1's drift counting is what makes the "unchanged text" signal honest from the second poll onward. Until re-sightings accumulate, the unchanged sub-signal must not fire merely because the counter is 0: the scorer requires `spanDays >= threshold` first, which is exactly what Task 4 implements.
+4. **Evergreen copy: 18 hits (~1.5 %)** — small but non-zero; worth 0.15 weight as specified.
+5. **Honest scope note:** of the 23 seeded sources, 16 polled clean and 7 failed at the board level with HTTP 404 — stale board tokens in `data/seed-companies.json` (elasticco, hashicorp, plaid, sentiance, netflix, framer, loops). Per-posting ingest failures (`description is required` after the HTML strip) are visible in the poll log and counted in each poll's `failed` field — loud, not silent. Neither class affects the age distribution above.
 
 ---
 
