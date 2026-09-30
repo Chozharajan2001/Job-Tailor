@@ -162,7 +162,9 @@ _Nothing is broken without these, but every serious competitor has them._
 
 ## 16. Ghost-Listing Detection and Tagging (5–7 h)
 
-**Why this is ranked here:** #1 seeded the index, so search, feeds, alerts and the planned #6 digest now all consume live listings — and our sweep actively _rewards_ ghosts. The cleanup pass pings the apply URL, gets a 200 OK, writes `verified` and **boosts** source trust by +0.01 (`cleanup.service.ts:161`), while every re-poll refreshes `lastSeenAt` and forces `isActive: true` (`ingestion.service.ts:160-169`) — so the 30-day stale cutoff (`cleanup.service.ts:58-79`) can never fire on a listing that is deliberately kept open forever. A months-old evergreen posting is currently the most trusted record we hold, and it costs the user a tailor + an application + weeks of waiting. Ranked above #6 because the digest multiplies whatever noise the index contains. Tier 2 not Tier 1: nothing breaks without it, and a wrong tag must never hide a real job.
+**Plan:** `docs/superpowers/plans/2026-09-30-ghost-listing-detection.md` (9 tasks, TDD, with the measured live-payload evidence the design rests on).
+
+**Why this is ranked here:** #1 seeded the index, so search, feeds, alerts and the planned #6 digest now all consume live listings — and our sweep actively _rewards_ ghosts. The cleanup pass pings the apply URL, gets a 200 OK, writes `verified` and **boosts** source trust by +0.01 (`cleanup.service.ts:161`), while every re-poll refreshes `lastSeenAt` and forces `isActive: true` (`ingestion.service.ts:163-169`) — so the 30-day stale cutoff (`cleanup.service.ts:58-79`) can never fire on a listing that is deliberately kept open forever. A months-old evergreen posting is currently the most trusted record we hold, and it costs the user a tailor + an application + weeks of waiting. Ranked above #6 because the digest multiplies whatever noise the index contains. Tier 2 not Tier 1: nothing breaks without it, and a wrong tag must never hide a real job.
 
 **Signals — deterministic, computed from data already stored, no extra fetches, no LLM (the poll-time cost invariant holds):**
 
@@ -171,7 +173,7 @@ _Nothing is broken without these, but every serious competitor has them._
 - **Evergreen copy** — regex on title/description: "always hiring", "ongoing pipeline", "we review continuously", rolling start dates.
 - **Cross-source absence** — the role appears on one source while sibling roles at that company appear on two or more.
 
-**Prerequisite — ingestion correctness, not optional.** The duplicate branch never writes the incoming `description`, `descriptionHash` or `salaryRange` (`ingestion.service.ts:160-169`), and new rows store `salaryRange: undefined` (`ingestion.service.ts:195`). Stored text is therefore frozen at first sight: content drift is undetectable and salary is unusable as a corroborator. Fix it first — compare incoming vs stored hash in that branch, count changes, refresh the text — then treat "unchanged across ≥3 re-sightings" as a signal rather than an artifact.
+**Prerequisite — ingestion correctness, not optional.** The duplicate branch never writes the incoming `description`, `descriptionHash` or `salaryRange` (`ingestion.service.ts:163-169`), and new rows store `salaryRange: undefined` (`ingestion.service.ts:198`). Stored text is therefore frozen at first sight: content drift is undetectable and salary is unusable as a corroborator. Fix it first — compare incoming vs stored hash in that branch, count changes, refresh the text — then treat "unchanged across ≥3 re-sightings" as a signal rather than an artifact.
 
 - [ ] **Measure before weighting** — one-off script over the current index: age distribution of active listings, repost-churn counts per `(company, title, location)`, how many listings trip each signal. No ghost-rate baseline exists yet; do not pick weights before those numbers are in hand.
 - [ ] **Golden regression file first** — `apps/server/src/tests/fixtures/ghost-golden-cases.json` with hand-computed expected risk per signal and per combination, verified against the pre-tagging engine.
@@ -180,10 +182,10 @@ _Nothing is broken without these, but every serious competitor has them._
 - [ ] Do **not** widen the `verificationState` enum — `failed`/`suspicious` are hard-excluded at `search.service.ts:47` and `feed.service.ts:49`. A ghost tag demotes; it never deletes.
 - [ ] Ranking only — multiply relevance by `(1 − 0.5 × ghostRisk)` in search/feed ordering; tagged listings stay reachable by direct search.
 - [ ] **User override wins** — extend the existing `POST /api/v1/search/feedback` enum (`routes/search.routes.ts:137-140`, today `flag_expired | flag_spam`) with a "still hiring" verdict; `userGhostVerdict: 'real'` pins the risk and is honored by feed and by #6.
-- [ ] UI — amber "open 90+ days · unchanged" chip with reason tooltip in `JobsPage.tsx` results and the job detail view, a "hide likely ghosts" filter toggle, and per-source ghost counts on the existing Quality Dashboard tab.
+- [ ] UI — amber "open 90+ days · unchanged" chip with reason tooltip in `JobsPage.tsx` results and the job detail view, a "hide likely ghosts" filter toggle, and per-source ghost counts on the existing Quality Dashboard tab (that tab lives inside `JobsPage.tsx`; there is no separate dashboard page).
 - [ ] Docs — `docs/api-reference.md` for the feedback enum change, plus the shared verification baseline.
 
-**Honest limits:** this cannot prove a listing is fake. Connectors expose no close date, we get no employer intent, and one user's outcome history is a tiny sample. It ships as an advisory tag with visible reasons — anything stronger would be a fabricated claim. **Depends on:** #1 (done). Independent of H6–H8. **Feeds:** #6 (candidate list), #10 (per-source ghost rate), #15 (do not chase referrals on dead listings).
+**Honest limits:** this cannot prove a listing is fake. Connectors give us no usable close date — Greenhouse exposes `application_deadline`, but it was `null` on all 9 live postings sampled on 2026-09-30, and its `updated_at` is identical across every job on a board, so neither can inform the score; `first_published` and sighting span are what we actually have. We get no employer intent, and one user's outcome history is a tiny sample. It ships as an advisory tag with visible reasons — anything stronger would be a fabricated claim. **Depends on:** #1 (done). Independent of H6–H8. **Feeds:** #6 (candidate list), #10 (per-source ghost rate), #15 (do not chase referrals on dead listings).
 
 ---
 
@@ -357,7 +359,7 @@ Later:     14 (extension v2/v3), 15 (JobPilot)  → 32–54 h  ← new tracks
 3 (ATS)         → golden tests before formula changes
 4 (templates)   → FEEDS 5 (cover letter export uses same engine)
 5 (cover letter)→ reuses JD parse + tailoring (already built)
-16 (ghost tag)  → needs 1 (done); PREREQ ingestion drift fix (ingestion.service.ts:160-169);
+16 (ghost tag)  → needs 1 (done); PREREQ ingestion drift fix (ingestion.service.ts:163-169);
                   reuses stale-cleanup job + search/feed ranking; GATES 6
 6 (digest)      → BLOCKED BY 1; consumes 16 tags, honors userGhostVerdict
 7 (onboarding)  → independent
