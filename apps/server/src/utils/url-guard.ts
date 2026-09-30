@@ -68,12 +68,21 @@ function isPrivateAddress(ip: string): boolean {
   return true; // unparseable => block
 }
 
+export interface SafeTarget {
+  parsed: URL;
+  /**
+   * The exact addresses that passed validation. The caller must connect using
+   * only these (see createPinnedLookup); re-resolving the hostname at connect
+   * time is the DNS-rebinding window this closes.
+   */
+  addresses: string[];
+}
+
 /**
- * Validate a URL for safe server-side fetching.
- * Throws an Error with a descriptive message when the URL is unsafe.
- * Returns the parsed URL on success.
+ * Validate a URL for safe server-side fetching and return the addresses that
+ * passed. Throws when the URL is unsafe.
  */
-export async function assertSafePublicUrl(urlStr: string): Promise<URL> {
+export async function resolveSafeTarget(urlStr: string): Promise<SafeTarget> {
   let parsed: URL;
   try {
     parsed = new URL(urlStr);
@@ -102,7 +111,7 @@ export async function assertSafePublicUrl(urlStr: string): Promise<URL> {
     if (isPrivateAddress(hostname)) {
       throw new Error("URL points to a private/internal address.");
     }
-    return parsed;
+    return { parsed, addresses: [hostname] };
   }
 
   // Resolve DNS and check every returned address (A + AAAA)
@@ -123,6 +132,16 @@ export async function assertSafePublicUrl(urlStr: string): Promise<URL> {
     }
   }
 
+  return { parsed, addresses: addresses.map((r) => r.address) };
+}
+
+/**
+ * Validate a URL for safe server-side fetching.
+ * Throws an Error with a descriptive message when the URL is unsafe.
+ * Returns the parsed URL on success.
+ */
+export async function assertSafePublicUrl(urlStr: string): Promise<URL> {
+  const { parsed } = await resolveSafeTarget(urlStr);
   return parsed;
 }
 
@@ -235,4 +254,51 @@ export async function safeFetchText(
 
   const body = Buffer.concat(chunks).toString("utf-8");
   return { body, finalUrl, status: response.status };
+}
+
+export type PinnedLookup = (
+  hostname: string,
+  options: unknown,
+  callback: (
+    err: Error | null,
+    address: string | dns.LookupAddress[],
+    family?: number,
+  ) => void,
+) => void;
+
+/**
+ * A `lookup` implementation that never consults DNS: it can only answer with
+ * the addresses that already passed validation. Hand it to Node's http/https
+ * request (or an undici Agent) so the connection cannot be steered elsewhere
+ * between validation and connect — the DNS-rebinding window.
+ *
+ * Build one per hop. An empty set is rejected rather than falling back to
+ * resolution, so a redirect that forgets to re-pin fails closed.
+ */
+export function createPinnedLookup(addresses: readonly string[]): PinnedLookup {
+  const records = addresses.map((address) => ({
+    address,
+    family: net.isIPv6(address) ? 6 : 4,
+  }));
+  const offending = addresses.filter(
+    (ip) => !net.isIP(ip) || isPrivateAddress(ip),
+  );
+
+  return (_hostname, options, callback) => {
+    if (offending.length > 0) {
+      callback(new Error(`Pinned address not allowed: ${offending[0]}`), []);
+      return;
+    }
+    if (records.length === 0) {
+      callback(new Error("No validated address pinned for this host."), []);
+      return;
+    }
+
+    if ((options as { all?: boolean } | undefined)?.all) {
+      callback(null, records);
+      return;
+    }
+    const first = records[0];
+    callback(null, first.address, first.family);
+  };
 }
