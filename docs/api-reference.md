@@ -109,22 +109,32 @@ error log lines are correlated under the same id.
 
 ## Job Discovery / Search — mounted at `/api/v1`
 
-| Method         | Endpoint             | Notes                                                        |
-| -------------- | -------------------- | ------------------------------------------------------------ |
-| POST           | `/ingest/url`        | Fetches a job page, extracts JSON-LD, ingests a CanonicalJob |
-| POST           | `/ingest/paste`      | Ingests a pasted JD                                          |
-| GET            | `/`                  | Searches CanonicalJobs (filter/sort/paginate)                |
-| GET            | `/feed`              | Per-user recommended feed                                    |
-| POST           | `/sources`           | Registers a job source                                       |
-| POST           | `/sources/:id/trust` | Adjusts source trust                                         |
-| POST           | `/analytics/click`   | Records a click event                                        |
-| POST / GET     | `/saved`             | Create / list saved searches                                 |
-| PATCH / DELETE | `/saved/:id`         | Update / delete a saved search                               |
-| GET            | `/alerts`            | Lists match alerts                                           |
-| PATCH          | `/alerts/:id/read`   | Marks one alert read                                         |
-| PATCH          | `/alerts/read-all`   | Marks all alerts read                                        |
-| POST / GET     | `/watches`           | Create / list search watches (digest pipeline)               |
-| PATCH / DELETE | `/watches/:id`       | Toggle / delete a watch                                      |
+| Method         | Endpoint             | Notes                                                                                                        |
+| -------------- | -------------------- | ------------------------------------------------------------------------------------------------------------ |
+| POST           | `/ingest/url`        | Fetches a job page, extracts JSON-LD, ingests a CanonicalJob                                                 |
+| POST           | `/ingest/paste`      | Ingests a pasted JD                                                                                          |
+| GET            | `/`                  | Searches CanonicalJobs (filter/sort/paginate)                                                                |
+| GET            | `/feed`              | Per-user recommended feed                                                                                    |
+| POST           | `/sources`           | Registers a job source                                                                                       |
+| POST           | `/sources/:id/trust` | Adjusts source trust                                                                                         |
+| POST           | `/analytics/click`   | Records a click event                                                                                        |
+| POST           | `/feedback`          | Body `{ canonicalJobId, interactionType }`; `interactionType` is `flag_expired \| flag_spam \| still_hiring` |
+| POST / GET     | `/saved`             | Create / list saved searches                                                                                 |
+| PATCH / DELETE | `/saved/:id`         | Update / delete a saved search                                                                               |
+| GET            | `/alerts`            | Lists match alerts                                                                                           |
+| PATCH          | `/alerts/:id/read`   | Marks one alert read                                                                                         |
+| PATCH          | `/alerts/read-all`   | Marks all alerts read                                                                                        |
+| POST / GET     | `/watches`           | Create / list search watches (digest pipeline)                                                               |
+| PATCH / DELETE | `/watches/:id`       | Toggle / delete a watch                                                                                      |
+
+**Ghost-listing tags (#16).** `CanonicalJob` rows carry `ghostRisk` (0-1), `ghostReasons`,
+`ghostEvaluatedAt`, `userGhostVerdict` and `descriptionHashChanges`. The daily sweep scores
+only live listings and never changes `isActive` or `verificationState`. `GET /search`
+accepts `hideGhosts=true` (opt-in: hides risk >= 0.6, never untagged rows) and ranking
+multiplies relevance by `1 - 0.5 * ghostRisk` in both search and feed. A `still_hiring`
+feedback pins the verdict at risk 0 ("you marked this as still hiring") and wins over every
+later sweep. The estimate is advisory — sighting span (provider `postedDate`), repost churn,
+evergreen copy, unchanged text — and cannot prove a listing is fake.
 
 ## API Keys — `/api/v1/apikeys` (Bearer JWT)
 

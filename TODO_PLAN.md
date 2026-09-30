@@ -27,25 +27,25 @@ sprint order in **Execution Order**, carry the actual priority.
 
 ## Priority Index (single glance)
 
-| Rank | Tier      | Feature                                                | Effort  |
-| ---- | --------- | ------------------------------------------------------ | ------- |
-| 0    | Quick Win | Fix stale docs                                         | 30 min  |
-| 1    | MUST      | ✅ Live job discovery — seed the empty index           | 8 h     |
-| 2    | MUST      | ✅ Chrome Extension — code complete (2 sub-items open) | 15–20 h |
-| 3    | MUST      | ✅ ATS Scoring upgrade (60% → 85%)                     | 8–12 h  |
-| 4    | IMPORTANT | Resume template library                                | 6 h     |
-| 5    | IMPORTANT | Cover letter generator                                 | 4 h     |
-| 16   | IMPORTANT | Ghost-listing detection and tagging                    | 5–7 h   |
-| 6    | IMPORTANT | Email digest recommendations                           | 6–8 h   |
-| 7    | IMPORTANT | UI onboarding fixes (empty state, progress)            | 2–3 h   |
-| 8    | QUALITY   | Resume tailoring depth                                 | 4–6 h   |
-| 9    | QUALITY   | Real ATS emulation (parsable check)                    | 8 h     |
-| 10   | QUALITY   | Analytics depth                                        | 4–6 h   |
-| 11   | QUALITY   | Testing gaps                                           | 4–6 h   |
-| 12   | POLISH    | Kanban DnD, filters, quick preview, loaders            | 8–12 h  |
-| 13   | SHIP      | Production deployment verification                     | 4–6 h   |
-| 14   | FUTURE    | Extension v2/v3 (save-job, autofill)                   | 12–24 h |
-| 15   | FUTURE    | JobPilot referral agent                                | 20–30 h |
+| Rank | Tier      | Feature                                                     | Effort  |
+| ---- | --------- | ----------------------------------------------------------- | ------- |
+| 0    | Quick Win | Fix stale docs                                              | 30 min  |
+| 1    | MUST      | ✅ Live job discovery — seed the empty index                | 8 h     |
+| 2    | MUST      | ✅ Chrome Extension — code complete (2 sub-items open)      | 15–20 h |
+| 3    | MUST      | ✅ ATS Scoring upgrade (60% → 85%)                          | 8–12 h  |
+| 4    | IMPORTANT | Resume template library                                     | 6 h     |
+| 5    | IMPORTANT | Cover letter generator                                      | 4 h     |
+| 16   | IMPORTANT | ✅ Ghost-listing detection and tagging (shipped 2026-09-30) | 5–7 h   |
+| 6    | IMPORTANT | Email digest recommendations                                | 6–8 h   |
+| 7    | IMPORTANT | UI onboarding fixes (empty state, progress)                 | 2–3 h   |
+| 8    | QUALITY   | Resume tailoring depth                                      | 4–6 h   |
+| 9    | QUALITY   | Real ATS emulation (parsable check)                         | 8 h     |
+| 10   | QUALITY   | Analytics depth                                             | 4–6 h   |
+| 11   | QUALITY   | Testing gaps                                                | 4–6 h   |
+| 12   | POLISH    | Kanban DnD, filters, quick preview, loaders                 | 8–12 h  |
+| 13   | SHIP      | Production deployment verification                          | 4–6 h   |
+| 14   | FUTURE    | Extension v2/v3 (save-job, autofill)                        | 12–24 h |
+| 15   | FUTURE    | JobPilot referral agent                                     | 20–30 h |
 
 ---
 
@@ -166,24 +166,25 @@ _Nothing is broken without these, but every serious competitor has them._
 
 **Why this is ranked here:** #1 seeded the index, so search, feeds, alerts and the planned #6 digest now all consume live listings — and our sweep actively _rewards_ ghosts. The cleanup pass pings the apply URL, gets a 200 OK, writes `verified` and **boosts** source trust by +0.01 (`cleanup.service.ts:161`), while every re-poll refreshes `lastSeenAt` and forces `isActive: true` (`ingestion.service.ts:163-169`) — so the 30-day stale cutoff (`cleanup.service.ts:58-79`) can never fire on a listing that is deliberately kept open forever. A months-old evergreen posting is currently the most trusted record we hold, and it costs the user a tailor + an application + weeks of waiting. Ranked above #6 because the digest multiplies whatever noise the index contains. Tier 2 not Tier 1: nothing breaks without it, and a wrong tag must never hide a real job.
 
-**Signals — deterministic, computed from data already stored, no extra fetches, no LLM (the poll-time cost invariant holds):**
+**Signals — deterministic, computed from data already stored, no extra fetches, no LLM (the poll-time cost invariant holds). Shipped 2026-09-30 per the implementation plan; see the baseline measurement there (1,235 listings, 45 % older than 60 days by provider `postedDate`):**
 
-- **Sighting span** — `lastSeenAt − firstSeenAt` while `isActive`; both fields exist today (`CanonicalJob.model.ts:86-87`). Default threshold 60 d, 45 d for contract/internship.
-- **Repost churn** — `findDuplicate` L2/L3 only match `isActive: true` (`deduplication.service.ts:59-75`), so a role re-posted after the previous record lapsed already lands as a second row with the same `(companyName, jobTitle, location)`. Countable through the existing compound index (`CanonicalJob.model.ts:106`). Strongest signal available, and invisible in the UI today.
+- **Sighting span** — anchored on `postedDate ?? firstSeenAt` (provider age, not first-sighting time — a fresh index makes `firstSeenAt` useless). Threshold 60 d, 45 d for contract/internship.
+- **Repost churn** — `findDuplicate` L2/L3 only match `isActive: true` (`deduplication.service.ts:54-72`), so a role re-posted after the previous record lapsed already lands as a second row with the same `(companyName, jobTitle, location)`. Countable through the existing compound index. Accruing signal: zero on day one, measured on every later sweep.
 - **Evergreen copy** — regex on title/description: "always hiring", "ongoing pipeline", "we review continuously", rolling start dates.
-- **Cross-source absence** — the role appears on one source while sibling roles at that company appear on two or more.
+- **Unchanged text** — `descriptionHashChanges === 0` **and** an actual re-sighting happened; never fires on a first sighting (a 0 counter with no history is not evidence).
+- **Cross-source absence** — _deferred_: not part of the shipped scorer (the role appears on one source while sibling roles appear on two or more); revisit if repost churn proves too sparse.
 
-**Prerequisite — ingestion correctness, not optional.** The duplicate branch never writes the incoming `description`, `descriptionHash` or `salaryRange` (`ingestion.service.ts:163-169`), and new rows store `salaryRange: undefined` (`ingestion.service.ts:198`). Stored text is therefore frozen at first sight: content drift is undetectable and salary is unusable as a corroborator. Fix it first — compare incoming vs stored hash in that branch, count changes, refresh the text — then treat "unchanged across ≥3 re-sightings" as a signal rather than an artifact.
+**Prerequisite — ingestion correctness. ✅ DONE.** The duplicate branch now writes the incoming `description` + `descriptionHash` and increments `descriptionHashChanges` on every changed re-sighting (`ingestion.service.ts:163-179`), so drift is countable and the "unchanged" signal is honest. `salaryRange` persistence remains open (new rows still store `salaryRange: undefined`).
 
-- [ ] **Measure before weighting** — one-off script over the current index: age distribution of active listings, repost-churn counts per `(company, title, location)`, how many listings trip each signal. No ghost-rate baseline exists yet; do not pick weights before those numbers are in hand.
-- [ ] **Golden regression file first** — `apps/server/src/tests/fixtures/ghost-golden-cases.json` with hand-computed expected risk per signal and per combination, verified against the pre-tagging engine.
-- [ ] `apps/server/src/services/ghost-job.service.ts` — pure `scoreGhostSignals(job, context) → { risk: 0–1, reasons: string[] }`, no DB writes, no LLM; driven from the existing daily sweep (`jobs/stale-cleanup.job.ts`, cron 03:00) **after** the link check so only live-and-old listings get scored.
-- [ ] Fields on `CanonicalJob.model.ts` **and** `packages/shared-types` (strict mode strips otherwise): `ghostRisk`, `ghostReasons: [String]`, `ghostEvaluatedAt`, `descriptionHashChanges`, `userGhostVerdict`.
-- [ ] Do **not** widen the `verificationState` enum — `failed`/`suspicious` are hard-excluded at `search.service.ts:47` and `feed.service.ts:49`. A ghost tag demotes; it never deletes.
-- [ ] Ranking only — multiply relevance by `(1 − 0.5 × ghostRisk)` in search/feed ordering; tagged listings stay reachable by direct search.
-- [ ] **User override wins** — extend the existing `POST /api/v1/search/feedback` enum (`routes/search.routes.ts:137-140`, today `flag_expired | flag_spam`) with a "still hiring" verdict; `userGhostVerdict: 'real'` pins the risk and is honored by feed and by #6.
-- [ ] UI — amber "open 90+ days · unchanged" chip with reason tooltip in `JobsPage.tsx` results and the job detail view, a "hide likely ghosts" filter toggle, and per-source ghost counts on the existing Quality Dashboard tab (that tab lives inside `JobsPage.tsx`; there is no separate dashboard page).
-- [ ] Docs — `docs/api-reference.md` for the feedback enum change, plus the shared verification baseline.
+- [x] **Measure before weighting** — `apps/server/src/scripts/ghost-baseline.ts` over the seeded live index: 1,235 active listings; 555 (45 %) older than 60 days, 269 older than 120, by provider `postedDate`; 18 evergreen hits; repost churn and drift zero on day one (recorded in the plan's Baseline Measurement section).
+- [x] **Golden regression file first** — `apps/server/src/tests/fixtures/ghost-golden-cases.json`, 7 hand-computed cases; weights are mutation-checked (span 0.45 → 0.5 fails 5 of 7).
+- [x] `apps/server/src/services/ghost-job.service.ts` — pure `scoreGhostSignals(job, context) → { risk: 0–1, reasons: string[] }`, no DB writes, no LLM; plus `applyGhostScoring()` driven from the daily sweep (`jobs/stale-cleanup.job.ts`, cron 03:00) **after** the link check so only live listings get scored.
+- [x] Fields on `CanonicalJob.model.ts` **and** `packages/shared-types`: `ghostRisk`, `ghostReasons: [String]`, `ghostEvaluatedAt`, `descriptionHashChanges`, `userGhostVerdict`.
+- [x] Do **not** widen the `verificationState` enum — the sweep never touches `isActive`/`verificationState` (pinned by test). A ghost tag demotes; it never deletes.
+- [x] Ranking only — relevance multiplied by `(1 − 0.5 × ghostRisk)` in search and feed; tagged listings stay reachable. Opt-in `hideGhosts=true` filter hides risk ≥ 0.6 and never untagged rows.
+- [x] **User override wins** — `POST /api/v1/search/feedback` accepts `still_hiring`; `userGhostVerdict: 'real'` pins the risk at 0 and is honored by feed and by #6.
+- [x] UI — amber chip with the server's reasons verbatim in both `JobsPage.tsx` result lists and the job-detail modal, a "still hiring?" dispute button, the "Hide likely stale" search toggle, and a per-source "Likely stale" column on the Quality Dashboard tab.
+- [x] Docs — `docs/api-reference.md` documents the feedback enum, the new `CanonicalJob` fields and `hideGhosts`; the shared verification baseline is re-measured.
 
 **Honest limits:** this cannot prove a listing is fake. Connectors give us no usable close date — Greenhouse exposes `application_deadline`, but it was `null` on all 9 live postings sampled on 2026-09-30, and its `updated_at` is identical across every job on a board, so neither can inform the score; `first_published` and sighting span are what we actually have. We get no employer intent, and one user's outcome history is a tiny sample. It ships as an advisory tag with visible reasons — anything stronger would be a fabricated claim. **Depends on:** #1 (done). Independent of H6–H8. **Feeds:** #6 (candidate list), #10 (per-source ghost rate), #15 (do not chase referrals on dead listings).
 
@@ -343,7 +344,7 @@ Sprint A:  0 (docs) + 1 (live index)            → 8–9 h    ← product becom
 Sprint B:  2 (extension auto-track)             → 15–20 h  ← tracker self-fills
 Sprint C:  3 (ATS scoring)                      → 8–12 h   ← core promise strengthens
 Sprint D:  4 (templates) + 5 (cover letter)     → 10 h     ← visible output quality
-Sprint E:  16 (ghost tagging) + 7 (onboarding)  → 7–10 h   ← index quality before reach
+Sprint E:  16 (ghost tagging ✅ shipped) + 7 (onboarding)  → 2–3 h   ← index quality before reach
 Sprint F:  6 (digest) + 8 (tailoring depth)     → 10–14 h  ← proactive delivery
 Sprint G:  9 (emulation) + 10 (analytics)       → 12–14 h  ← depth
 Sprint H:  11 (tests) + 12 (polish)             → 12–18 h  ← quality
@@ -359,7 +360,7 @@ Later:     14 (extension v2/v3), 15 (JobPilot)  → 32–54 h  ← new tracks
 3 (ATS)         → golden tests before formula changes
 4 (templates)   → FEEDS 5 (cover letter export uses same engine)
 5 (cover letter)→ reuses JD parse + tailoring (already built)
-16 (ghost tag)  → needs 1 (done); PREREQ ingestion drift fix (ingestion.service.ts:163-169);
+16 (ghost tag)  → needs 1 (done); PREREQ ingestion drift fix ✅ done; 16 itself ✅ shipped 2026-09-30;
                   reuses stale-cleanup job + search/feed ranking; GATES 6
 6 (digest)      → BLOCKED BY 1; consumes 16 tags, honors userGhostVerdict
 7 (onboarding)  → independent

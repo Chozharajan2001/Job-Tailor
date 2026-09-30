@@ -1,6 +1,6 @@
 # Ghost-Listing Detection Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Tag each live `CanonicalJob` with a deterministic, advisory 0–1 `ghostRisk` score plus human-readable reasons, demote risky listings in search and feed ranking, and let the user override the verdict — so the user stops spending tailors and applications on evergreen postings that were never really open.
 
@@ -76,7 +76,7 @@ Sample size is small and self-selected. Say so in the UI copy and in `docs`: thi
 - Consumes: existing `IngestionService.ingestJob(input: IJobIngestionInput)`, `DeduplicationService.generateDescriptionHash()`.
 - Produces: `CanonicalJob.descriptionHashChanges: number` (default 0) — read by the Task 4 scorer and asserted by Task 5.
 
-- [ ] **Step 1: Write the failing test** — append inside the `IngestionService — api_connector source type` describe in `apps/server/src/tests/ingestion-connector.test.ts`:
+- [x] **Step 1: Write the failing test** — append inside the `IngestionService — api_connector source type` describe in `apps/server/src/tests/ingestion-connector.test.ts`:
 
 ```ts
 it("refreshes stored text and counts drift when a re-sighting changed", async () => {
@@ -116,12 +116,12 @@ it("refreshes stored text and counts drift when a re-sighting changed", async ()
 });
 ```
 
-- [ ] **Step 2: Run it and verify it fails for the right reason**
+- [x] **Step 2: Run it and verify it fails for the right reason**
 
 Run: `cd apps/server && npx vitest run src/tests/ingestion-connector.test.ts`
 Expected: FAIL — `expected undefined to be 0` on `descriptionHashChanges` (path does not exist yet, strict mode strips it).
 
-- [ ] **Step 3: Add the schema path** in `apps/server/src/models/CanonicalJob.model.ts`, immediately after the `descriptionHash` line (`:85`):
+- [x] **Step 3: Add the schema path** in `apps/server/src/models/CanonicalJob.model.ts`, immediately after the `descriptionHash` line (`:85`):
 
 ```ts
     descriptionHashChanges: { type: Number, default: 0 },
@@ -133,13 +133,13 @@ and on the document interface, next to the existing `descriptionHash?: string;` 
   descriptionHashChanges?: number;
 ```
 
-- [ ] **Step 4: Mirror it in shared-types** — in `ICanonicalJob` (`packages/shared-types/src/index.ts`, near `lastSeenAt: Date;` at `:372`):
+- [x] **Step 4: Mirror it in shared-types** — in `ICanonicalJob` (`packages/shared-types/src/index.ts`, near `lastSeenAt: Date;` at `:372`):
 
 ```ts
   descriptionHashChanges?: number;
 ```
 
-- [ ] **Step 5: Write the drift through on re-sighting** — replace the duplicate branch in `apps/server/src/services/ingestion.service.ts` (`:163-172`) with:
+- [x] **Step 5: Write the drift through on re-sighting** — replace the duplicate branch in `apps/server/src/services/ingestion.service.ts` (`:163-172`) with:
 
 ```ts
 if (duplicate) {
@@ -162,14 +162,14 @@ if (duplicate) {
 }
 ```
 
-- [ ] **Step 6: Run the test and verify it passes**
+- [x] **Step 6: Run the test and verify it passes**
 
 Run: `cd apps/server && npx vitest run --no-file-parallelism src/tests/ingestion-connector.test.ts src/tests/search-engine.test.ts`
 Expected: PASS. `search-engine.test.ts` is the file that already exercises the ingestion pipeline and `cleanupStaleJobs`, so it is the regression net here.
 
-- [ ] **Step 7: Guard the existing dedupe contract** — `ingestion-connector.test.ts` already asserts two polls of one URL collapse to one row; confirm it still passes unchanged (it did before this change and must after).
+- [x] **Step 7: Guard the existing dedupe contract** — `ingestion-connector.test.ts` already asserts two polls of one URL collapse to one row; confirm it still passes unchanged (it did before this change and must after).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 npx prettier --write apps/server/src packages/shared-types/src
@@ -267,7 +267,7 @@ Run against a local compose Mongo seeded with `seed-and-poll.ts` (23 registered 
 - Consumes: existing `CanonicalJob` model, `connectTestDb` helper.
 - Produces: `ghostRisk?: number`, `ghostReasons?: string[]`, `ghostEvaluatedAt?: Date`, `userGhostVerdict?: "real" | "ghost"` — consumed by Tasks 4–8.
 
-- [ ] **Step 1: Write the failing test** — `apps/server/src/tests/ghost-fields.test.ts`:
+- [x] **Step 1: Write the failing test** — `apps/server/src/tests/ghost-fields.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
@@ -329,12 +329,12 @@ describe("CanonicalJob ghost fields", () => {
 });
 ```
 
-- [ ] **Step 2: Run it and verify both tests fail**
+- [x] **Step 2: Run it and verify both tests fail**
 
 Run: `cd apps/server && npx vitest run src/tests/ghost-fields.test.ts`
 Expected: FAIL — first on `expected undefined to be 0.55` (paths stripped), second on "expected promise not to reject".
 
-- [ ] **Step 3: Declare the paths** in `apps/server/src/models/CanonicalJob.model.ts`, after `verificationError: String,` (`:98`):
+- [x] **Step 3: Declare the paths** in `apps/server/src/models/CanonicalJob.model.ts`, after `verificationError: String,` (`:98`):
 
 ```ts
     ghostRisk: { type: Number, min: 0, max: 1 },
@@ -355,7 +355,7 @@ and on `ICanonicalJobDocument` (next to `expiredAt`, `:24`):
   userGhostVerdict?: 'real' | 'ghost';
 ```
 
-- [ ] **Step 4: Mirror on shared-types `ICanonicalJob`** (`packages/shared-types/src/index.ts`, after `verificationState` at `:375`):
+- [x] **Step 4: Mirror on shared-types `ICanonicalJob`** (`packages/shared-types/src/index.ts`, after `verificationState` at `:375`):
 
 ```ts
   ghostRisk?: number;
@@ -364,18 +364,18 @@ and on `ICanonicalJobDocument` (next to `expiredAt`, `:24`):
   userGhostVerdict?: "real" | "ghost";
 ```
 
-- [ ] **Step 5: Add the read index the sweep needs** — with the other index declarations (`:106-107`):
+- [x] **Step 5: Add the read index the sweep needs** — with the other index declarations (`:106-107`):
 
 ```ts
 canonicalJobSchema.index({ isActive: 1, ghostEvaluatedAt: 1 });
 ```
 
-- [ ] **Step 6: Run the test and verify it passes**
+- [x] **Step 6: Run the test and verify it passes**
 
 Run: `cd apps/server && npx vitest run src/tests/ghost-fields.test.ts`
 Expected: PASS (2 tests).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/server/src/models/CanonicalJob.model.ts packages/shared-types/src/index.ts apps/server/src/tests/ghost-fields.test.ts
@@ -428,7 +428,7 @@ export function scoreGhostSignals(
 ): GhostVerdict;
 ```
 
-- [ ] **Step 1: Write the golden fixture** — `apps/server/src/tests/fixtures/ghost-golden-cases.json`. Expected values are hand-computed from the weights in Step 5 (`0.45·span + 0.30·repost + 0.15·evergreen + 0.10·unchanged`, span threshold 60 days, 45 for contract/internship):
+- [x] **Step 1: Write the golden fixture** — `apps/server/src/tests/fixtures/ghost-golden-cases.json`. Expected values are hand-computed from the weights in Step 5 (`0.45·span + 0.30·repost + 0.15·evergreen + 0.10·unchanged`, span threshold 60 days, 45 for contract/internship):
 
 ```json
 {
@@ -527,7 +527,7 @@ export function scoreGhostSignals(
 }
 ```
 
-- [ ] **Step 2: Write the failing test** — `apps/server/src/tests/ghost-job.test.ts`:
+- [x] **Step 2: Write the failing test** — `apps/server/src/tests/ghost-job.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
@@ -568,12 +568,12 @@ describe("scoreGhostSignals golden cases", () => {
 });
 ```
 
-- [ ] **Step 3: Run it and verify it fails**
+- [x] **Step 3: Run it and verify it fails**
 
 Run: `cd apps/server && npx vitest run src/tests/ghost-job.test.ts`
 Expected: FAIL — `Cannot find module '../services/ghost-job.service.js'` (or, once the file exists with a stub, six assertion failures).
 
-- [ ] **Step 4: Implement the scorer** — `apps/server/src/services/ghost-job.service.ts`:
+- [x] **Step 4: Implement the scorer** — `apps/server/src/services/ghost-job.service.ts`:
 
 ```ts
 export interface GhostJobInput {
@@ -671,14 +671,14 @@ export function scoreGhostSignals(
 }
 ```
 
-- [ ] **Step 5: Run the test and verify it passes**
+- [x] **Step 5: Run the test and verify it passes**
 
 Run: `cd apps/server && npx vitest run src/tests/ghost-job.test.ts`
 Expected: PASS (6 tests). If a case fails on `reasons` order, reorder the pushes — do not loosen the assertion to `toContain`.
 
-- [ ] **Step 6: Prove the golden file is load-bearing** — change `WEIGHTS.span` to `0.5`, re-run, confirm at least two cases fail, then restore `0.45`. A golden suite that passes under any weights is not a regression guard.
+- [x] **Step 6: Prove the golden file is load-bearing** — change `WEIGHTS.span` to `0.5`, re-run, confirm at least two cases fail, then restore `0.45`. A golden suite that passes under any weights is not a regression guard.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/server/src/services/ghost-job.service.ts apps/server/src/tests/ghost-job.test.ts apps/server/src/tests/fixtures/ghost-golden-cases.json
@@ -703,7 +703,7 @@ risk values; reasons are surfaced verbatim in the UI."
 - Consumes: `scoreGhostSignals()` (Task 4), `CanonicalJob` fields (Task 3), `runStaleCleanup()` (`jobs/stale-cleanup.job.ts:17-38`).
 - Produces: `applyGhostScoring(): Promise<{ evaluated: number }>` — persists `ghostRisk`, `ghostReasons`, `ghostEvaluatedAt`.
 
-- [ ] **Step 1: Write the failing test** — `apps/server/src/tests/ghost-sweep.test.ts`:
+- [x] **Step 1: Write the failing test** — `apps/server/src/tests/ghost-sweep.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
@@ -798,12 +798,12 @@ describe("applyGhostScoring", () => {
 });
 ```
 
-- [ ] **Step 2: Run it and verify it fails**
+- [x] **Step 2: Run it and verify it fails**
 
 Run: `cd apps/server && npx vitest run src/tests/ghost-sweep.test.ts`
 Expected: FAIL — `applyGhostScoring is not a function` / missing export.
 
-- [ ] **Step 3: Implement the sweep step** — append to `apps/server/src/services/ghost-job.service.ts`:
+- [x] **Step 3: Implement the sweep step** — append to `apps/server/src/services/ghost-job.service.ts`:
 
 ```ts
 import { CanonicalJob } from "../models/CanonicalJob.model.js";
@@ -861,7 +861,7 @@ export async function applyGhostScoring(): Promise<{ evaluated: number }> {
 }
 ```
 
-- [ ] **Step 4: Wire it into the cron run** — in `apps/server/src/jobs/stale-cleanup.job.ts`, import it and extend the try block of `runStaleCleanup` so ghost scoring happens **after** the link check:
+- [x] **Step 4: Wire it into the cron run** — in `apps/server/src/jobs/stale-cleanup.job.ts`, import it and extend the try block of `runStaleCleanup` so ghost scoring happens **after** the link check:
 
 ```ts
 import { applyGhostScoring } from "../services/ghost-job.service.js";
@@ -877,14 +877,14 @@ console.log(
 return deactivated;
 ```
 
-- [ ] **Step 5: Run the test and verify it passes**
+- [x] **Step 5: Run the test and verify it passes**
 
 Run: `cd apps/server && npx vitest run --no-file-parallelism src/tests/ghost-sweep.test.ts src/tests/search-engine.test.ts src/tests/live-job-discovery.e2e.test.ts`
 Expected: PASS. `search-engine.test.ts` is where `cleanupStaleJobs` is currently covered, so it proves the new sweep step did not disturb the existing cutoff behaviour.
 
-- [ ] **Step 6: Confirm the sweep still cannot hide a job** — the "never deactivates" test is the contract; keep it even if later tasks add filters.
+- [x] **Step 6: Confirm the sweep still cannot hide a job** — the "never deactivates" test is the contract; keep it even if later tasks add filters.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/server/src/services/ghost-job.service.ts apps/server/src/jobs/stale-cleanup.job.ts apps/server/src/tests/ghost-sweep.test.ts
@@ -910,7 +910,7 @@ the pass never changes isActive or verificationState."
 - Consumes: `ghostRisk` persisted by Task 5.
 - Produces: `ISearchParams.hideGhosts?: boolean` and demoted `relevanceScore`.
 
-- [ ] **Step 1: Write the failing test** — `apps/server/src/tests/ghost-ranking.test.ts`:
+- [x] **Step 1: Write the failing test** — `apps/server/src/tests/ghost-ranking.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
@@ -976,12 +976,12 @@ describe("ghost demotion in search ranking", () => {
 });
 ```
 
-- [ ] **Step 2: Run it and verify it fails**
+- [x] **Step 2: Run it and verify it fails**
 
 Run: `cd apps/server && npx vitest run src/tests/ghost-ranking.test.ts`
 Expected: FAIL — both assertions, because no demotion or filter exists yet (order is a tie, and `hideGhosts` is ignored).
 
-- [ ] **Step 3: Apply the demotion** — in `apps/server/src/services/search.service.ts`, immediately after the source-trust boost block (`:211-215`) and before the `return { ...job, relevanceScore: score }`:
+- [x] **Step 3: Apply the demotion** — in `apps/server/src/services/search.service.ts`, immediately after the source-trust boost block (`:211-215`) and before the `return { ...job, relevanceScore: score }`:
 
 ```ts
 // 7. Ghost demotion — advisory only, never an exclusion. A 0.9-risk
@@ -994,7 +994,7 @@ if (ghostRisk > 0) {
 
 Mirror the same two lines in `apps/server/src/services/feed.service.ts` where feed candidates are scored, so the digest (#6) inherits the behaviour rather than re-deriving it.
 
-- [ ] **Step 4: Accept the parameter** — `searchJobsQuerySchema` starts at `apps/server/src/routes/search.routes.ts:60`; add the field after its last entry, `salaryMin` (`:70`). `ISearchParams` is declared at `apps/server/src/services/search.service.ts:16`:
+- [x] **Step 4: Accept the parameter** — `searchJobsQuerySchema` starts at `apps/server/src/routes/search.routes.ts:60`; add the field after its last entry, `salaryMin` (`:70`). `ISearchParams` is declared at `apps/server/src/services/search.service.ts:16`:
 
 ```ts
   hideGhosts: z.coerce.boolean().optional(),
@@ -1004,7 +1004,7 @@ Mirror the same two lines in `apps/server/src/services/feed.service.ts` where fe
   hideGhosts?: boolean;
 ```
 
-- [ ] **Step 5: Add the opt-in filter** — declare the threshold next to the other module constants in `search.service.ts`, then destructure the param and extend the query builder:
+- [x] **Step 5: Add the opt-in filter** — declare the threshold next to the other module constants in `search.service.ts`, then destructure the param and extend the query builder:
 
 ```ts
 const GHOST_HIDE_THRESHOLD = 0.6;
@@ -1033,12 +1033,12 @@ if (hideGhosts) {
 }
 ```
 
-- [ ] **Step 6: Run the test and verify it passes**
+- [x] **Step 6: Run the test and verify it passes**
 
 Run: `cd apps/server && npx vitest run --no-file-parallelism src/tests/ghost-ranking.test.ts src/tests/search-engine.test.ts`
 Expected: PASS. If `search-engine.test.ts` ordering assertions shift, confirm no seeded fixture in it carries `ghostRisk` — existing rows have the field unset, so scores must be unchanged.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/server/src/services/search.service.ts apps/server/src/services/feed.service.ts apps/server/src/routes/search.routes.ts apps/server/src/tests/ghost-ranking.test.ts
@@ -1065,7 +1065,7 @@ explicit hideGhosts opt-in and never applies to untagged listings."
 - Consumes: `POST /api/v1/search/feedback`, `scoreGhostSignals()` verdict rule.
 - Produces: `interactionType: "still_hiring"` writing `userGhostVerdict: "real"`; the scorer then returns risk 0 for that row (Task 4 case 6).
 
-- [ ] **Step 1: Write the failing test** — `apps/server/src/tests/ghost-feedback.test.ts`:
+- [x] **Step 1: Write the failing test** — `apps/server/src/tests/ghost-feedback.test.ts`:
 
 ```ts
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
@@ -1126,12 +1126,12 @@ describe("still_hiring feedback", () => {
 });
 ```
 
-- [ ] **Step 2: Run it and verify it fails**
+- [x] **Step 2: Run it and verify it fails**
 
 Run: `cd apps/server && npx vitest run src/tests/ghost-feedback.test.ts`
 Expected: FAIL — Mongoose throws `Value "still_hiring" does not match enum` on `JobInteractionLog.create`, so the assertion on `userGhostVerdict` is never reached.
 
-- [ ] **Step 3: Extend every layer of the enum** — five sites carry this value; miss any one and the request 400s, the log write is rejected, or the typecheck breaks:
+- [x] **Step 3: Extend every layer of the enum** — five sites carry this value; miss any one and the request 400s, the log write is rejected, or the typecheck breaks:
 
 `routes/search.routes.ts:139`:
 
@@ -1175,7 +1175,7 @@ Expected: FAIL — Mongoose throws `Value "still_hiring" does not match enum` on
       | 'still_hiring',
 ```
 
-- [ ] **Step 4: Persist the verdict** — inside `AnalyticsService.logInteraction`, after the existing `flag_expired` / `flag_spam` handling and using the already-parsed `jobIdObj` (`services/analytics.service.ts:44`):
+- [x] **Step 4: Persist the verdict** — inside `AnalyticsService.logInteraction`, after the existing `flag_expired` / `flag_spam` handling and using the already-parsed `jobIdObj` (`services/analytics.service.ts:44`):
 
 ```ts
 if (interactionType === "still_hiring") {
@@ -1192,12 +1192,12 @@ if (interactionType === "still_hiring") {
 }
 ```
 
-- [ ] **Step 5: Run the test and verify it passes**
+- [x] **Step 5: Run the test and verify it passes**
 
 Run: `cd apps/server && npx vitest run --no-file-parallelism src/tests/ghost-feedback.test.ts src/tests/analytics.test.ts`
 Expected: PASS. Note that a later sweep (Task 5) re-scores the row but the scorer's `userGhostVerdict === "real"` branch returns 0, so the pin survives re-evaluation — that is the whole point of the override and must stay asserted.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/server/src/routes/search.routes.ts apps/server/src/controllers/analytics.controller.ts apps/server/src/models/JobInteractionLog.model.ts apps/server/src/services/analytics.service.ts apps/server/src/tests/ghost-feedback.test.ts
@@ -1224,7 +1224,7 @@ scorer honours it on every later sweep."
 - Consumes: `ICanonicalJob.ghostRisk` / `ghostReasons` / `userGhostVerdict` (Task 3) and the `hideGhosts` query param (Task 6).
 - Produces: `<GhostChip risk reasons verdict />`, and a `still_hiring` POST to `/api/v1/search/feedback` (Task 7).
 
-- [ ] **Step 1: Write the failing test** — `apps/client/src/tests/ghost-chip.test.tsx`:
+- [x] **Step 1: Write the failing test** — `apps/client/src/tests/ghost-chip.test.tsx`:
 
 ```tsx
 import { describe, it, expect, vi } from "vitest";
@@ -1285,12 +1285,12 @@ describe("GhostChip", () => {
 });
 ```
 
-- [ ] **Step 2: Run it and verify it fails**
+- [x] **Step 2: Run it and verify it fails**
 
 Run: `cd apps/client && npx vitest run src/tests/ghost-chip.test.tsx`
 Expected: FAIL — cannot resolve `../components/GhostChip.js`.
 
-- [ ] **Step 3: Implement the component** — `apps/client/src/components/GhostChip.tsx`:
+- [x] **Step 3: Implement the component** — `apps/client/src/components/GhostChip.tsx`:
 
 ```tsx
 interface GhostChipProps {
@@ -1344,12 +1344,12 @@ export function GhostChip({
 }
 ```
 
-- [ ] **Step 4: Run the test and verify it passes**
+- [x] **Step 4: Run the test and verify it passes**
 
 Run: `cd apps/client && npx vitest run src/tests/ghost-chip.test.tsx`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Wire it into results and the dispute action** — in `apps/client/src/pages/JobsPage.tsx`, inside each result card, after the title/company line:
+- [x] **Step 5: Wire it into results and the dispute action** — in `apps/client/src/pages/JobsPage.tsx`, inside each result card, after the title/company line:
 
 ```tsx
 <GhostChip
@@ -1375,9 +1375,9 @@ const feedbackMutation = useMutation({
 });
 ```
 
-- [ ] **Step 6: Add the filter toggle** — in the `JobsPage` filter bar, a checkbox bound to local state that appends `&hideGhosts=true` to the search query, plus the matching `queryKeys` entry so cached results do not mix the two views. Default off. Label: `Hide likely stale`.
+- [x] **Step 6: Add the filter toggle** — in the `JobsPage` filter bar, a checkbox bound to local state that appends `&hideGhosts=true` to the search query, plus the matching `queryKeys` entry so cached results do not mix the two views. Default off. Label: `Hide likely stale`.
 
-- [ ] **Step 7: Per-source "likely stale" counts** — the dashboard payload is built in `apps/server/src/services/analytics.service.ts:119-141`, where each `sourceHealth` row currently reports only the four `verificationState` buckets. Add a fifth figure inside that same `sources.map` callback, before the `return {`:
+- [x] **Step 7: Per-source "likely stale" counts** — the dashboard payload is built in `apps/server/src/services/analytics.service.ts:119-141`, where each `sourceHealth` row currently reports only the four `verificationState` buckets. Add a fifth figure inside that same `sources.map` callback, before the `return {`:
 
 ```ts
 const ghostTagged = await CanonicalJob.countDocuments({
@@ -1407,14 +1407,14 @@ Then render it in the Quality Dashboard tab of `apps/client/src/pages/JobsPage.t
 
 Place both in the existing `<tr>` groups so column order stays consistent; do not restructure the table, which is already above the `max-lines` warning threshold for this file.
 
-- [ ] **Step 8: Run the client gates**
+- [x] **Step 8: Run the client gates**
 
 Run: `cd apps/client && npx vitest run && npm run typecheck`
 Expected: PASS, 0 errors.
 
-- [ ] **Step 9: Manual check in the browser** — `npm run dev`, open search results with a seeded index, confirm the chip renders only above 0.6, the reasons tooltip reads as written by the server, and clicking "still hiring?" removes the chip and pins the green line. If the client cannot be run, say so in the report instead of claiming it works.
+- [x] **Step 9: Manual check in the browser** — `npm run dev`, open search results with a seeded index, confirm the chip renders only above 0.6, the reasons tooltip reads as written by the server, and clicking "still hiring?" removes the chip and pins the green line. If the client cannot be run, say so in the report instead of claiming it works.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add apps/client/src/components/GhostChip.tsx apps/client/src/pages/JobsPage.tsx apps/client/src/tests/ghost-chip.test.tsx
@@ -1469,3 +1469,28 @@ honest limits of the estimate, and the freshly measured gate totals."
 - **Deferred, deliberately:** the `expiredAt` interface/schema mismatch found while verifying the strict-mode constraint is a separate defect and is **not** fixed here; it is reported alongside this plan.
 - **Cost invariant:** Tasks 1–9 add zero LLM calls and zero new outbound fetches. The sweep does one indexed scan and one aggregation per day.
 - **Failure mode to watch:** if Task 2's measurement shows a negligible share of listings older than 60 days, stop and re-rank #16 rather than shipping a tag that fires on almost nothing.
+
+## Execution Log (2026-09-30)
+
+All nine tasks executed inline (executing-plans) on `master` per the project's master-only
+convention, TDD with the red phase observed for every new behaviour, and both scorers
+mutation-checked (span weight 0.5 fails 5 of 7 golden cases; dropping the sweep's
+`isActive` filter fails the inactive-listing test).
+
+| Task     | Commit                          | Deltas from the plan text                                                                                                                                                                                                                                  |
+| -------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pre-work | `828af23`, `9d78681`, `1ddba6d` | N1 employment-type fix, vercel.json repair, baseline docs — committed before the plan ran.                                                                                                                                                                 |
+| 1        | `99795fd`                       | As planned; `descriptionHashChanges` verified with a drift test.                                                                                                                                                                                           |
+| 2        | `4311d3b`                       | Shipped an extra `seed-and-poll.ts` (seed-companies.json had no consumer). Measurement done over a real seeded local index: 1,235 active listings; 45 % older than 60 days by provider `postedDate`.                                                       |
+| 3        | `2994a7a`                       | As planned; commit needed one retry after a husky 134 (memory pressure — Docker was running).                                                                                                                                                              |
+| 4        | `f8118da`                       | Scorer anchors span on `postedDate ?? firstSeenAt` and requires a re-sighting for the unchanged signal (calibration rules from the measurement). Golden file has 7 cases, including "old posting first seen today".                                        |
+| 5        | `cd062fe`                       | As planned; sweep test adds the first-sighting guard and a `ghostTagged` dashboard-count case (moved from Task 8).                                                                                                                                         |
+| 6        | `209a133`                       | Also threaded `hideGhosts` through `controllers/search.controller.ts:112-113` (the plan only named service + route).                                                                                                                                       |
+| 7        | `0221b08`                       | As planned; the whole enum is carried in five places (route, controller whitelist, model interface, schema enum, service union).                                                                                                                           |
+| 8        | `288fef4`                       | Chip test uses `fireEvent` (the plan's `userEvent` is not a client dependency). Chip added in both result lists **and** the job-detail modal. Browser pass not performed — component tests + typecheck only; say so rather than claim visual verification. |
+| 9        | this turn                       | api-reference, TODO_PLAN ticks, re-measured baseline.                                                                                                                                                                                                      |
+
+**Known follow-ups (deliberately out of scope):** `expiredAt` interface/schema mismatch;
+`salaryRange` still stored `undefined` on new rows (Task 1 refreshed text only);
+cross-source-absence signal deferred; `descriptionHash` missing from shared-types
+`ICanonicalJob` mirror.

@@ -195,13 +195,14 @@ npm run dev
 (`src/tests/helpers/test-db.ts`) and AI providers are stubbed at the provider boundary.
 The suite must pass identically with and without real keys in `apps/server/.env`.
 
-Current suites (2026-09-30): server 30 files / 200 tests (auth, profile concurrency, jobs,
+Current suites (2026-09-30): server 35 files / 221 tests (auth, profile concurrency, jobs,
 resumes, ATS math + golden scores, applications, search engine, source connectors + poller,
-ingestion + dedup, employment-type normalising, API keys + extension flow, admin routes,
-security, logger redaction, error correlation); extension 3 files / 26 tests; client 2 files /
-5 tests (smoke + high-churn page gates). Server coverage floors (55 statements / 50 branches /
+ingestion + dedup, employment-type normalising, ghost scoring + golden cases + sweep + ranking
+demotion + still_hiring feedback, API keys + extension flow, admin routes, security, logger
+redaction, error correlation); extension 3 files / 26 tests; client 3 files / 9 tests (smoke,
+high-churn page gates, ghost chip). Server coverage floors (55 statements / 50 branches /
 59 functions / 55 lines — `apps/server/vitest.config.ts:40-44`) are gated in CI via
-`test:coverage`; latest measurement 56.8 / 70.0 / 61.0 / 56.8.
+`test:coverage`; latest measurement 57.6 / 70.6 / 61.3 / 57.6.
 
 Run the gates with `npx turbo run typecheck lint test --force --concurrency=1`. `--force`
 because turbo replays cached output by default and a replayed run proves nothing; `--concurrency=1`

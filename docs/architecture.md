@@ -211,10 +211,10 @@ Current baseline (2026-09-27, post-ATS-v2):
 ```bash
 npm run typecheck   # 4/4 tasks (shared-types, server, client, extension)
 npm run lint        # 3/3 tasks, 0 errors
-npm run test        # 231 tests: 200 server (30 files) + 26 extension (3 files) + 5 client (2 files)
+npm run test        # 256 tests: 221 server (35 files) + 26 extension (3 files) + 9 client (3 files)
 npm run test:coverage --workspace=job-tailor-server
-                    # widened surface incl. controllers/routes: 56.8 stmts / 70.0 branch
-                    # / 61.0 funcs — above the 55/50/59/55 floors set from measurement
+                    # widened surface incl. controllers/routes: 57.6 stmts / 70.6 branch
+                    # / 61.3 funcs — above the 55/50/59/55 floors set from measurement
 ```
 
 Tests cover auth, HTTP auth flows, profile CRUD concurrency, jobs, resume generation, ATS scoring math, the application workflow, the search engine (ingestion, dedup, ranking, synonyms, alerts, watches, feed, cleanup, trust decay), live job discovery (source connectors, poller, seeding, admin routes), API-key auth and the extension flow, error correlation, and security utilities. All suites are hermetic (in-memory MongoDB, stubbed AI providers). CI runs typecheck, lint, build, all three test suites, and the server coverage floor on every push/PR (`.github/workflows/ci.yml`).
