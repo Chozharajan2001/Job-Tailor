@@ -55,11 +55,28 @@ class ApiClient {
    */
   private getRefreshMutex(): Promise<string> {
     if (!this.refreshMutex) {
-      this.refreshMutex = this.performSilentRefresh().finally(() => {
+      this.refreshMutex = this.performSilentRefreshLocked().finally(() => {
         this.refreshMutex = null;
       });
     }
     return this.refreshMutex;
+  }
+
+  /**
+   * The refresh token rotates server-side and the httpOnly cookie is shared by
+   * every tab on this origin, so two tabs refreshing at once makes the second
+   * replay a spent token — the server's reuse detection then revokes ALL of
+   * the user's sessions. The mutex only serializes within one tab, so hold a
+   * cross-tab Web Lock around the call and fall back to the mutex alone where
+   * the API is unavailable.
+   */
+  private async performSilentRefreshLocked(): Promise<string> {
+    if (typeof navigator !== "undefined" && "locks" in navigator) {
+      return navigator.locks.request("jobtailor:silent-refresh", () =>
+        this.performSilentRefresh(),
+      );
+    }
+    return this.performSilentRefresh();
   }
 
   /**

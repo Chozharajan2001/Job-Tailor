@@ -1,7 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation, useParams, Link } from "react-router-dom";
 import { authService } from "../services/auth";
 import { Loader2, CheckCircle, AlertCircle, Mail } from "lucide-react";
+
+/** The auto-verify effect re-fires on every isLoading drop; cap the retries. */
+const MAX_AUTO_VERIFY_ATTEMPTS = 3;
 
 export default function VerifyEmailPage() {
   const navigate = useNavigate();
@@ -17,6 +20,7 @@ export default function VerifyEmailPage() {
   const [verificationExpires, setVerificationExpires] = useState<Date | null>(
     null,
   );
+  const autoVerifyAttempts = useRef(0);
 
   // Get token from query param, route param, or location state
   useEffect(() => {
@@ -46,6 +50,14 @@ export default function VerifyEmailPage() {
       );
       return;
     }
+
+    if (autoVerifyAttempts.current >= MAX_AUTO_VERIFY_ATTEMPTS) {
+      setError(
+        "Invalid or expired verification token. Please request a new one.",
+      );
+      return;
+    }
+    autoVerifyAttempts.current += 1;
 
     setError("");
     setIsLoading(true);
