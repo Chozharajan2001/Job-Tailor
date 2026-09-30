@@ -23,15 +23,16 @@ cp .env.example apps/server/.env
 
 Edit `apps/server/.env` with your values:
 
-| Variable                                                   | Required               | Notes                                                                                                                                                                                            |
-| ---------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `MONGODB_URI`                                              | Yes                    | Your MongoDB connection string                                                                                                                                                                   |
-| `JWT_SECRET`                                               | Yes                    | Generate: `openssl rand -base64 32`                                                                                                                                                              |
-| `JWT_REFRESH_SECRET`                                       | Yes                    | Generate another one                                                                                                                                                                             |
-| `OPENAI_API_KEY` / `GEMINI_API_KEY` / `NVIDIA_NIM_API_KEY` | For AI features        | At least one provider; `PREFERRED_AI_PROVIDER` selects the primary, the manager falls back across the rest                                                                                       |
-| `CLOUDINARY_*`                                             | Optional               | For PDF storage (can skip locally)                                                                                                                                                               |
-| `SOURCE_POLL_ADMIN_KEY`                                    | For live job discovery | Shared secret for `POST /api/v1/admin/*` (seed-sources, poll-due-sources). Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`. Unset = admin routes return 503 |
-| `LOG_LEVEL`                                                | Optional               | Pino logger verbosity: `fatal`, `error`, `warn`, `info` (default), `debug`, `trace`                                                                                                              |
+| Variable                                                   | Required               | Notes                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MONGODB_URI`                                              | Yes                    | Your MongoDB connection string                                                                                                                                                                                                                 |
+| `JWT_SECRET`                                               | Yes                    | Generate: `openssl rand -base64 32`                                                                                                                                                                                                            |
+| `JWT_REFRESH_SECRET`                                       | Yes                    | Generate another one                                                                                                                                                                                                                           |
+| `OPENAI_API_KEY` / `GEMINI_API_KEY` / `NVIDIA_NIM_API_KEY` | For AI features        | At least one provider; `PREFERRED_AI_PROVIDER` selects the primary, the manager falls back across the rest                                                                                                                                     |
+| `CLOUDINARY_*`                                             | Optional               | For PDF storage (can skip locally)                                                                                                                                                                                                             |
+| `SOURCE_POLL_ADMIN_KEY`                                    | For live job discovery | Shared secret for `POST /api/v1/admin/*` (seed-sources, poll-due-sources). Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`. Unset = admin routes return 503                                               |
+| `REGISTRATION_MODE` / `REGISTRATION_EMAIL_ALLOWLIST`       | Required on any deploy | `open` \| `allowlist` \| `closed` (default `open`, read per request). Registration is the only door to the paid AI endpoints, so a public deployment must not leave it `open`. Refusals answer 403 `REGISTRATION_CLOSED` / `EMAIL_NOT_ALLOWED` |
+| `LOG_LEVEL`                                                | Optional               | Pino logger verbosity: `fatal`, `error`, `warn`, `info` (default), `debug`, `trace`                                                                                                                                                            |
 
 ```bash
 cp apps/client/.env.example apps/client/.env.client
@@ -126,8 +127,8 @@ apps/
 | `cd apps/extension && npm run dev`   | Rebuild the extension on file changes                      |
 
 **Verification baseline (2026-09-30):** `npm run typecheck` 4/4 tasks · `npm run lint` 3/3 tasks,
-0 errors · `npm test` 256 tests (221 server / 26 extension / 9 client) · server coverage
-57.6% stmts over the widened surface (incl. controllers/routes), above the 55/50/59/55 floors
+0 errors · `npm test` 280 tests (240 server / 26 extension / 14 client) · server coverage
+58.7% stmts over the widened surface (incl. controllers/routes), above the 55/50/59/55 floors
 set from that measurement. Suites are hermetic (in-memory Mongo, stubbed
 AI providers) — they pass with or without real API keys.
 

@@ -36,19 +36,19 @@ error log lines are correlated under the same id.
 
 ## Auth — `/api/v1/auth`
 
-| Method | Endpoint                    | Auth                       | Notes                                                   |
-| ------ | --------------------------- | -------------------------- | ------------------------------------------------------- |
-| POST   | `/auth/register`            | Public (rate-limited)      | Creates user, sends verification email, returns tokens  |
-| POST   | `/auth/verify-email`        | Public                     | Verifies email token                                    |
-| POST   | `/auth/resend-verification` | Public                     | Resends verification email                              |
-| POST   | `/auth/login`               | Public (strict rate limit) | Returns user, access token, refresh token; audit-logged |
-| POST   | `/auth/refresh`             | Public                     | Rotates refresh token                                   |
-| GET    | `/auth/me`                  | Bearer                     | Returns current user                                    |
-| POST   | `/auth/logout`              | Bearer                     | Logs out current session                                |
-| POST   | `/auth/logout-all`          | Bearer                     | Revokes all sessions                                    |
-| POST   | `/auth/forgot-password`     | Public                     | Sends reset email                                       |
-| POST   | `/auth/reset-password`      | Public                     | Completes reset with token                              |
-| POST   | `/auth/change-password`     | Bearer                     | Changes password, revokes other sessions                |
+| Method | Endpoint                    | Auth                               | Notes                                                                                   |
+| ------ | --------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------- |
+| POST   | `/auth/register`            | Public unless gated (rate-limited) | Creates user, sends verification email, returns tokens; see the registration gate below |
+| POST   | `/auth/verify-email`        | Public                             | Verifies email token                                                                    |
+| POST   | `/auth/resend-verification` | Public                             | Resends verification email                                                              |
+| POST   | `/auth/login`               | Public (strict rate limit)         | Returns user, access token, refresh token; audit-logged                                 |
+| POST   | `/auth/refresh`             | Public                             | Rotates refresh token                                                                   |
+| GET    | `/auth/me`                  | Bearer                             | Returns current user                                                                    |
+| POST   | `/auth/logout`              | Bearer                             | Logs out current session                                                                |
+| POST   | `/auth/logout-all`          | Bearer                             | Revokes all sessions                                                                    |
+| POST   | `/auth/forgot-password`     | Public                             | Sends reset email                                                                       |
+| POST   | `/auth/reset-password`      | Public                             | Completes reset with token                                                              |
+| POST   | `/auth/change-password`     | Bearer                             | Changes password, revokes other sessions                                                |
 
 ## Profile — `/api/v1/profile`
 
@@ -169,6 +169,24 @@ routes answer 503 `ADMIN_NOT_CONFIGURED`; a wrong key answers 401.
 | GET    | `/analytics/resume-performance` | Resumes populated with job data                            |
 | GET    | `/analytics/status-breakdown`   | Counts by status                                           |
 | GET    | `/analytics/skill-gap-report`   | Gaps aggregated from parsed jobs and scored resumes        |
+
+## Environment-Dependent Behaviour
+
+**Registration gate (H7).** `REGISTRATION_MODE` (`open` | `allowlist` | `closed`, default
+`open`) and `REGISTRATION_EMAIL_ALLOWLIST` (comma-separated exact addresses) are read **per
+request**, so sign-up can be opened or closed without a redeploy. `allowlist` accepts only
+listed addresses (case-insensitive, trimmed) and an empty list refuses everyone; an
+unrecognised mode fails closed and is also rejected at boot. A refusal answers
+`403` with `error.code` `REGISTRATION_CLOSED` or `EMAIL_NOT_ALLOWED` and creates **no**
+user. Any deployment must set this: registration is the only entry point to the paid AI
+endpoints.
+
+**SSRF-pinned fetches (H8).** Server-side URL fetches (`POST /search/ingest/url`, the
+daily link verification sweep) resolve DNS once, validate every returned address, and then
+dial **only those validated addresses** through a pinned resolver, re-validating and
+re-pinning every redirect hop. A hostname that resolves differently on the second lookup
+(DNS rebinding) can therefore never steer the connection to a private address.
+`safeFetchText` uses Node's own `http`/`https` clients, not `globalThis.fetch`.
 
 ## Still Not Implemented
 

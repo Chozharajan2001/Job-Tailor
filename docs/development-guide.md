@@ -195,14 +195,16 @@ npm run dev
 (`src/tests/helpers/test-db.ts`) and AI providers are stubbed at the provider boundary.
 The suite must pass identically with and without real keys in `apps/server/.env`.
 
-Current suites (2026-09-30): server 35 files / 221 tests (auth, profile concurrency, jobs,
-resumes, ATS math + golden scores, applications, search engine, source connectors + poller,
-ingestion + dedup, employment-type normalising, ghost scoring + golden cases + sweep + ranking
-demotion + still_hiring feedback, API keys + extension flow, admin routes, security, logger
-redaction, error correlation); extension 3 files / 26 tests; client 3 files / 9 tests (smoke,
-high-churn page gates, ghost chip). Server coverage floors (55 statements / 50 branches /
-59 functions / 55 lines — `apps/server/vitest.config.ts:40-44`) are gated in CI via
-`test:coverage`; latest measurement 57.6 / 70.6 / 61.3 / 57.6.
+Current suites (2026-09-30): server 38 files / 240 tests (auth, registration gate + route,
+profile concurrency, jobs, resumes, ATS math + golden scores, applications, search engine,
+source connectors + poller, ingestion + dedup, employment-type normalising, ghost scoring +
+golden cases + sweep + ranking demotion + still_hiring feedback, SSRF pinned lookup, API keys
+
+- extension flow, admin routes, security, logger redaction, error correlation); extension 3
+  files / 26 tests; client 5 files / 14 tests (smoke, high-churn page gates, ghost chip,
+  silent-refresh cross-tab lock, verify-email retry bound). Server coverage floors (55
+  statements / 50 branches / 59 functions / 55 lines — `apps/server/vitest.config.ts:40-44`) are
+  gated in CI via `test:coverage`; latest measurement 58.7 / 72.1 / 62.5 / 58.7.
 
 Run the gates with `npx turbo run typecheck lint test --force --concurrency=1`. `--force`
 because turbo replays cached output by default and a replayed run proves nothing; `--concurrency=1`
@@ -214,7 +216,8 @@ allocation failure, not a code error).
 ## 6. Security Checklist
 
 - [x] Passwords hashed with bcrypt (12 rounds)
-- [x] Refresh token delivered only as an httpOnly cookie (`controllers/auth.controller.ts:155-160`); the access token is held in Zustand memory, never in localStorage
+- [x] Refresh token delivered only as an httpOnly cookie (`controllers/auth.controller.ts:155-160`)
+- [ ] **Access token is NOT memory-only** — `stores/authStore.ts:27-28` wraps the store in zustand `persist(...)` with no `partialize`, so `accessToken` is written to localStorage despite the comments in `services/api.ts:34`/`:45` and `stores/authStore.ts:37` saying otherwise. Tracked as TODO_PLAN #Tier-1.5 **H9**; until it is fixed, treat "the token is not in storage" claims as false and do not rely on them in reviews.
 - [x] JWT supported through Authorization header
 - [x] All inputs validated with Zod schemas (server-side)
 - [x] Rate limiting on auth endpoints
