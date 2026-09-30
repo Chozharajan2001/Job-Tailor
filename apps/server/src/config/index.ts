@@ -61,6 +61,16 @@ export const config = {
    */
   sourcePollAdminKey: process.env.SOURCE_POLL_ADMIN_KEY || "",
 
+  /**
+   * Self-registration mode. The gate re-reads the environment per request
+   * (see utils/registration-gate.ts) so sign-up can be opened or closed
+   * without a restart; this copy exists so validateConfig can reject a typo
+   * loudly at boot instead of failing closed in silence.
+   */
+  registrationMode: (process.env.REGISTRATION_MODE || "open")
+    .trim()
+    .toLowerCase(),
+
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
     apiKey: process.env.CLOUDINARY_API_KEY || "",
@@ -85,6 +95,12 @@ export function validateConfig(): void {
   if (config.jwt.secret === config.jwt.refreshSecret) {
     throw new Error(
       "JWT_SECRET and JWT_REFRESH_SECRET must be different values",
+    );
+  }
+  // An unrecognised REGISTRATION_MODE would otherwise fail closed in silence
+  if (!["open", "allowlist", "closed"].includes(config.registrationMode)) {
+    throw new Error(
+      `REGISTRATION_MODE must be one of open, allowlist, closed (got "${config.registrationMode}")`,
     );
   }
   if (config.nodeEnv === "production") {

@@ -15,6 +15,7 @@ import {
 import { sendVerificationEmail } from "../services/email.service.js";
 import { User } from "../models/User.model.js";
 import { config } from "../config/index.js";
+import { checkRegistration } from "../utils/registration-gate.js";
 
 interface RegisterResult {
   user: {
@@ -38,6 +39,20 @@ interface RegisterResult {
  */
 export async function register(req: Request, res: Response): Promise<void> {
   const { email, password, firstName, lastName } = req.body;
+
+  // H7: registration is the only door into the paid AI endpoints, so it is
+  // gated by environment before a single User document is created.
+  const decision = checkRegistration(email);
+  if (!decision.allowed) {
+    res.status(403).json({
+      success: false,
+      error: {
+        code: decision.code,
+        message: "Registration is not available for this address",
+      },
+    });
+    return;
+  }
 
   const result: RegisterResult = await registerUser({
     email,
