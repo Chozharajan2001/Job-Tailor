@@ -17,6 +17,66 @@ import { connectTestDb, disconnectTestDb } from "./helpers/test-db.js";
 // Each test file gets an isolated in-memory database
 process.env.NODE_ENV = "test";
 
+/**
+ * safeFetchText dials through node:https with a pinned lookup (H8), so the
+ * URL-ingest and link-verification tests stub that transport instead of
+ * global.fetch. The URLs below use a literal public IP, which the guard
+ * validates directly, so no DNS stubbing is needed here.
+ */
+const httpsMock = vi.hoisted(() => ({
+  calls: [] as Array<{ url: string; options: Record<string, unknown> }>,
+  response: {
+    statusCode: 200,
+    statusMessage: "OK",
+    headers: {} as Record<string, string>,
+    body: "",
+  },
+}));
+
+vi.mock("node:https", async () => {
+  const { Readable } = await import("node:stream");
+  return {
+    default: {
+      request: (
+        url: string,
+        options: Record<string, unknown>,
+        cb: (res: unknown) => void,
+      ) => {
+        httpsMock.calls.push({ url, options });
+        const res = Object.assign(Readable.from([httpsMock.response.body]), {
+          statusCode: httpsMock.response.statusCode,
+          statusMessage: httpsMock.response.statusMessage,
+          headers: httpsMock.response.headers,
+        });
+        setTimeout(() => cb(res), 0);
+        return {
+          on: () => undefined,
+          setTimeout: () => undefined,
+          write: () => undefined,
+          end: () => undefined,
+          destroy: () => undefined,
+        };
+      },
+    },
+  };
+});
+
+function stubHttpsResponse(res: {
+  statusCode?: number;
+  statusMessage?: string;
+  headers?: Record<string, string>;
+  body?: string;
+}): void {
+  httpsMock.calls.length = 0;
+  httpsMock.response = {
+    statusCode: 200,
+    statusMessage: "OK",
+    headers: {},
+    body: "",
+    ...res,
+  };
+}
+
 // Hermeticity: ingestion calls parseJD for descriptions over 50 chars.
 // Without this mock the dedup/ingest tests hit a live AI provider when a
 // real key is present in apps/server/.env (nondeterministic 30s timeouts),
@@ -130,21 +190,14 @@ describe("Advanced Job Search Engine (Sprint 2) Integration Suite", () => {
     });
 
     it("should successfully fetch, parse JSON-LD, and ingest jobs from a URL", async () => {
-      // Mock global fetch
-      const fetchSpy = vi
-        .spyOn(global, "fetch")
-        .mockImplementation((): Promise<any> => {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            text: () => Promise.resolve(mockJsonLdHtml),
-          });
-        });
+      stubHttpsResponse({ body: mockJsonLdHtml });
 
       const url = "https://93.184.216.34/jobs/staff-eng-123";
       const job = await IngestionService.ingestFromUrl(url);
 
-      expect(fetchSpy).toHaveBeenCalledWith(url, expect.any(Object));
+      // The guard must dial the URL it validated through a pinned lookup
+      expect(httpsMock.calls[0]?.url).toBe(url);
+      expect(typeof httpsMock.calls[0]?.options.lookup).toBe("function");
       expect(job).toBeDefined();
       expect(job.jobTitle).toBe("Staff Software Engineer");
       expect(job.companyName).toBe("Google Inc");
@@ -152,42 +205,21 @@ describe("Advanced Job Search Engine (Sprint 2) Integration Suite", () => {
       expect(job.applyUrl).toBe("https://93.184.216.34/jobs/staff-eng-123");
       expect(job.sourceUrl).toBe(url);
       expect(job.isActive).toBe(true);
-
-      fetchSpy.mockRestore();
     });
 
     it("should throw an error when URL fetch fails (HTTP status >= 400)", async () => {
-      const fetchSpy = vi
-        .spyOn(global, "fetch")
-        .mockImplementation((): Promise<any> => {
-          return Promise.resolve({
-            ok: false,
-            status: 404,
-            statusText: "Not Found",
-          });
-        });
+      stubHttpsResponse({ statusCode: 404, statusMessage: "Not Found" });
 
       const url = "https://93.184.216.34/jobs/invalid-url";
       await expect(IngestionService.ingestFromUrl(url)).rejects.toThrow(
         "Failed to fetch URL: Not Found (404)",
       );
-
-      fetchSpy.mockRestore();
     });
 
     it("should handle minimal HTML by extracting fallback metadata", async () => {
-      const fetchSpy = vi
-        .spyOn(global, "fetch")
-        .mockImplementation((): Promise<any> => {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            text: () =>
-              Promise.resolve(
-                "<html><head><title>Empty page</title></head><body>Empty page</body></html>",
-              ),
-          });
-        });
+      stubHttpsResponse({
+        body: "<html><head><title>Empty page</title></head><body>Empty page</body></html>",
+      });
 
       const url = "https://93.184.216.34/jobs/empty-page";
       const job = await IngestionService.ingestFromUrl(url);
@@ -197,8 +229,6 @@ describe("Advanced Job Search Engine (Sprint 2) Integration Suite", () => {
       // Fallback company name is derived from the host's first label ('93' for the literal IP)
       expect(job.companyName).toBe("93");
       expect(job.description).toContain("Empty page");
-
-      fetchSpy.mockRestore();
     });
   });
 
@@ -702,15 +732,8 @@ describe("Advanced Job Search Engine (Sprint 2) Integration Suite", () => {
 
       expect(job.verificationState).toBe("unverified");
 
-      // Mock global fetch returning 404
-      const fetchSpy = vi
-        .spyOn(global, "fetch")
-        .mockImplementation((): Promise<any> => {
-          return Promise.resolve({
-            status: 404,
-            url: "https://93.184.216.34/jobs/404-check",
-          });
-        });
+      // The link check gets a 404 from the pinned transport
+      stubHttpsResponse({ statusCode: 404 });
 
       // Run cleanup URL checks
       const count = await CleanupService.cleanupStaleJobs(30);
@@ -725,8 +748,6 @@ describe("Advanced Job Search Engine (Sprint 2) Integration Suite", () => {
       const updatedSource = await SourceRegistry.findById(source._id);
       expect(updatedSource?.trustScore).toBeLessThan(0.8);
       expect(updatedSource?.trustScore).toBe(0.75);
-
-      fetchSpy.mockRestore();
     });
 
     it("should log user click interactions and handle flagging feedback to update states/trust", async () => {

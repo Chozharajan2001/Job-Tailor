@@ -1,5 +1,8 @@
 import dns from "dns";
 import net from "net";
+import http from "node:http";
+import https from "node:https";
+import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 
 /**
  * SSRF guard — validates that a URL points at a public, safe destination
@@ -160,6 +163,109 @@ export interface SafeFetchOptions {
   skipBody?: boolean;
 }
 
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+interface PinnedResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string | string[] | undefined>;
+  body: Buffer;
+}
+
+function pickHeader(
+  headers: Record<string, string | string[] | undefined>,
+  name: string,
+): string | null {
+  const value = headers[name] ?? headers[name.toLowerCase()];
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+/** Servers ignore `Accept-Encoding: identity` often enough that decoding stays required. */
+function decodeBody(body: Buffer, encoding: string | null): Buffer {
+  if (!encoding || body.length === 0) return body;
+  const kind = encoding.toLowerCase();
+  try {
+    if (kind.includes("gzip")) return gunzipSync(body);
+    if (kind.includes("br")) return brotliDecompressSync(body);
+    if (kind.includes("deflate")) return inflateSync(body);
+  } catch {
+    return body;
+  }
+  return body;
+}
+
+/**
+ * Issue one request, dialed only at the addresses that already passed
+ * validation. Deliberately not fetch(): the built-in client cannot be told
+ * which IP to connect to, which is precisely the gap a rebinding DNS answer
+ * walks through between validation and connect.
+ */
+function pinnedRequest(
+  target: URL,
+  addresses: readonly string[],
+  options: {
+    headers: Record<string, string>;
+    timeoutMs: number;
+    maxBytes: number;
+  },
+): Promise<PinnedResponse> {
+  const isHttps = target.protocol === "https:";
+  const lib = isHttps ? https : http;
+  const hostname = target.hostname.replace(/^\[|\]$/g, "");
+
+  return new Promise((resolve, reject) => {
+    const req = lib.request(
+      target.toString(),
+      {
+        method: "GET",
+        headers: {
+          "User-Agent": USER_AGENT,
+          "Accept-Encoding": "gzip, deflate, br",
+          ...options.headers,
+        },
+        ...(isHttps ? { servername: hostname } : {}),
+        lookup: createPinnedLookup(
+          addresses,
+        ) as unknown as https.RequestOptions["lookup"],
+        timeout: options.timeoutMs,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        let received = 0;
+        res.on("data", (chunk: Buffer | string) => {
+          const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          received += buf.length;
+          if (received > options.maxBytes) {
+            req.destroy(new Error("URL response exceeded the size limit."));
+            return;
+          }
+          chunks.push(buf);
+        });
+        res.on("error", reject);
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            statusText: res.statusMessage ?? "",
+            headers: res.headers as Record<
+              string,
+              string | string[] | undefined
+            >,
+            body: Buffer.concat(chunks),
+          }),
+        );
+      },
+    );
+
+    req.on("timeout", () => {
+      req.destroy(new Error(`Request timed out after ${options.timeoutMs}ms.`));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 /**
  * Fetch a URL safely: SSRF-validated, redirect-revalidated, timeout-bounded,
  * and response-size-capped. Returns the body text and final URL.
@@ -179,28 +285,23 @@ export async function safeFetchText(
 
   let currentUrl = urlStr;
   let redirects = 0;
-  let response: Response | undefined;
+  let result: PinnedResponse | undefined;
 
-  // Follow redirects manually so every hop passes the SSRF guard
+  // Follow redirects manually so every hop is re-validated AND re-pinned:
+  // the address set of hop N must never be reused for hop N+1.
   for (;;) {
-    await assertSafePublicUrl(currentUrl);
+    const target = new URL(currentUrl);
+    const { addresses } = await resolveSafeTarget(currentUrl);
 
-    response = await fetch(currentUrl, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(timeoutMs),
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        ...headers,
-      },
+    result = await pinnedRequest(target, addresses, {
+      headers,
+      timeoutMs,
+      maxBytes,
     });
 
-    const location =
-      typeof response.headers?.get === "function"
-        ? response.headers.get("location")
-        : null;
+    const location = pickHeader(result.headers, "location");
     const isRedirect =
-      response.status >= 300 && response.status < 400 && !!location;
+      result.status >= 300 && result.status < 400 && !!location;
     if (!isRedirect) break;
 
     redirects += 1;
@@ -210,50 +311,25 @@ export async function safeFetchText(
     currentUrl = new URL(location as string, currentUrl).toString();
   }
 
-  if (!response || (!response.ok && !allowNonOk)) {
+  const ok = result.status >= 200 && result.status < 300;
+  if (!ok && !allowNonOk) {
     throw new Error(
-      `Failed to fetch URL: ${response?.statusText ?? "unknown error"} (${response?.status ?? 0})`,
+      `Failed to fetch URL: ${result.statusText || "unknown error"} (${result.status})`,
     );
   }
 
-  const finalUrl = response.url || currentUrl;
-  if (skipBody || !response.ok) {
-    // Status-only result (link checks); release the body without reading it
-    await response.body?.cancel?.();
-    return { body: "", finalUrl, status: response.status };
+  if (skipBody || !ok) {
+    return { body: "", finalUrl: currentUrl, status: result.status };
   }
 
-  // Stream-cap the body to avoid memory exhaustion from huge responses.
-  // Falls back to response.text() when no readable stream is exposed
-  // (also keeps simple fetch mocks working in tests).
-  const reader = response.body?.getReader?.();
-  if (!reader) {
-    const body =
-      typeof response.text === "function" ? await response.text() : "";
-    if (body.length > maxBytes) {
-      throw new Error("URL response exceeded the size limit.");
-    }
-    return { body, finalUrl, status: response.status };
-  }
-
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      received += value.byteLength;
-      if (received > maxBytes) {
-        throw new Error("URL response exceeded the size limit.");
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const body = Buffer.concat(chunks).toString("utf-8");
-  return { body, finalUrl, status: response.status };
+  return {
+    body: decodeBody(
+      result.body,
+      pickHeader(result.headers, "content-encoding"),
+    ).toString("utf-8"),
+    finalUrl: currentUrl,
+    status: result.status,
+  };
 }
 
 export type PinnedLookup = (
