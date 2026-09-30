@@ -1,0 +1,109 @@
+{
+  "cases": [
+    {
+      "name": "fresh single sighting",
+      "job": {
+        "jobTitle": "Backend Engineer",
+        "description": "Build APIs.",
+        "firstSeenAt": "2026-09-25T00:00:00.000Z",
+        "lastSeenAt": "2026-09-30T00:00:00.000Z"
+      },
+      "sameRoleCount": 1,
+      "now": "2026-09-30T00:00:00.000Z",
+      "expectedRisk": 0.0375,
+      "expectedReasons": []
+    },
+    {
+      "name": "old posting first seen today",
+      "job": {
+        "jobTitle": "Site Reliability Engineer",
+        "description": "Keep the fleet running.",
+        "postedDate": "2025-01-24T00:00:00.000Z",
+        "firstSeenAt": "2026-09-30T00:00:00.000Z",
+        "lastSeenAt": "2026-09-30T00:00:00.000Z",
+        "descriptionHashChanges": 0
+      },
+      "sameRoleCount": 1,
+      "now": "2026-09-30T00:00:00.000Z",
+      "expectedRisk": 0.45,
+      "expectedReasons": ["listed 614 days"]
+    },
+    {
+      "name": "old, unchanged, no churn",
+      "job": {
+        "jobTitle": "Backend Engineer",
+        "description": "Build APIs.",
+        "firstSeenAt": "2026-07-02T00:00:00.000Z",
+        "lastSeenAt": "2026-09-30T00:00:00.000Z",
+        "descriptionHashChanges": 0
+      },
+      "sameRoleCount": 1,
+      "now": "2026-09-30T00:00:00.000Z",
+      "expectedRisk": 0.55,
+      "expectedReasons": ["listed 90 days", "text unchanged"]
+    },
+    {
+      "name": "reposted three times, evergreen copy",
+      "job": {
+        "jobTitle": "Software Engineer (always hiring)",
+        "description": "We review continuously.",
+        "firstSeenAt": "2026-06-01T00:00:00.000Z",
+        "lastSeenAt": "2026-09-30T00:00:00.000Z",
+        "descriptionHashChanges": 0
+      },
+      "sameRoleCount": 3,
+      "now": "2026-09-30T00:00:00.000Z",
+      "expectedRisk": 1,
+      "expectedReasons": [
+        "listed 121 days",
+        "reposted 3 times",
+        "evergreen posting copy",
+        "text unchanged"
+      ]
+    },
+    {
+      "name": "contract role past the shorter threshold",
+      "job": {
+        "jobTitle": "Data Analyst",
+        "description": "Dashboards.",
+        "employmentType": "contract",
+        "firstSeenAt": "2026-08-11T00:00:00.000Z",
+        "lastSeenAt": "2026-09-30T00:00:00.000Z",
+        "descriptionHashChanges": 0
+      },
+      "sameRoleCount": 1,
+      "now": "2026-09-30T00:00:00.000Z",
+      "expectedRisk": 0.55,
+      "expectedReasons": ["listed 50 days", "text unchanged"]
+    },
+    {
+      "name": "text refreshed after going stale",
+      "job": {
+        "jobTitle": "Backend Engineer",
+        "description": "Rewritten body.",
+        "firstSeenAt": "2026-07-02T00:00:00.000Z",
+        "lastSeenAt": "2026-09-30T00:00:00.000Z",
+        "descriptionHashChanges": 2
+      },
+      "sameRoleCount": 1,
+      "now": "2026-09-30T00:00:00.000Z",
+      "expectedRisk": 0.45,
+      "expectedReasons": ["listed 90 days"]
+    },
+    {
+      "name": "user says still hiring",
+      "job": {
+        "jobTitle": "Software Engineer (always hiring)",
+        "description": "We review continuously.",
+        "firstSeenAt": "2026-01-01T00:00:00.000Z",
+        "lastSeenAt": "2026-09-30T00:00:00.000Z",
+        "descriptionHashChanges": 0,
+        "userGhostVerdict": "real"
+      },
+      "sameRoleCount": 4,
+      "now": "2026-09-30T00:00:00.000Z",
+      "expectedRisk": 0,
+      "expectedReasons": ["you marked this as still hiring"]
+    }
+  ]
+}
