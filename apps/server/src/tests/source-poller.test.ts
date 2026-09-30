@@ -132,6 +132,75 @@ describe("source-poller", () => {
     expect(count).toBe(2);
   });
 
+  it("ingests Ashby postings whose employmentType uses provider casing", async () => {
+    const ashbySrc = await SourceRegistry.create({
+      name: "Acme (Ashby)",
+      sourceType: "api_connector",
+      connectorType: "ashby",
+      companyId: "acme",
+      baseUrl: "https://api.ashbyhq.com",
+      crawlFrequency: 360,
+      extractionStrategy: "manual_input",
+      trustScore: 0.5,
+    });
+    const ashbyId = String(ashbySrc._id);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (
+          url.startsWith("https://api.ashbyhq.com/posting-api/job-board/acme")
+        ) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              jobs: [
+                {
+                  id: "A1",
+                  title: "Cloud Security Engineer",
+                  location: "Remote",
+                  jobUrl: "https://ashby/acme/A1",
+                  descriptionHtml: "<p>Harden the fleet.</p>",
+                  employmentType: "FullTime",
+                  isListed: true,
+                },
+                {
+                  id: "A2",
+                  title: "Intern",
+                  location: "Remote",
+                  jobUrl: "https://ashby/acme/A2",
+                  descriptionHtml: "<p>Learn the fleet.</p>",
+                  employmentType: "Intern",
+                  isListed: true,
+                },
+              ],
+            }),
+          } as unknown as Response;
+        }
+        return { ok: false, status: 404 } as unknown as Response;
+      }),
+    );
+
+    const result = await pollSource(ashbyId);
+    expect(result).toMatchObject({
+      fetched: 2,
+      created: 2,
+      duplicates: 0,
+      failed: 0,
+    });
+
+    const stored = await CanonicalJob.find({
+      sourceId: new mongoose.Types.ObjectId(ashbyId),
+    })
+      .select("employmentType")
+      .lean();
+    expect(stored.map((j) => j.employmentType).sort()).toEqual([
+      "full-time",
+      "internship",
+    ]);
+  });
+
   it("reports duplicates on a second poll of the same list", async () => {
     const same = [
       {

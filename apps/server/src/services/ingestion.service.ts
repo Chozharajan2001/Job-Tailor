@@ -7,6 +7,7 @@ import { DeduplicationService } from "./deduplication.service.js";
 import { AlertDispatcherService } from "./alert-dispatcher.service.js";
 import { parseJD } from "./jd-parser.service.js";
 import { safeFetchText } from "../utils/url-guard.js";
+import { normalizeEmploymentType } from "../utils/employment-type.js";
 import { URL } from "url";
 import { IJobIngestionInput } from "@jobtailor/shared-types";
 
@@ -101,7 +102,9 @@ export class IngestionService {
       }
     }
 
-    const employmentType = input.employmentType || "full-time";
+    const employmentType = input.employmentType?.trim()
+      ? normalizeEmploymentType(input.employmentType)
+      : "full-time";
 
     // 2. Resolve the source registry document
     let source = null;

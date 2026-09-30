@@ -150,7 +150,11 @@ export interface IProfile {
 
 // ─── Job / JD Types ──────────────────────────────────────────
 type WorkType = "remote" | "hybrid" | "onsite";
-type EmploymentType = "full-time" | "part-time" | "contract" | "internship";
+export type EmploymentType =
+  | "full-time"
+  | "part-time"
+  | "contract"
+  | "internship";
 type SeniorityLevel = "entry" | "mid" | "senior" | "staff" | "principal";
 type JDTone = "formal" | "casual" | "technical" | "corporate";
 type ApplicationStatus =
@@ -423,7 +427,9 @@ export interface IJobIngestionInput {
   jobTitle: string;
   location?: string;
   workType?: "remote" | "hybrid" | "onsite";
-  employmentType?: "full-time" | "part-time" | "contract" | "internship";
+  /** Raw provider value (e.g. Ashby "FullTime", Lever "Full-time"); the
+   * ingestion pipeline normalizes it to EmploymentType or leaves it unset. */
+  employmentType?: string;
   description: string;
   rawHtmlSnapshot?: string;
   postedDate?: Date;

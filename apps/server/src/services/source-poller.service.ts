@@ -7,6 +7,7 @@ import { IngestionService } from "./ingestion.service.js";
 import { CleanupService } from "./cleanup.service.js";
 import { getConnector } from "./source-connectors/index.js";
 import { runWithConcurrency } from "./source-poller.util.js";
+import { logger } from "../utils/logger.js";
 
 export interface PollResult {
   sourceId: string;
@@ -72,18 +73,17 @@ export async function pollSource(sourceId: string): Promise<PollResult> {
           description: input.jdRawText,
           sourceUrl: input.sourceUrl,
           applyUrl: input.sourceUrl,
-          employmentType: input.employmentType as
-            | "full-time"
-            | "part-time"
-            | "contract"
-            | "internship"
-            | undefined,
+          employmentType: input.employmentType,
           postedDate: input.publishedAt,
         });
         if (existing) duplicates++;
         else created++;
-      } catch {
+      } catch (err) {
         failed++;
+        logger.warn(
+          { sourceId, url: raw.url, err },
+          "connector posting rejected by ingestion; it was dropped",
+        );
       }
     }
 

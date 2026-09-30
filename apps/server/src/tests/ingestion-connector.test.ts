@@ -147,4 +147,56 @@ describe("IngestionService — api_connector source type", () => {
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  // Live payloads sampled 2026-09-30: Ashby sends "FullTime" / "Temporary" /
+  // "Intern" / "Contract", Lever sends "Full-time", RemoteOK puts role tags
+  // first. None of them match CanonicalJob's lowercase-hyphen enum, so every
+  // such posting died on the required validator inside the poller's `catch`.
+  it("accepts provider employment-type casing instead of dropping the posting", async () => {
+    const ashby = await IngestionService.ingestJob({
+      sourceType: "api_connector",
+      sourceName: "Acme (Ashby)",
+      sourceId: String(testSource._id),
+      companyName: "Acme",
+      jobTitle: "Cloud Security Engineer",
+      location: "Remote",
+      description: "Harden the fleet.",
+      sourceUrl: "https://ashby/acme/1",
+      applyUrl: "https://ashby/acme/1",
+      employmentType: "FullTime",
+    });
+    expect(ashby.employmentType).toBe("full-time");
+
+    const intern = await IngestionService.ingestJob({
+      sourceType: "api_connector",
+      sourceName: "Acme (Ashby)",
+      sourceId: String(testSource._id),
+      companyName: "Acme",
+      jobTitle: "Intern",
+      location: "Remote",
+      description: "Learn the fleet.",
+      sourceUrl: "https://ashby/acme/2",
+      applyUrl: "https://ashby/acme/2",
+      employmentType: "Intern",
+    });
+    expect(intern.employmentType).toBe("internship");
+  });
+
+  it("leaves employmentType unset when the provider value is not one", async () => {
+    const job = await IngestionService.ingestJob({
+      sourceType: "api_connector",
+      sourceName: "Acme (RemoteOK)",
+      sourceId: String(testSource._id),
+      companyName: "Acme",
+      jobTitle: "Backend Engineer",
+      location: "Remote",
+      description: "Go things.",
+      sourceUrl: "https://remoteok/acme/1",
+      applyUrl: "https://remoteok/acme/1",
+      employmentType: "golang",
+    });
+
+    expect(job.jobTitle).toBe("Backend Engineer");
+    expect(job.employmentType).toBeUndefined();
+  });
 });

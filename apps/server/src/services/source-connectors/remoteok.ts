@@ -1,7 +1,17 @@
 import type { SourceConnector, RawJob, CanonicalJobInput } from "./types.js";
 import { htmlToText } from "./utils/html.js";
+import { normalizeEmploymentType } from "../../utils/employment-type.js";
 
 const FEED_URL = "https://remoteok.com/api";
+
+/**
+ * RemoteOK has no employment-type field: `tags[0]` is a role/category tag
+ * ("golang", "design", "exec" in the live feed). The type, when present at
+ * all, is one of the later tags.
+ */
+function employmentTypeTag(tags?: string[]): string | undefined {
+  return tags?.find((tag) => normalizeEmploymentType(tag) !== undefined);
+}
 
 interface RemoteOkJob {
   position?: string;
@@ -45,7 +55,7 @@ export const remoteokConnector: SourceConnector = {
         locationText: j.location,
         descriptionHtml: j.description,
         publishedAt: j.published_at ? new Date(j.published_at) : undefined,
-        employmentType: j.tags?.[0],
+        employmentType: employmentTypeTag(j.tags),
       }));
   },
 

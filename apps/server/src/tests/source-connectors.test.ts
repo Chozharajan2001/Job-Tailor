@@ -283,6 +283,32 @@ describe("remoteok connector", () => {
     expect(jobs[0].externalId).toBe("https://remoteok.com/l/1");
   });
 
+  it("finds the employment type in any tag, not tags[0]", async () => {
+    // Live feed (2026-09-30, 99 rows): tags[0] is a role/category tag
+    // ("golang", "design", "exec"), so reading only tags[0] mislabels or
+    // drops every posting.
+    mockFetchOk("https://remoteok.com/api", [
+      {
+        position: "Backend Engineer",
+        company: "Acme",
+        location: "Remote",
+        url: "https://remoteok.com/l/11",
+        tags: ["golang", "senior", "part time"],
+      },
+      {
+        position: "Product Designer",
+        company: "Beta",
+        location: "EU",
+        url: "https://remoteok.com/l/12",
+        tags: ["design", "mid"],
+      },
+    ]);
+
+    const jobs = await remoteokConnector.fetchJobs("_");
+    expect(jobs[0].employmentType).toBe("part time");
+    expect(jobs[1].employmentType).toBeUndefined();
+  });
+
   it("throws on HTTP error", async () => {
     mockFetchStatus("https://remoteok.com/api", 502);
     await expect(remoteokConnector.fetchJobs("_")).rejects.toThrow(/502/);
