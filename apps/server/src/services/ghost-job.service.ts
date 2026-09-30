@@ -1,3 +1,5 @@
+import { CanonicalJob } from "../models/CanonicalJob.model.js";
+
 export interface GhostJobInput {
   jobTitle: string;
   description?: string;
@@ -104,4 +106,56 @@ export function scoreGhostSignals(
     risk: Math.min(1, Math.max(0, Number(raw.toFixed(4)))),
     reasons,
   };
+}
+
+/**
+ * Score every live listing in one pass. Reads only what is already stored,
+ * so cost is one indexed scan plus one aggregation per run. Called from the
+ * daily stale-cleanup sweep after the link check, never from a request.
+ */
+export async function applyGhostScoring(): Promise<{ evaluated: number }> {
+  const jobs = await CanonicalJob.find({ isActive: true }).select(
+    "companyName jobTitle location employmentType postedDate firstSeenAt lastSeenAt descriptionHashChanges userGhostVerdict description",
+  );
+
+  const grouped = await CanonicalJob.aggregate<{
+    _id: { c: string; t: string; l: string };
+    n: number;
+  }>([
+    { $match: { isActive: true } },
+    {
+      $group: {
+        _id: { c: "$companyName", t: "$jobTitle", l: "$location" },
+        n: { $sum: 1 },
+      },
+    },
+  ]);
+  const counts = new Map<string, number>();
+  for (const row of grouped) {
+    counts.set(`${row._id.c}|${row._id.t}|${row._id.l}`, row.n);
+  }
+
+  const now = new Date();
+  let evaluated = 0;
+  for (const job of jobs) {
+    const verdict = scoreGhostSignals(job, {
+      sameRoleCount:
+        counts.get(`${job.companyName}|${job.jobTitle}|${job.location}`) ?? 1,
+      now,
+    });
+    if (
+      job.ghostRisk === verdict.risk &&
+      job.ghostEvaluatedAt &&
+      now.getTime() - job.ghostEvaluatedAt.getTime() < 6 * 60 * 60 * 1000
+    ) {
+      continue; // already scored this cycle with the same answer
+    }
+    job.ghostRisk = verdict.risk;
+    job.ghostReasons = verdict.reasons;
+    job.ghostEvaluatedAt = now;
+    await job.save();
+    evaluated++;
+  }
+
+  return { evaluated };
 }

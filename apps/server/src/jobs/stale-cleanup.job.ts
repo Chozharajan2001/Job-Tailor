@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { CleanupService } from "../services/cleanup.service.js";
+import { applyGhostScoring } from "../services/ghost-job.service.js";
 
 /**
  * Stale-job maintenance as a scheduled background job.
@@ -27,8 +28,9 @@ export async function runStaleCleanup(
   try {
     const started = Date.now();
     const deactivated = await CleanupService.cleanupStaleJobs(thresholdDays);
+    const { evaluated } = await applyGhostScoring();
     console.log(
-      `✅ StaleCleanup: deactivated ${deactivated} jobs in ${((Date.now() - started) / 1000).toFixed(1)}s`,
+      `✅ StaleCleanup: deactivated ${deactivated} jobs, ghost-scored ${evaluated} in ${((Date.now() - started) / 1000).toFixed(1)}s`,
     );
     return deactivated;
   } catch (err) {
