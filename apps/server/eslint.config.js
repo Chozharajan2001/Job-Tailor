@@ -27,6 +27,10 @@ export default [
         URL: "readonly",
         fetch: "readonly",
         Response: "readonly",
+        // Sibling fetch types, referenced by the connector transport helper
+        Request: "readonly",
+        RequestInit: "readonly",
+        Headers: "readonly",
         AbortSignal: "readonly",
         Uint8Array: "readonly",
         __dirname: "readonly",

@@ -1,6 +1,7 @@
 import type { SourceConnector, RawJob, CanonicalJobInput } from "./types.js";
 import { htmlToText } from "./utils/html.js";
 import { normalizeEmploymentType } from "../../utils/employment-type.js";
+import { connectorFetch } from "../../utils/connector-fetch.js";
 
 const FEED_URL = "https://remoteok.com/api";
 
@@ -35,7 +36,7 @@ export const remoteokConnector: SourceConnector = {
    * register exactly one SourceRegistry row with `companyId: "_"`.
    */
   async fetchJobs(_token: string): Promise<RawJob[]> {
-    const res = await fetch(FEED_URL, {
+    const res = await connectorFetch(FEED_URL, {
       headers: { "User-Agent": userAgent() },
     });
     if (!res.ok) {

@@ -1,5 +1,6 @@
 import type { SourceConnector, RawJob, CanonicalJobInput } from "./types.js";
 import { htmlToText } from "./utils/html.js";
+import { connectorFetch } from "../../utils/connector-fetch.js";
 
 const BASE = "https://api.lever.co/v0/postings";
 
@@ -25,9 +26,12 @@ export const leverConnector: SourceConnector = {
   type: "lever",
 
   async fetchJobs(token: string): Promise<RawJob[]> {
-    const res = await fetch(`${BASE}/${encodeURIComponent(token)}?mode=json`, {
-      headers: { "User-Agent": userAgent() },
-    });
+    const res = await connectorFetch(
+      `${BASE}/${encodeURIComponent(token)}?mode=json`,
+      {
+        headers: { "User-Agent": userAgent() },
+      },
+    );
     if (!res.ok) {
       throw new Error(`Lever ${token}: HTTP ${res.status}`);
     }

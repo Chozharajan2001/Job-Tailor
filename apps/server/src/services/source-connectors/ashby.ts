@@ -1,5 +1,6 @@
 import type { SourceConnector, RawJob, CanonicalJobInput } from "./types.js";
 import { htmlToText } from "./utils/html.js";
+import { connectorFetch } from "../../utils/connector-fetch.js";
 
 const BASE = "https://api.ashbyhq.com/posting-api/job-board";
 
@@ -24,7 +25,7 @@ export const ashbyConnector: SourceConnector = {
   type: "ashby",
 
   async fetchJobs(token: string): Promise<RawJob[]> {
-    const res = await fetch(
+    const res = await connectorFetch(
       `${BASE}/${encodeURIComponent(token)}?includeCompensation=true`,
       { headers: { "User-Agent": userAgent() } },
     );

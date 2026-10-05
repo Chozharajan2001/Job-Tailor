@@ -1,6 +1,7 @@
 import type { SourceConnector, RawJob, CanonicalJobInput } from "./types.js";
 import { htmlToText } from "./utils/html.js";
 import { runWithConcurrency } from "../source-poller.util.js";
+import { connectorFetch } from "../../utils/connector-fetch.js";
 
 const BASE = "https://boards-api.greenhouse.io/v1/boards";
 
@@ -45,9 +46,12 @@ export const greenhouseConnector: SourceConnector = {
   type: "greenhouse",
 
   async fetchJobs(token: string): Promise<RawJob[]> {
-    const res = await fetch(`${BASE}/${encodeURIComponent(token)}/jobs`, {
-      headers: { "User-Agent": userAgent() },
-    });
+    const res = await connectorFetch(
+      `${BASE}/${encodeURIComponent(token)}/jobs`,
+      {
+        headers: { "User-Agent": userAgent() },
+      },
+    );
     if (!res.ok) {
       throw new Error(`Greenhouse list ${token}: HTTP ${res.status}`);
     }
@@ -64,7 +68,7 @@ export const greenhouseConnector: SourceConnector = {
       DETAIL_CONCURRENCY,
       async (j): Promise<RawJob | null> => {
         try {
-          const detailRes = await fetch(
+          const detailRes = await connectorFetch(
             `${BASE}/${encodeURIComponent(token)}/jobs/${encodeURIComponent(String(j.id))}`,
             { headers: { "User-Agent": userAgent() } },
           );
@@ -103,7 +107,7 @@ export async function fetchJobDetail(
   token: string,
   id: string,
 ): Promise<RawJob> {
-  const res = await fetch(
+  const res = await connectorFetch(
     `${BASE}/${encodeURIComponent(token)}/jobs/${encodeURIComponent(id)}`,
     { headers: { "User-Agent": userAgent() } },
   );
