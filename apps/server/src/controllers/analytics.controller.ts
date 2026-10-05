@@ -360,7 +360,7 @@ export async function trackSearchClick(
     console.error("❌ trackSearchClick error:", err);
     return res.status(500).json({
       success: false,
-      error: { code: "INTERNAL_ERROR", message: err.message },
+      error: { code: "INTERNAL_ERROR", message: "Internal server error." },
     });
   }
 }
@@ -410,7 +410,7 @@ export async function submitFeedback(
     console.error("❌ submitFeedback error:", err);
     return res.status(500).json({
       success: false,
-      error: { code: "INTERNAL_ERROR", message: err.message },
+      error: { code: "INTERNAL_ERROR", message: "Internal server error." },
     });
   }
 }
@@ -429,7 +429,7 @@ export async function getDashboardStats(
     console.error("❌ getDashboardStats error:", err);
     return res.status(500).json({
       success: false,
-      error: { code: "INTERNAL_ERROR", message: err.message },
+      error: { code: "INTERNAL_ERROR", message: "Internal server error." },
     });
   }
 }
@@ -476,7 +476,7 @@ export async function updateSourceTrustManual(
     console.error("❌ updateSourceTrustManual error:", err);
     return res.status(500).json({
       success: false,
-      error: { code: "INTERNAL_ERROR", message: err.message },
+      error: { code: "INTERNAL_ERROR", message: "Internal server error." },
     });
   }
 }

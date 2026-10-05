@@ -31,10 +31,12 @@ export async function ingestUrl(req: Request, res: Response): Promise<void> {
     });
   } catch (error) {
     console.error("Ingest URL error:", error);
-    const msg = error instanceof Error ? error.message : "Ingestion failed";
     res.status(500).json({
       success: false,
-      error: { code: "INGESTION_FAILED", message: msg },
+      error: {
+        code: "INGESTION_FAILED",
+        message: "Job ingestion failed. Check the URL and try again.",
+      },
     });
   }
 }

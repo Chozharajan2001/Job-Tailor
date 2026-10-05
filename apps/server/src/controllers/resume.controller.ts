@@ -75,12 +75,10 @@ export async function generateResume(
   // Fetch job
   const job = await Job.findOne({ _id: jobId, userId }).lean<IJob>().exec();
   if (!job) {
-    res
-      .status(404)
-      .json({
-        success: false,
-        error: { code: "JOB_NOT_FOUND", message: "Job not found." },
-      });
+    res.status(404).json({
+      success: false,
+      error: { code: "JOB_NOT_FOUND", message: "Job not found." },
+    });
     return;
   }
 
@@ -141,11 +139,12 @@ export async function generateResume(
     res.status(201).json({ success: true, data: { resume } });
   } catch (error) {
     console.error("Resume generation failed:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to generate resume";
     res.status(500).json({
       success: false,
-      error: { code: "RESUME_GENERATION_FAILED", message },
+      error: {
+        code: "RESUME_GENERATION_FAILED",
+        message: "Resume generation failed. Try again.",
+      },
     });
   }
 }
@@ -178,12 +177,10 @@ export async function getResume(req: Request, res: Response): Promise<void> {
     .exec();
 
   if (!resume) {
-    res
-      .status(404)
-      .json({
-        success: false,
-        error: { code: "RESUME_NOT_FOUND", message: "Resume not found." },
-      });
+    res.status(404).json({
+      success: false,
+      error: { code: "RESUME_NOT_FOUND", message: "Resume not found." },
+    });
     return;
   }
 
@@ -205,12 +202,10 @@ export async function updateResume(req: Request, res: Response): Promise<void> {
     .exec();
 
   if (!resume) {
-    res
-      .status(404)
-      .json({
-        success: false,
-        error: { code: "RESUME_NOT_FOUND", message: "Resume not found." },
-      });
+    res.status(404).json({
+      success: false,
+      error: { code: "RESUME_NOT_FOUND", message: "Resume not found." },
+    });
     return;
   }
 
@@ -226,12 +221,10 @@ export async function downloadPDF(req: Request, res: Response): Promise<void> {
   const resume = await Resume.findOne({ _id: req.params.id, userId }).exec();
 
   if (!resume) {
-    res
-      .status(404)
-      .json({
-        success: false,
-        error: { code: "RESUME_NOT_FOUND", message: "Resume not found." },
-      });
+    res.status(404).json({
+      success: false,
+      error: { code: "RESUME_NOT_FOUND", message: "Resume not found." },
+    });
     return;
   }
 
@@ -247,11 +240,12 @@ export async function downloadPDF(req: Request, res: Response): Promise<void> {
     res.json({ success: true, data: { pdfUrl, resumeId: resume._id } });
   } catch (error) {
     console.error("PDF generation failed:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to generate PDF";
     res.status(500).json({
       success: false,
-      error: { code: "PDF_GENERATION_FAILED", message },
+      error: {
+        code: "PDF_GENERATION_FAILED",
+        message: "PDF generation failed. Try again.",
+      },
     });
   }
 }
@@ -649,13 +643,12 @@ export async function createProfileResume(
     res.status(201).json({ success: true, data: { resume } });
   } catch (error) {
     console.error("Profile resume creation failed:", error);
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to create profile resume";
     res.status(500).json({
       success: false,
-      error: { code: "PROFILE_RESUME_CREATION_FAILED", message },
+      error: {
+        code: "PROFILE_RESUME_CREATION_FAILED",
+        message: "Could not create the profile resume. Try again.",
+      },
     });
   }
 }
@@ -692,13 +685,12 @@ export async function updateProfileResume(
     res.json({ success: true, data: { resume: profileResume } });
   } catch (error) {
     console.error("Profile resume update failed:", error);
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to update profile resume";
     res.status(500).json({
       success: false,
-      error: { code: "PROFILE_RESUME_UPDATE_FAILED", message },
+      error: {
+        code: "PROFILE_RESUME_UPDATE_FAILED",
+        message: "Could not update the profile resume. Try again.",
+      },
     });
   }
 }

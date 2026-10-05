@@ -4,6 +4,7 @@ import { Resume } from "../models/Resume.model.js";
 import { Application } from "../models/Application.model.js";
 import { parseJD } from "../services/jd-parser.service.js";
 import { escapeRegex } from "../utils/skill-matcher.js";
+import { logger } from "../utils/logger.js";
 
 /**
  * POST /api/v1/jobs — Create a new job entry with JD text.
@@ -264,11 +265,13 @@ export async function parseJobJD(req: Request, res: Response): Promise<void> {
 
     res.json({ success: true, data: { parsedJD } });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to parse JD";
+    logger.error({ err: error, jobId: job._id }, "JD parse failed");
     res.status(502).json({
       success: false,
-      error: { code: "JD_PARSE_FAILED", message },
+      error: {
+        code: "JD_PARSE_FAILED",
+        message: "Could not parse the job description. Try again.",
+      },
     });
   }
 }
