@@ -95,9 +95,13 @@ describe("applyGhostScoring", () => {
   it("does not fire the unchanged signal on a first sighting", async () => {
     // Baseline rule: a row first seen today has a 0 change counter because
     // there is no history yet — that must not read as "text unchanged".
+    // One clock read: two separate Date.now() calls here made lastSeenAt
+    // strictly greater than firstSeenAt whenever a millisecond ticked between
+    // them, which turned this into an intermittent false failure under load.
+    const sighting = new Date(Date.now() - 2 * 60 * 1000);
     const firstSeen = await seed({
-      firstSeenAt: new Date(Date.now() - 2 * 60 * 1000),
-      lastSeenAt: new Date(Date.now() - 2 * 60 * 1000),
+      firstSeenAt: sighting,
+      lastSeenAt: sighting,
       postedDate: new Date(Date.now() - 200 * DAY),
     });
     await applyGhostScoring();
