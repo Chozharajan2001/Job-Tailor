@@ -562,8 +562,8 @@ Welcome back, John! 👋
 | **Loading feedback**       | 10/10     | 10/10     | ✅ Excellent                |
 | **Error handling**         | 8/10      | 10/10     | ⚠️ Could be more actionable |
 | **Visual hierarchy**       | 9/10      | 10/10     | ✅ Very good                |
-| **Mobile responsiveness**  | ?/10      | 9/10      | ⚠️ Needs testing            |
-| **Accessibility (a11y)**   | ?/10      | 9/10      | ⚠️ Needs audit              |
+| **Mobile responsiveness**  | 8/10      | 9/10      | ✅ C-1 fixed 2026-10-05     |
+| **Accessibility (a11y)**   | 3/10      | 9/10      | ❌ C-2 open                 |
 | **Onboarding guidance**    | 3/10      | 9/10      | ❌ Major gap                |
 
 ---
@@ -586,7 +586,7 @@ Welcome back, John! 👋
 
 7. Resume version comparison tool
 8. Enhanced dashboard with action items
-9. Mobile responsiveness audit & fixes
+9. Mobile responsiveness audit & fixes — measured 2026-10-05; C-1 drawer shell shipped, C-2 (keyboard/SR path in the tracker) still open
 10. Accessibility (WCAG 2.1) compliance
 
 ---

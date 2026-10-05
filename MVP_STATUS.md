@@ -49,9 +49,9 @@ Verified:
 ```bash
 npm run typecheck  ✅ (4/4 tasks: shared-types, server, client, extension)
 npm run lint       ✅ (3/3 tasks, 0 errors)
-npm run test       ✅ (316 tests: 276 server across 42 files (40 under
+npm run test       ✅ (324 tests: 276 server across 42 files (40 under
                           src/tests/, 2 under src/services/ai-provider/__tests__/), 26 extension
-                          (3 files), 14 client (5 files) — auth smoke + page gates)
+                          (3 files), 22 client (6 files) — auth smoke, silent-refresh lock, drawer shell + page gates)
 npm run test:coverage --workspace=job-tailor-server
                    ✅ (measured surface incl. controllers+routes: 62.2 stmts /
                        71.5 branch / 65.9 funcs / 62.2 lines; floors 55/50/59/55)
@@ -101,7 +101,7 @@ All suites are hermetic (in-memory MongoDB, AI providers stubbed at the boundary
   - **Reusable Resume Selection**: Automatically queries `GET /resumes/reuse` to pre-populate default tailored resume selection dropdown in tracker card creation modal.
   - **Attach Resume to Job**: Exposes inline Link Resume selectors on the `JobsPage` details view calling `PATCH /jobs/:id/attach-resume`.
   - **Crawl Source Registration**: Exposes a "Register Source" form modal and trigger in the health matrix panel calling `POST /search/sources`.
-- **Test Suite**: 316 tests — 276 server across 42 files (40 in `src/tests/`, 2 in `src/services/ai-provider/__tests__/`: search engine, auth/HTTP-auth, security utils, profile/application workflows, ATS scoring v2 + golden regression + schema persistence, keyword scorer, skill IDF, score cache, rescore, live-discovery connectors/poller/seed/admin, API keys + extension flow + revocation + log-redaction, delete cascade, error correlation, ghost-listing golden cases + sweep + ranking demotion, registration gate, SSRF pinned lookup, static 5xx error surface, admin-key compare/length/limiter, feed pagination bounds, connector fetch deadline) + 26 extension (manifest, platform registry, detector/extractor fixtures) + 14 client across 5 files (auth smoke, cross-tab silent-refresh lock, Jobs/Profile/Tracker page gates).
+- **Test Suite**: 324 tests — 276 server across 42 files (40 in `src/tests/`, 2 in `src/services/ai-provider/__tests__/`: search engine, auth/HTTP-auth, security utils, profile/application workflows, ATS scoring v2 + golden regression + schema persistence, keyword scorer, skill IDF, score cache, rescore, live-discovery connectors/poller/seed/admin, API keys + extension flow + revocation + log-redaction, delete cascade, error correlation, ghost-listing golden cases + sweep + ranking demotion, registration gate, SSRF pinned lookup, static 5xx error surface, admin-key compare/length/limiter, feed pagination bounds, connector fetch deadline) + 26 extension (manifest, platform registry, detector/extractor fixtures) + 22 client across 6 files (auth smoke, cross-tab silent-refresh lock, the C-1 drawer-shell contract, Jobs/Profile/Tracker page gates).
 
 ## Partially Done
 
@@ -181,6 +181,6 @@ _Matrix semantics: "Present in Code" / "User Can Access" mean a wired route/UI e
 | Analytics             | 75%        |
 | Tests                 | 75%¹       |
 
-¹ Measured surface (2026-10-05 gate): server 276 tests / 42 files over a CI coverage floor of 55/50/59/55 (statements/branches/functions/lines) across services+middleware+utils+controllers+routes, measured 62.2 stmts / 71.5 branch / 65.9 funcs / 62.2 lines; client 14 tests / 5 files (auth-page smoke, the cross-tab silent-refresh lock, render-and-interact gates for the three highest-churn pages); extension 26 fixture tests / 3 files. No Playwright E2E yet; the extension real-DOM pass is an open manual step.
+¹ Measured surface (2026-10-05 gate): server 276 tests / 42 files over a CI coverage floor of 55/50/59/55 (statements/branches/functions/lines) across services+middleware+utils+controllers+routes, measured 62.2 stmts / 71.5 branch / 65.9 funcs / 62.2 lines; client 22 tests / 6 files (auth-page smoke, the cross-tab silent-refresh lock, the C-1 drawer-shell contract, render-and-interact gates for the three highest-churn pages); extension 26 fixture tests / 3 files. No Playwright E2E yet; the extension real-DOM pass is an open manual step.
 
 Overall MVP completion: approximately **91%**.

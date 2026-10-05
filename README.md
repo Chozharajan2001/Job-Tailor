@@ -95,7 +95,7 @@ Current verification baseline (2026-09-30, single source of truth):
 ```bash
 npm run typecheck   # 4/4 tasks
 npm run lint        # 3/3 tasks, 0 errors
-npm run test        # 316 tests: 276 server (42 files) + 26 extension (3 files) + 14 client (5 files)
+npm run test        # 324 tests: 276 server (42 files) + 26 extension (3 files) + 22 client (6 files)
 npm run test:coverage --workspace=job-tailor-server
                     # widened surface incl. controllers/routes: 62.2 stmts / 71.5 branch
                     # / 65.9 funcs — above the 55/50/59/55 floors set from measurement

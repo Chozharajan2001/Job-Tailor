@@ -265,6 +265,11 @@ _Usability improvements. Worth doing, worth deferring._
 ## 12. UI Polish P1–P3 (8–12 h)
 
 - [ ] Kanban drag-and-drop (`@dnd-kit/core`) or redesign away from the drag metaphor
+
+**UI audit 2026-10-05 (measured in Chromium, `http://localhost`, widths 375 / 768 / 1440):**
+
+- ✅ **C-1 responsive shell — fixed.** Before: at 375 px the fixed `w-64` sidebar took **68 %** of the viewport and left `<main>` **119 px** wide while its own content needed 298 px (tracker) / 239 px (dashboard); `min-width` on `<main>` was `auto`, and there was no way to hide the nav. Now the nav is an off-canvas drawer below `md` (toggle 36×36 px with `aria-label`/`aria-expanded`/`aria-controls`, backdrop, Escape closes and returns focus, navigation closes it, and the closed drawer is `inert` + `aria-hidden` so it cannot be tabbed into). Measured after: `<main>` **375 px**, `scrollWidth` 361 px, no overflow; 768 px and 1440 px unchanged (sidebar static, 256 px). Pinned by `apps/client/src/tests/layout-drawer.test.tsx` (8 cases).
+- [ ] **C-2 keyboard and screen-reader path — open.** Measured: each tracker card renders **two buttons with no accessible name**, sized **20×20 px** (under 24×24 and far under 44×44); the card detail overlay carries **no `role="dialog"` / `aria-modal`**, focus never leaves `<body>`, and **Escape does nothing**. Two halves, different costs: the modal half needs **no dependency** — `@radix-ui/react-alert-dialog` is already installed (ConfirmDialog uses it, and it handles Escape + focus trap internally), so this is "stop hand-rolling `fixed inset-0` overlays". The keyboard-drag half needs `@dnd-kit/sortable` + `@dnd-kit/accessibility`, which is an open dependency decision. Note the tracker already has a live region (`role="status"`) — do not "add aria-live" there.
 - [ ] Quick ATS preview button on ResumeTailorPage (score before full generation)
 - [ ] Job list filter/search bar (text + status + sort)
 - [ ] Standardize loading states — skeletons for page load, spinners for API calls, progress for PDF generation

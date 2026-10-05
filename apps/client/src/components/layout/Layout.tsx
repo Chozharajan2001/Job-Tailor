@@ -1,4 +1,5 @@
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -7,6 +8,8 @@ import {
   Kanban,
   BarChart3,
   LogOut,
+  Menu,
+  X,
 } from "lucide-react";
 import ErrorBoundary from "../ErrorBoundary";
 import { useAuthStore } from "../../stores/authStore";
@@ -21,11 +24,67 @@ const navItems = [
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
+const NAV_ID = "app-nav";
+const MD_BREAKPOINT = "(min-width: 768px)";
+
+/**
+ * Tailwind cannot express "inert below md, interactive above", and an
+ * off-canvas drawer translated off-screen is still focusable — a keyboard user
+ * would tab into a nav they cannot see. The breakpoint is therefore read here
+ * so the closed drawer can be taken out of the tab order on phones only.
+ */
+function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia(MD_BREAKPOINT).matches
+      : true,
+  );
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(MD_BREAKPOINT);
+    const onChange = (event: MediaQueryListEvent) =>
+      setIsDesktop(event.matches);
+    setIsDesktop(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  return isDesktop;
+}
+
 export default function Layout() {
   const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
+  const [navOpen, setNavOpen] = useState(false);
+  const isDesktop = useIsDesktop();
+  const navHidden = !isDesktop && !navOpen;
+  const navToggleRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setNavOpen(false);
+        navToggleRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [navOpen]);
+
+  // A drawer that stays open after navigation covers the page it just loaded.
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname]);
+
+  function dismissNav() {
+    setNavOpen(false);
+    navToggleRef.current?.focus();
+  }
 
   async function handleLogout() {
     // Revoke the session server-side first (invalidates the HttpOnly refresh
@@ -47,8 +106,40 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-gray-50">
+      {/* Mobile bar — the fixed w-64 sidebar alone left the content pane 119px
+          wide at 375px, so below md the nav becomes an off-canvas drawer. */}
+      <div className="md:hidden fixed top-0 inset-x-0 z-50 flex items-center gap-3 h-14 px-4 bg-white border-b border-gray-200">
+        <button
+          ref={navToggleRef}
+          type="button"
+          onClick={() => setNavOpen((open) => !open)}
+          aria-label={navOpen ? "Close navigation" : "Open navigation"}
+          aria-expanded={navOpen}
+          aria-controls={NAV_ID}
+          className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors cursor-pointer"
+        >
+          {navOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+        <span className="text-base font-bold text-primary">JobTailor</span>
+      </div>
+
+      {navOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/40"
+          aria-hidden="true"
+          onClick={dismissNav}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      <aside
+        id={NAV_ID}
+        inert={navHidden}
+        aria-hidden={navHidden || undefined}
+        className={`w-64 shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen z-50 md:z-auto transition-transform motion-reduce:transition-none fixed inset-y-0 left-0 ${
+          navOpen ? "translate-x-0" : "-translate-x-full"
+        } md:static md:h-auto md:translate-x-0`}
+      >
         <div className="p-6 border-b border-gray-200">
           <h1 className="text-xl font-bold text-primary">JobTailor</h1>
           <p className="text-xs text-muted-foreground mt-1">
@@ -99,7 +190,7 @@ export default function Layout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 min-w-0 overflow-auto pt-14 md:pt-0">
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>
