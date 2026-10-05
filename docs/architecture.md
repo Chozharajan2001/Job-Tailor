@@ -88,7 +88,7 @@ Not currently present:
 - shared `validations`
 - shared `api-client`
 - client `hooks`
-- Playwright E2E tests (server, client, and extension unit/integration suites exist and pass — 324 tests)
+- Playwright E2E tests (server, client, and extension unit/integration suites exist and pass — 327 tests)
 
 ## Backend Architecture
 
@@ -211,7 +211,7 @@ Current baseline (2026-09-27, post-ATS-v2):
 ```bash
 npm run typecheck   # 4/4 tasks (shared-types, server, client, extension)
 npm run lint        # 3/3 tasks, 0 errors
-npm run test        # 324 tests: 276 server (42 files) + 26 extension (3 files) + 22 client (6 files)
+npm run test        # 327 tests: 276 server (42 files) + 26 extension (3 files) + 25 client (7 files)
 npm run test:coverage --workspace=job-tailor-server
                     # widened surface incl. controllers/routes: 62.2 stmts / 71.5 branch
                     # / 65.9 funcs — above the 55/50/59/55 floors set from measurement

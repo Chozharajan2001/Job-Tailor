@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../services/api";
 import { Download, FileText, Plus, GripVertical } from "lucide-react";
 import CreateApplicationModal from "../components/CreateApplicationModal";
+import ConfirmDialog from "../components/ConfirmDialog";
 import {
   DndContext,
   useDraggable,
@@ -72,6 +73,7 @@ export default function TrackerPage() {
   const queryClient = useQueryClient();
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [preselected, setPreselected] = useState<{
     jobId?: string;
@@ -380,18 +382,22 @@ export default function TrackerPage() {
             }
           }}
           isDownloadingPDF={downloadPDFMutation.isPending}
-          onDelete={() => {
-            if (
-              window.confirm(
-                "Are you sure you want to delete this application?",
-              )
-            ) {
-              deleteAppMutation.mutate(selectedApp._id);
-            }
-          }}
+          onDelete={() => setPendingDeleteId(selectedApp._id)}
           isDeleting={deleteAppMutation.isPending}
         />
       )}
+
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title="Delete this application?"
+        description="The application and its timeline are removed. This cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (pendingDeleteId) deleteAppMutation.mutate(pendingDeleteId);
+          setPendingDeleteId(null);
+        }}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }
