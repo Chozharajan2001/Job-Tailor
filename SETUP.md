@@ -126,9 +126,9 @@ apps/
 | `cd apps/extension && npm run build` | Bundle the Chrome extension (esbuild → `dist/`)            |
 | `cd apps/extension && npm run dev`   | Rebuild the extension on file changes                      |
 
-**Verification baseline (2026-09-30):** `npm run typecheck` 4/4 tasks · `npm run lint` 3/3 tasks,
-0 errors · `npm test` 280 tests (240 server / 26 extension / 14 client) · server coverage
-58.7% stmts over the widened surface (incl. controllers/routes), above the 55/50/59/55 floors
+**Verification baseline (2026-10-05):** `npm run typecheck` 4/4 tasks · `npm run lint` 3/3 tasks,
+0 errors · `npm test` 297 tests (257 server / 26 extension / 14 client) · server coverage
+61.6% stmts over the widened surface (incl. controllers/routes), above the 55/50/59/55 floors
 set from that measurement. Suites are hermetic (in-memory Mongo, stubbed
 AI providers) — they pass with or without real API keys.
 

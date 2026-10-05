@@ -153,8 +153,11 @@ Issuance, revocation, and failed key authentication write `API_KEY_ISSUED` /
 
 ## Admin — `/api/v1/admin` (**`x-admin-key`**)
 
-Gated by `SOURCE_POLL_ADMIN_KEY` (constant-time compare). When the env var is unset the
-routes answer 503 `ADMIN_NOT_CONFIGURED`; a wrong key answers 401.
+Gated by `SOURCE_POLL_ADMIN_KEY` (SHA-256 digests compared with `timingSafeEqual`, so neither the
+key length nor the first differing byte is observable). When the env var is unset the
+routes answer 503 `ADMIN_NOT_CONFIGURED`; a wrong key answers 401. A key that is set but shorter
+than 32 characters is rejected at boot. Every route below also carries a 10-requests-per-minute
+limit per client — `429 ADMIN_RATE_LIMITED` — which the six-hourly scheduled poller never reaches.
 
 | Method | Endpoint                  | Notes                                                                      |
 | ------ | ------------------------- | -------------------------------------------------------------------------- |
