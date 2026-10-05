@@ -217,7 +217,7 @@ allocation failure, not a code error).
 
 - [x] Passwords hashed with bcrypt (12 rounds)
 - [x] Refresh token delivered only as an httpOnly cookie (`controllers/auth.controller.ts:155-160`)
-- [ ] **Access token is NOT memory-only** — `stores/authStore.ts:27-28` wraps the store in zustand `persist(...)` with no `partialize`, so `accessToken` is written to localStorage despite the comments in `services/api.ts:34`/`:45` and `stores/authStore.ts:37` saying otherwise. Tracked as TODO_PLAN #Tier-1.5 **H9**; until it is fixed, treat "the token is not in storage" claims as false and do not rely on them in reviews.
+- [x] Access token is memory-only — `stores/authStore.ts:28` persists the store through zustand `persist`, but the options block at `:96-102` narrows what is written with `partialize: (state) => ({ user: state.user, sessionExpired: state.sessionExpired })`, so no token reaches localStorage. The comments in `services/api.ts:34`/`:45` and `stores/authStore.ts:37` are true. (A 2026-09-30 audit line claimed the opposite; retracted 2026-10-05 — see TODO_PLAN Tier 1.5 H9.)
 - [x] JWT supported through Authorization header
 - [x] All inputs validated with Zod schemas (server-side)
 - [x] Rate limiting on auth endpoints

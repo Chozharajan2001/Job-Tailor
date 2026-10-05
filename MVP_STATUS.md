@@ -1,6 +1,6 @@
 # JobTailor MVP Status
 
-> Last updated: 2026-09-29 (full-application security audit remediation: H1–H5 fixed and test-pinned; Tier 1 complete — discovery shipped, extension code-complete with 2 open sub-items, ATS engine v2 done)
+> Last updated: 2026-10-05 (Tier 1.5 remediation: H1–H5 fixed and test-pinned, H6 cross-tab refresh lock + H7 registration gate + H8 SSRF pinned lookup shipped 2026-09-30, H9 retracted as a false finding; Tier 1 complete — discovery shipped, #16 ghost-listing detection shipped, extension code-complete with 2 open sub-items, ATS engine v2 done)
 > Prioritized next-work roadmap lives in [TODO_PLAN.md](./TODO_PLAN.md). This file records what is built.
 
 ## Tier 1 Feature 2 Code-Complete (2 Open Sub-Items): Chrome Extension Auto-Track
@@ -49,12 +49,12 @@ Verified:
 ```bash
 npm run typecheck  ✅ (4/4 tasks: shared-types, server, client, extension)
 npm run lint       ✅ (3/3 tasks, 0 errors)
-npm run test       ✅ (server 194 tests across 29 files, 26 extension (3 files),
-                          5 client (2 files) — Login/Register smoke plus render-and-
-                          interact gates for JobsPage, ProfilePage, TrackerPage)
+npm run test       ✅ (280 tests: 240 server across 38 files (36 under
+                          src/tests/, 2 under src/services/ai-provider/__tests__/), 26 extension
+                          (3 files), 14 client (5 files) — auth smoke + page gates)
 npm run test:coverage --workspace=job-tailor-server
-                   ✅ (measured surface incl. controllers+routes: 56.6 stmts /
-                       69.6 branch / 60.8 funcs; floors 55/50/59/55)
+                   ✅ (measured surface incl. controllers+routes: 58.7 stmts /
+                       72.1 branch / 62.5 funcs / 58.7 lines; floors 55/50/59/55)
 ```
 
 All suites are hermetic (in-memory MongoDB, AI providers stubbed at the boundary) — identical results with or without real keys in `apps/server/.env`. Not yet verified: production deployment, and the extension's real-DOM pass (open manual step above).
@@ -101,7 +101,7 @@ All suites are hermetic (in-memory MongoDB, AI providers stubbed at the boundary
   - **Reusable Resume Selection**: Automatically queries `GET /resumes/reuse` to pre-populate default tailored resume selection dropdown in tracker card creation modal.
   - **Attach Resume to Job**: Exposes inline Link Resume selectors on the `JobsPage` details view calling `PATCH /jobs/:id/attach-resume`.
   - **Crawl Source Registration**: Exposes a "Register Source" form modal and trigger in the health matrix panel calling `POST /search/sources`.
-- **Test Suite**: 225 tests — 194 server across 29 files (search engine, auth/HTTP-auth, security utils, profile/application workflows, ATS scoring v2 + golden regression + schema persistence, keyword scorer, skill IDF, score cache, rescore, live-discovery connectors/poller/seed/admin, API keys + extension flow + revocation + log-redaction, delete cascade, error correlation) + 26 extension (manifest, platform registry, detector/extractor fixtures) + 5 client (auth smoke + Jobs/Profile/Tracker page gates).
+- **Test Suite**: 280 tests — 240 server across 38 files (36 in `src/tests/`, 2 in `src/services/ai-provider/__tests__/`: search engine, auth/HTTP-auth, security utils, profile/application workflows, ATS scoring v2 + golden regression + schema persistence, keyword scorer, skill IDF, score cache, rescore, live-discovery connectors/poller/seed/admin, API keys + extension flow + revocation + log-redaction, delete cascade, error correlation, ghost-listing golden cases + sweep + ranking demotion, registration gate, SSRF pinned lookup) + 26 extension (manifest, platform registry, detector/extractor fixtures) + 14 client across 5 files (auth smoke, cross-tab silent-refresh lock, Jobs/Profile/Tracker page gates).
 
 ## Partially Done
 
@@ -181,6 +181,6 @@ _Matrix semantics: "Present in Code" / "User Can Access" mean a wired route/UI e
 | Analytics             | 75%        |
 | Tests                 | 75%¹       |
 
-¹ Measured surface (2026-09-27): server 194 tests / 29 files with a CI coverage floor (stmts 56.6%, floors 55/50/59/55 over services+middleware+utils+controllers+routes); client 5 tests / 2 files (auth-page smoke + render-and-interact gates for the three highest-churn pages); extension 26 fixture tests / 3 files. No Playwright E2E yet; the extension real-DOM pass is an open manual step.
+¹ Measured surface (2026-09-30 gate, re-quoted 2026-10-05): server 240 tests / 38 files over a CI coverage floor of 55/50/59/55 (statements/branches/functions/lines) across services+middleware+utils+controllers+routes, measured 58.7 stmts / 72.1 branch / 62.5 funcs / 58.7 lines; client 14 tests / 5 files (auth-page smoke, the cross-tab silent-refresh lock, render-and-interact gates for the three highest-churn pages); extension 26 fixture tests / 3 files. No Playwright E2E yet; the extension real-DOM pass is an open manual step.
 
 Overall MVP completion: approximately **91%**.
