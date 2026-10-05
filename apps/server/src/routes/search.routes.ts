@@ -71,6 +71,11 @@ const searchJobsQuerySchema = z.object({
   hideGhosts: z.coerce.boolean().optional(),
 });
 
+const feedQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
 const createSavedSearchSchema = z.object({
   name: z.string().min(1, "Saved search name is required"),
   query: z.string().optional(),
@@ -158,7 +163,7 @@ router.post("/ingest/paste", validateBody(ingestPasteSchema), ingestPaste);
 router.get("/", validateQuery(searchJobsQuerySchema), searchJobs);
 
 // Curated Personalized Feed
-router.get("/feed", getUserFeed);
+router.get("/feed", validateQuery(feedQuerySchema), getUserFeed);
 
 // Saved Searches alerts management
 router.post("/saved", validateBody(createSavedSearchSchema), createSavedSearch);
