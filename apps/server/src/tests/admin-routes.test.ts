@@ -14,7 +14,7 @@ import { SourceRegistry } from "../models/SourceRegistry.model.js";
 import { connectTestDb, disconnectTestDb } from "./helpers/test-db.js";
 
 process.env.NODE_ENV = "test";
-process.env.SOURCE_POLL_ADMIN_KEY = "test-admin-key-32-chars-long!!";
+process.env.SOURCE_POLL_ADMIN_KEY = "test-admin-key-32-chars-long!!-padded";
 
 // Import the app AFTER setting the env var so config.sourcePollAdminKey
 // picks it up at module load.

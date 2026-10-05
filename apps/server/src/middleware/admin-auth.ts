@@ -1,15 +1,24 @@
 import { Request, Response, NextFunction } from "express";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { config } from "../config/index.js";
 
 /**
  * Gates the /api/v1/admin/* routes used by the external job-source poller.
  * Returns 503 when SOURCE_POLL_ADMIN_KEY is unset (endpoint not configured)
  * and 401 when the caller's x-admin-key header does not match.
- *
- * A plain string compare is fine here: the value is a long random token from
- * env, not a user password, and Node's !== on equal-length hex/base64 strings
- * is not a practical timing oracle in this code path.
  */
+
+/**
+ * Digest both sides first so the comparison is over fixed-length values:
+ * a direct Buffer.compare of unequal-length secrets would return early on the
+ * length, and a plain `!==` leaks the position of the first differing byte.
+ */
+function keyMatches(provided: string, expected: string): boolean {
+  const a = createHash("sha256").update(provided, "utf8").digest();
+  const b = createHash("sha256").update(expected, "utf8").digest();
+  return timingSafeEqual(a, b);
+}
+
 export function requireAdminKey(
   req: Request,
   res: Response,
@@ -26,8 +35,8 @@ export function requireAdminKey(
     });
     return;
   }
-  const provided = req.header("x-admin-key");
-  if (!provided || provided !== expected) {
+  const provided = req.header("x-admin-key") ?? "";
+  if (!provided || !keyMatches(provided, expected)) {
     res.status(401).json({
       success: false,
       error: {

@@ -97,6 +97,13 @@ export function validateConfig(): void {
       "JWT_SECRET and JWT_REFRESH_SECRET must be different values",
     );
   }
+  // A short admin key is brute-forceable over the network. Leaving it unset is
+  // still valid — the admin routes then answer 503 instead of running unguarded.
+  if (config.sourcePollAdminKey && config.sourcePollAdminKey.length < 32) {
+    throw new Error(
+      "SOURCE_POLL_ADMIN_KEY must be at least 32 chars when set. Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+    );
+  }
   // An unrecognised REGISTRATION_MODE would otherwise fail closed in silence
   if (!["open", "allowlist", "closed"].includes(config.registrationMode)) {
     throw new Error(
